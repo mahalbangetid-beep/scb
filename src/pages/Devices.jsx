@@ -67,7 +67,8 @@ export default function Devices() {
 
         const pollQR = async () => {
             try {
-                const res = await api.get(`/devices/${deviceId}/qr`)
+                // Add timestamp to prevent caching (304 responses)
+                const res = await api.get(`/devices/${deviceId}/qr?t=${Date.now()}`)
 
                 if (res.data.status === 'connected') {
                     // Device is connected!
