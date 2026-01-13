@@ -71,9 +71,13 @@ export default function AutoReply() {
         setSubmitting(true)
         try {
             const payload = {
-                ...formData,
+                name: formData.name,
+                trigger: formData.keywords, // Backend expects 'trigger' field
+                triggerType: formData.triggerType,
+                response: formData.response,
                 deviceId: formData.deviceId === 'all' || formData.deviceId === '' ? null : formData.deviceId,
-                priority: parseInt(formData.priority)
+                priority: parseInt(formData.priority),
+                isActive: formData.isActive
             }
 
             if (editingRule) {
