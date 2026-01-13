@@ -55,7 +55,12 @@ const AdminRoute = ({ children }) => {
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
-  const user = userStr ? JSON.parse(userStr) : null;
+  let user = null;
+  try {
+    user = userStr ? JSON.parse(userStr) : null;
+  } catch (e) {
+    localStorage.removeItem('user');
+  }
   if (!user || !['ADMIN', 'MASTER_ADMIN'].includes(user.role)) {
     return <Navigate to="/dashboard" replace />;
   }
