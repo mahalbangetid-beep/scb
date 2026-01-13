@@ -134,9 +134,15 @@ class TelegramService {
         // Setup message handlers
         this.setupBotHandlers(bot, botRecord);
 
-        // Start polling
+        // Start polling with timeout
         try {
-            await bot.launch();
+            // Add timeout to prevent hanging
+            const launchPromise = bot.launch();
+            const timeoutPromise = new Promise((_, reject) =>
+                setTimeout(() => reject(new Error('Bot launch timeout - check network or token')), 15000)
+            );
+
+            await Promise.race([launchPromise, timeoutPromise]);
             this.bots.set(botId, bot);
 
             // Update status
@@ -148,8 +154,10 @@ class TelegramService {
                 }
             });
 
+            console.log(`[Telegram] Bot ${botRecord.botUsername} started successfully`);
             return { status: 'connected', botUsername: botRecord.botUsername };
         } catch (error) {
+            console.error(`[Telegram] Failed to start bot ${botId}:`, error.message);
             throw new Error(`Failed to start bot: ${error.message}`);
         }
     }
