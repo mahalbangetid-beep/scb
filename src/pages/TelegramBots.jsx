@@ -40,7 +40,7 @@ export default function TelegramBots() {
         try {
             setLoading(true)
             const response = await api.get('/telegram/bots')
-            setBots(response.data.data || [])
+            setBots(response.data || [])
         } catch (err) {
             setError(err.message || 'Failed to fetch bots')
         } finally {
