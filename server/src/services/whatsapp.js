@@ -10,8 +10,12 @@
 const QRCode = require('qrcode');
 const path = require('path');
 const fs = require('fs');
+const pino = require('pino');
 const prisma = require('../utils/prisma');
 const botMessageHandler = require('./botMessageHandler');
+
+// Create silent pino logger for baileys
+const silentLogger = pino({ level: 'silent' });
 
 // Store untuk menyimpan WhatsApp instances
 const sessions = new Map();
@@ -142,12 +146,7 @@ class WhatsAppService {
         const { state, saveCreds } = await useMultiFileAuthState(sessionPath);
 
         // Create in-memory store untuk messages
-        const store = makeInMemoryStore({
-            logger: {
-                level: 'silent',
-                child: () => ({ level: 'silent' })
-            }
-        });
+        const store = makeInMemoryStore({ logger: silentLogger });
         sessionStores.set(deviceId, store);
 
         // Fetch versi terbaru
@@ -157,17 +156,16 @@ class WhatsAppService {
         // Buat socket connection
         const socket = makeWASocket({
             version,
-            logger: {
-                level: 'silent',
-                child: () => ({ level: 'silent' })
-            },
-            printQRInTerminal: true,
+            logger: silentLogger,
             auth: state,
-            browser: ['DICREWA', 'Chrome', '120.0.0'],
+            browser: ['SMMChatBot', 'Chrome', '120.0.0'],
             getMessage: async (key) => {
                 // Untuk retry message yang gagal
-                const msg = await store.loadMessage(key.remoteJid, key.id);
-                return msg?.message;
+                if (store.loadMessage) {
+                    const msg = await store.loadMessage(key.remoteJid, key.id);
+                    return msg?.message;
+                }
+                return undefined;
             }
         });
 
