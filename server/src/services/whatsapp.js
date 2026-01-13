@@ -20,6 +20,7 @@ const silentLogger = pino({ level: 'silent' });
 // Store untuk menyimpan WhatsApp instances
 const sessions = new Map();
 const sessionStores = new Map();
+const sessionQRCodes = new Map(); // Store QR codes for polling
 
 // Path untuk menyimpan sessions
 const SESSIONS_DIR = path.join(__dirname, '../../sessions');
@@ -184,6 +185,9 @@ class WhatsAppService {
                 try {
                     const qrImage = await QRCode.toDataURL(qr);
                     console.log(`[WA:${deviceId}] QR Code generated`);
+
+                    // Store QR for polling
+                    sessionQRCodes.set(deviceId, qrImage);
 
                     // Emit via Socket.IO
                     if (this.io) {
@@ -631,12 +635,20 @@ class WhatsAppService {
      */
     getSessionStatus(deviceId) {
         const socket = sessions.get(deviceId);
+        const qrCode = sessionQRCodes.get(deviceId);
+
         if (!socket) {
-            return { status: 'disconnected', user: null };
+            return { status: 'disconnected', user: null, qr: null };
+        }
+
+        // If connected, clear QR code
+        if (socket.user) {
+            sessionQRCodes.delete(deviceId);
         }
 
         return {
             status: socket.user ? 'connected' : 'connecting',
+            qr: qrCode || null,
             user: socket.user ? {
                 id: socket.user.id,
                 name: socket.user.name,
