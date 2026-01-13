@@ -408,17 +408,17 @@ export default function Devices() {
                                 border: '1px solid var(--border-color)'
                             }}>
                                 <div style={{
-                                    width: '240px',
-                                    height: '240px',
+                                    width: '320px',
+                                    height: '320px',
                                     margin: '0 auto var(--spacing-lg)',
                                     display: 'flex',
                                     alignItems: 'center',
                                     justifyContent: 'center',
                                     background: '#fff',
                                     borderRadius: 'var(--radius-md)',
-                                    padding: 'var(--spacing-sm)'
+                                    padding: '16px'
                                 }}>
-                                    <img src={qrCode} alt="QR Code" style={{ width: '100%', height: '100%' }} />
+                                    <img src={qrCode} alt="QR Code" style={{ width: '100%', height: '100%', imageRendering: 'pixelated' }} />
                                 </div>
                                 <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', fontWeight: 500 }}>
                                     Scan this QR code with your WhatsApp app
