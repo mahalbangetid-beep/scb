@@ -22,9 +22,9 @@ router.get('/', authenticate, async (req, res, next) => {
         if (deviceId) where.deviceId = deviceId;
         if (search) {
             where.OR = [
-                { message: { contains: search } },
-                { from: { contains: search } },
-                { to: { contains: search } }
+                { message: { contains: search, mode: 'insensitive' } },
+                { from: { contains: search, mode: 'insensitive' } },
+                { to: { contains: search, mode: 'insensitive' } }
             ];
         }
 

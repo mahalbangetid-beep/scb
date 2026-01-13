@@ -24,10 +24,10 @@ router.get('/users', async (req, res, next) => {
 
         if (search) {
             where.OR = [
-                { username: { contains: search } },
-                { email: { contains: search } },
-                { name: { contains: search } },
-                { whatsappNumber: { contains: search } }
+                { username: { contains: search, mode: 'insensitive' } },
+                { email: { contains: search, mode: 'insensitive' } },
+                { name: { contains: search, mode: 'insensitive' } },
+                { whatsappNumber: { contains: search, mode: 'insensitive' } }
             ];
         }
 
@@ -848,9 +848,9 @@ router.get('/messages', requireMasterAdmin, async (req, res, next) => {
 
         if (search) {
             where.OR = [
-                { message: { contains: search } },
-                { to: { contains: search } },
-                { from: { contains: search } }
+                { message: { contains: search, mode: 'insensitive' } },
+                { to: { contains: search, mode: 'insensitive' } },
+                { from: { contains: search, mode: 'insensitive' } }
             ];
         }
 

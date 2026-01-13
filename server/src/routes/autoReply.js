@@ -36,8 +36,8 @@ router.get('/', authenticate, async (req, res, next) => {
         if (search) {
             andConditions.push({
                 OR: [
-                    { name: { contains: search } },
-                    { keywords: { contains: search } }
+                    { name: { contains: search, mode: 'insensitive' } },
+                    { keywords: { contains: search, mode: 'insensitive' } }
                 ]
             });
         }
