@@ -131,59 +131,36 @@ class TelegramService {
         const botToken = decrypt(botRecord.botToken);
         const bot = new Telegraf(botToken);
 
+        // Verify bot token by calling getMe
+        try {
+            const botInfo = await bot.telegram.getMe();
+            console.log(`[Telegram] Bot verified: @${botInfo.username}`);
+        } catch (error) {
+            throw new Error(`Invalid bot token: ${error.message}`);
+        }
+
         // Setup message handlers
         this.setupBotHandlers(bot, botRecord);
 
-        // Start polling with timeout
-        try {
-            // Add timeout to prevent hanging
-            const launchPromise = bot.launch({
-                dropPendingUpdates: true, // Drop any pending updates to avoid conflicts
-                allowedUpdates: ['message', 'callback_query'] // Only listen for these update types
-            });
-            const timeoutPromise = new Promise((_, reject) =>
-                setTimeout(() => reject(new Error('Bot launch timeout - check network or token')), 15000)
-            );
+        // Start polling in background (don't await - it never resolves while running)
+        bot.launch({ dropPendingUpdates: true })
+            .then(() => console.log(`[Telegram] Bot ${botRecord.botUsername} polling started`))
+            .catch(err => console.error(`[Telegram] Bot ${botId} polling error:`, err.message));
 
-            await Promise.race([launchPromise, timeoutPromise]);
-            this.bots.set(botId, bot);
+        // Store bot instance
+        this.bots.set(botId, bot);
 
-            // Update status
-            await prisma.telegramBot.update({
-                where: { id: botId },
-                data: {
-                    status: 'connected',
-                    lastActive: new Date()
-                }
-            });
-
-            console.log(`[Telegram] Bot ${botRecord.botUsername} started successfully`);
-            return { status: 'connected', botUsername: botRecord.botUsername };
-        } catch (error) {
-            // Handle 409 conflict specifically
-            if (error.message.includes('409') || error.message.includes('Conflict')) {
-                console.log(`[Telegram] Bot ${botId} - clearing conflict and retrying...`);
-                // Stop any existing instance
-                try { await bot.stop(); } catch (e) { }
-                // Wait a bit for Telegram to release
-                await new Promise(r => setTimeout(r, 2000));
-                // Try again once
-                try {
-                    await bot.launch({ dropPendingUpdates: true });
-                    this.bots.set(botId, bot);
-                    await prisma.telegramBot.update({
-                        where: { id: botId },
-                        data: { status: 'connected', lastActive: new Date() }
-                    });
-                    console.log(`[Telegram] Bot ${botRecord.botUsername} started on retry`);
-                    return { status: 'connected', botUsername: botRecord.botUsername };
-                } catch (retryError) {
-                    console.error(`[Telegram] Retry failed for ${botId}:`, retryError.message);
-                }
+        // Update status
+        await prisma.telegramBot.update({
+            where: { id: botId },
+            data: {
+                status: 'connected',
+                lastActive: new Date()
             }
-            console.error(`[Telegram] Failed to start bot ${botId}:`, error.message);
-            throw new Error(`Failed to start bot: ${error.message}`);
-        }
+        });
+
+        console.log(`[Telegram] Bot ${botRecord.botUsername} started successfully`);
+        return { status: 'connected', botUsername: botRecord.botUsername };
     }
 
     /**
