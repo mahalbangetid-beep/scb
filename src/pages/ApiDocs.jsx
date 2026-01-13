@@ -136,10 +136,13 @@ export default function ApiDocs() {
         )
     }
 
-    const copyCode = (code, id) => {
-        navigator.clipboard.writeText(code)
-        setCopiedCode(id)
-        setTimeout(() => setCopiedCode(null), 2000)
+    const copyCode = async (code, id) => {
+        const { copyToClipboard } = await import('../utils/clipboard');
+        const success = await copyToClipboard(code);
+        if (success) {
+            setCopiedCode(id);
+            setTimeout(() => setCopiedCode(null), 2000);
+        }
     }
 
     const getMethodColor = (method) => {
