@@ -77,13 +77,18 @@ export default function Devices() {
                     clearInterval(qrPollRef.current)
                     qrPollRef.current = null
 
-                    // Auto close modal after 2 seconds
+                    // Optimistic update - immediately show as connected
+                    setDevices(prev => prev.map(d =>
+                        d.id === deviceId ? { ...d, status: 'connected' } : d
+                    ))
+
+                    // Auto close modal after 1.5 seconds (faster)
                     setTimeout(() => {
                         setShowAddModal(false)
                         resetModal()
-                        // Force refresh device list after modal closes
+                        // Refresh to get full data (phone number, etc)
                         fetchDevices()
-                    }, 2000)
+                    }, 1500)
                 } else if (res.data.qrCode) {
                     setQrCode(res.data.qrCode)
                     setQrStatus('ready')
