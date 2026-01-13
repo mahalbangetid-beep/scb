@@ -114,8 +114,8 @@ export default function Settings() {
     const fetchBotSecuritySettings = async () => {
         try {
             const res = await api.get('/settings/bot-security')
-            if (res.data?.data) {
-                setSecuritySettings(prev => ({ ...prev, ...res.data.data }))
+            if (res.data) {
+                setSecuritySettings(prev => ({ ...prev, ...res.data }))
             }
         } catch (err) {
             console.error('Failed to fetch bot security settings:', err)

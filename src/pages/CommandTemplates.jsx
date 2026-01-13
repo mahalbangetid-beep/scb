@@ -72,9 +72,9 @@ function CommandTemplates() {
         try {
             setLoading(true);
             const response = await api.get('/command-templates');
-            setTemplates(response.data.data.templates || {});
-            setVariables(response.data.data.variables || {});
-            setCommandList(response.data.data.commandList || []);
+            setTemplates(response.data.templates || {});
+            setVariables(response.data.variables || {});
+            setCommandList(response.data.commandList || []);
         } catch (error) {
             console.error('Failed to fetch templates:', error);
         } finally {
@@ -87,7 +87,7 @@ function CommandTemplates() {
             const response = await api.post('/command-templates/preview', {
                 template: editedTemplate
             });
-            setPreview(response.data.data.preview);
+            setPreview(response.data.preview);
             setShowPreview(true);
         } catch (error) {
             console.error('Preview failed:', error);
@@ -126,7 +126,7 @@ function CommandTemplates() {
 
         try {
             const response = await api.delete(`/command-templates/${activeCommand}`);
-            const newTemplate = response.data.data.template || '';
+            const newTemplate = response.data.template || '';
             setEditedTemplate(newTemplate);
             setTemplates(prev => ({
                 ...prev,
