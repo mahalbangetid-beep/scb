@@ -76,12 +76,13 @@ export default function Devices() {
                     setConnectionMessage('Device connected successfully!')
                     clearInterval(qrPollRef.current)
                     qrPollRef.current = null
-                    fetchDevices()
 
                     // Auto close modal after 2 seconds
                     setTimeout(() => {
                         setShowAddModal(false)
                         resetModal()
+                        // Force refresh device list after modal closes
+                        fetchDevices()
                     }, 2000)
                 } else if (res.data.qrCode) {
                     setQrCode(res.data.qrCode)
