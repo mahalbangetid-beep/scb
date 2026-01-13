@@ -54,7 +54,7 @@ export default function TelegramBots() {
         setError(null)
 
         try {
-            await api.post('/telegram/bots', { botToken: newBotToken })
+            await api.post('/telegram/bots', { botToken: newBotToken.trim() })
             setShowModal(false)
             setNewBotToken('')
             fetchBots()
