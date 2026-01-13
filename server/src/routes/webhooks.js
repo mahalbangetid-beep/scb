@@ -161,14 +161,73 @@ router.delete('/:id', authenticate, async (req, res, next) => {
 });
 
 // POST /api/webhooks/:id/test - Test webhook
-router.post('/:id/test', async (req, res, next) => {
+router.post('/:id/test', authenticate, async (req, res, next) => {
     try {
-        // TODO: Implement real webhook test
-        successResponse(res, {
-            success: true,
-            responseCode: 200,
-            responseTime: '145ms'
-        }, 'Webhook test successful');
+        const webhook = await prisma.webhook.findFirst({
+            where: { id: req.params.id, userId: req.user.id }
+        });
+
+        if (!webhook) {
+            throw new AppError('Webhook not found', 404);
+        }
+
+        const axios = require('axios');
+        const startTime = Date.now();
+
+        const testPayload = {
+            event: 'test',
+            timestamp: new Date().toISOString(),
+            data: {
+                message: 'This is a test webhook from SMMChatBot',
+                webhookId: webhook.id
+            }
+        };
+
+        try {
+            const response = await axios.post(webhook.url, testPayload, {
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Webhook-Event': 'test',
+                    ...(webhook.secret && { 'X-Webhook-Secret': webhook.secret })
+                },
+                timeout: 10000
+            });
+
+            const responseTime = Date.now() - startTime;
+
+            // Log test
+            await prisma.webhookLog.create({
+                data: {
+                    webhookId: webhook.id,
+                    event: 'test',
+                    payload: testPayload,
+                    response: { status: response.status, data: response.data },
+                    statusCode: response.status,
+                    success: true
+                }
+            });
+
+            successResponse(res, {
+                success: true,
+                responseCode: response.status,
+                responseTime: `${responseTime}ms`
+            }, 'Webhook test successful');
+        } catch (error) {
+            const responseTime = Date.now() - startTime;
+
+            await prisma.webhookLog.create({
+                data: {
+                    webhookId: webhook.id,
+                    event: 'test',
+                    payload: testPayload,
+                    response: { error: error.message },
+                    statusCode: error.response?.status || 0,
+                    success: false
+                }
+            });
+
+            throw new AppError(`Webhook test failed: ${error.message}`, 400);
+        }
     } catch (error) {
         next(error);
     }

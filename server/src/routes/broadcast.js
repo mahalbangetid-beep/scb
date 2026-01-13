@@ -89,13 +89,17 @@ router.post('/', authenticate, async (req, res, next) => {
             throw new AppError('Device not found', 404);
         }
 
+        if (device.status !== 'connected') {
+            throw new AppError('Device is not connected', 400);
+        }
+
         const campaign = await prisma.broadcast.create({
             data: {
                 name,
                 deviceId,
                 message,
                 mediaUrl: mediaUrl || null,
-                status: scheduledAt ? 'pending' : 'pending', // Both start as pending/draft until processed
+                status: scheduledAt ? 'scheduled' : 'processing',
                 totalRecipients: recipients.length,
                 scheduledAt: scheduledAt ? new Date(scheduledAt) : null
             }
@@ -112,13 +116,64 @@ router.post('/', authenticate, async (req, res, next) => {
             data: recipientData
         });
 
-        // TODO: Trigger queue processing
+        // Process broadcast in background (don't await)
+        if (!scheduledAt) {
+            processBroadcast(req.app.get('whatsapp'), campaign.id, deviceId, message, mediaUrl)
+                .catch(err => console.error('[Broadcast] Error:', err.message));
+        }
 
         successResponse(res, campaign, 'Broadcast campaign created', 201);
     } catch (error) {
         next(error);
     }
 });
+
+// Background broadcast processor
+async function processBroadcast(whatsapp, broadcastId, deviceId, message, mediaUrl) {
+    const recipients = await prisma.broadcastRecipient.findMany({
+        where: { broadcastId, status: 'pending' }
+    });
+
+    let sent = 0, failed = 0;
+
+    for (const recipient of recipients) {
+        try {
+            if (mediaUrl) {
+                await whatsapp.sendImage(deviceId, recipient.phone, mediaUrl, message);
+            } else {
+                await whatsapp.sendMessage(deviceId, recipient.phone, message);
+            }
+
+            await prisma.broadcastRecipient.update({
+                where: { id: recipient.id },
+                data: { status: 'sent', sentAt: new Date() }
+            });
+            sent++;
+        } catch (error) {
+            await prisma.broadcastRecipient.update({
+                where: { id: recipient.id },
+                data: { status: 'failed', error: error.message }
+            });
+            failed++;
+        }
+
+        // Delay between messages to avoid spam detection
+        await new Promise(r => setTimeout(r, 1500));
+    }
+
+    // Update campaign status
+    await prisma.broadcast.update({
+        where: { id: broadcastId },
+        data: {
+            status: failed === recipients.length ? 'failed' : 'completed',
+            sentCount: sent,
+            failedCount: failed,
+            completedAt: new Date()
+        }
+    });
+
+    console.log(`[Broadcast] Campaign ${broadcastId} completed: ${sent} sent, ${failed} failed`);
+}
 
 // POST /api/broadcast/:id/cancel - Cancel pending broadcast
 router.post('/:id/cancel', authenticate, async (req, res, next) => {
