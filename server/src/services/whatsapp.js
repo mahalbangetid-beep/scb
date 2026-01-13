@@ -28,6 +28,19 @@ if (!fs.existsSync(SESSIONS_DIR)) {
 // Baileys modules (akan di-load secara dynamic)
 let makeWASocket, DisconnectReason, useMultiFileAuthState, makeInMemoryStore, fetchLatestBaileysVersion, delay;
 
+// Simple in-memory store fallback for newer baileys versions
+function createSimpleStore() {
+    const messages = {};
+    return {
+        messages,
+        bind: () => { },
+        loadMessages: () => [],
+        loadMessage: () => null,
+        mostRecentMessage: () => null,
+        fetchMessageHistory: () => { },
+    };
+}
+
 // Load ESM modules
 async function loadBaileys() {
     if (makeWASocket) return; // Sudah loaded
@@ -36,7 +49,10 @@ async function loadBaileys() {
     makeWASocket = baileys.default;
     DisconnectReason = baileys.DisconnectReason;
     useMultiFileAuthState = baileys.useMultiFileAuthState;
-    makeInMemoryStore = baileys.makeInMemoryStore;
+
+    // Use makeInMemoryStore if available, otherwise use simple fallback
+    makeInMemoryStore = baileys.makeInMemoryStore || createSimpleStore;
+
     fetchLatestBaileysVersion = baileys.fetchLatestBaileysVersion;
     delay = baileys.delay;
 
