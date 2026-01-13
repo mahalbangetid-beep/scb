@@ -1,0 +1,180 @@
+const express = require('express');
+const router = express.Router();
+const prisma = require('../utils/prisma');
+const { authenticate } = require('../middleware/auth');
+const { AppError } = require('../middleware/errorHandler');
+const { successResponse, paginatedResponse, parsePagination } = require('../utils/response');
+
+// GET /api/broadcast - List all campaigns for user
+router.get('/', authenticate, async (req, res, next) => {
+    try {
+        const { page, limit, skip } = parsePagination(req.query);
+        const { status } = req.query;
+
+        const where = {
+            device: {
+                userId: req.user.id
+            }
+        };
+
+        if (status) where.status = status;
+
+        const [campaigns, total] = await Promise.all([
+            prisma.broadcast.findMany({
+                where,
+                skip,
+                take: limit,
+                orderBy: { createdAt: 'desc' },
+                include: {
+                    device: {
+                        select: { name: true }
+                    }
+                }
+            }),
+            prisma.broadcast.count({ where })
+        ]);
+
+        paginatedResponse(res, campaigns, { page, limit, total });
+    } catch (error) {
+        next(error);
+    }
+});
+
+// GET /api/broadcast/:id
+router.get('/:id', authenticate, async (req, res, next) => {
+    try {
+        const campaign = await prisma.broadcast.findFirst({
+            where: {
+                id: req.params.id,
+                device: {
+                    userId: req.user.id
+                }
+            },
+            include: {
+                device: {
+                    select: { name: true }
+                }
+            }
+        });
+
+        if (!campaign) {
+            throw new AppError('Campaign not found', 404);
+        }
+
+        successResponse(res, campaign);
+    } catch (error) {
+        next(error);
+    }
+});
+
+// POST /api/broadcast - Create and send broadcast
+router.post('/', authenticate, async (req, res, next) => {
+    try {
+        const { name, deviceId, recipients, message, mediaUrl, scheduledAt } = req.body;
+
+        if (!name || !deviceId || !recipients || !message) {
+            throw new AppError('name, deviceId, recipients, and message are required', 400);
+        }
+
+        if (!Array.isArray(recipients) || recipients.length === 0) {
+            throw new AppError('recipients must be a non-empty array', 400);
+        }
+
+        // Verify device ownership
+        const device = await prisma.device.findFirst({
+            where: { id: deviceId, userId: req.user.id }
+        });
+
+        if (!device) {
+            throw new AppError('Device not found', 404);
+        }
+
+        const campaign = await prisma.broadcast.create({
+            data: {
+                name,
+                deviceId,
+                message,
+                mediaUrl: mediaUrl || null,
+                status: scheduledAt ? 'pending' : 'pending', // Both start as pending/draft until processed
+                totalRecipients: recipients.length,
+                scheduledAt: scheduledAt ? new Date(scheduledAt) : null
+            }
+        });
+
+        // Create recipients
+        const recipientData = recipients.map(phone => ({
+            broadcastId: campaign.id,
+            phone,
+            status: 'pending'
+        }));
+
+        await prisma.broadcastRecipient.createMany({
+            data: recipientData
+        });
+
+        // TODO: Trigger queue processing
+
+        successResponse(res, campaign, 'Broadcast campaign created', 201);
+    } catch (error) {
+        next(error);
+    }
+});
+
+// POST /api/broadcast/:id/cancel - Cancel pending broadcast
+router.post('/:id/cancel', authenticate, async (req, res, next) => {
+    try {
+        const campaign = await prisma.broadcast.findFirst({
+            where: {
+                id: req.params.id,
+                device: { userId: req.user.id }
+            }
+        });
+
+        if (!campaign) {
+            throw new AppError('Campaign not found', 404);
+        }
+
+        if (campaign.status !== 'pending' && campaign.status !== 'scheduled') {
+            throw new AppError('Only pending or scheduled campaigns can be cancelled', 400);
+        }
+
+        const updated = await prisma.broadcast.update({
+            where: { id: req.params.id },
+            data: { status: 'cancelled' }
+        });
+
+        successResponse(res, updated, 'Broadcast cancelled');
+    } catch (error) {
+        next(error);
+    }
+});
+
+// GET /api/broadcast/:id/recipients - Get recipients status
+router.get('/:id/recipients', authenticate, async (req, res, next) => {
+    try {
+        const { page, limit, skip } = parsePagination(req.query);
+
+        const where = {
+            broadcastId: req.params.id,
+            broadcast: {
+                device: { userId: req.user.id }
+            }
+        };
+
+        const [recipients, total] = await Promise.all([
+            prisma.broadcastRecipient.findMany({
+                where,
+                skip,
+                take: limit,
+                orderBy: { createdAt: 'asc' }
+            }),
+            prisma.broadcastRecipient.count({ where })
+        ]);
+
+        paginatedResponse(res, recipients, { page, limit, total });
+    } catch (error) {
+        next(error);
+    }
+});
+
+module.exports = router;

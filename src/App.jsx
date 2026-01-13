@@ -1,0 +1,135 @@
+import { useState, useEffect } from 'react'
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom'
+import Sidebar from './components/Sidebar'
+import Dashboard from './pages/Dashboard'
+import Devices from './pages/Devices'
+import Broadcast from './pages/Broadcast'
+import AutoReply from './pages/AutoReply'
+import Webhook from './pages/Webhook'
+import Contacts from './pages/Contacts'
+import MessageLogs from './pages/MessageLogs'
+import Settings from './pages/Settings'
+import ApiDocs from './pages/ApiDocs'
+// N8nTutorial - DELETED
+import Login from './pages/Login'
+import Register from './pages/Register'
+import SmmPanels from './pages/SmmPanels'
+import PanelConnections from './pages/PanelConnections'
+import Orders from './pages/Orders'
+import ProviderGroups from './pages/ProviderGroups'
+import Wallet from './pages/Wallet'
+import Reports from './pages/Reports'
+import TelegramBots from './pages/TelegramBots'
+import CommandTemplates from './pages/CommandTemplates'
+import LandingPage from './pages/LandingPage'
+import './styles/landing.css'
+// Admin Pages
+import UserManagement from './pages/admin/UserManagement'
+import StaffManagement from './pages/admin/StaffManagement'
+import SystemSettings from './pages/admin/SystemSettings'
+import PaymentManagement from './pages/admin/PaymentManagement'
+import PaymentSettings from './pages/admin/PaymentSettings'
+import VoucherManagement from './pages/admin/VoucherManagement'
+import './index.css'
+
+
+// Protected Route Component
+const ProtectedRoute = ({ children }) => {
+  const token = localStorage.getItem('token');
+  const location = useLocation();
+
+  if (!token) {
+    return <Navigate to="/login" state={{ from: location }} replace />;
+  }
+
+  return children;
+};
+
+// Admin Route Component (requires ADMIN or MASTER_ADMIN role)
+const AdminRoute = ({ children }) => {
+  const token = localStorage.getItem('token');
+  const userStr = localStorage.getItem('user');
+  const location = useLocation();
+
+  if (!token) {
+    return <Navigate to="/login" state={{ from: location }} replace />;
+  }
+
+  const user = userStr ? JSON.parse(userStr) : null;
+  if (!user || !['ADMIN', 'MASTER_ADMIN'].includes(user.role)) {
+    return <Navigate to="/dashboard" replace />;
+  }
+
+  return children;
+};
+
+function AppContent() {
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+  const location = useLocation();
+  const token = localStorage.getItem('token');
+
+  // Hide sidebar on login, register, and landing pages
+  const isAuthPage = ['/login', '/register', '/'].includes(location.pathname);
+  const isLandingPage = location.pathname === '/';
+  const showSidebar = token && !isAuthPage;
+
+  const toggleSidebar = () => {
+    setSidebarCollapsed(!sidebarCollapsed)
+  }
+
+  return (
+    <div className="app-layout">
+      {showSidebar && <Sidebar collapsed={sidebarCollapsed} onToggle={toggleSidebar} />}
+      <main className={`main-content ${sidebarCollapsed ? 'collapsed' : ''} ${!showSidebar ? 'full-width' : ''}`}>
+        <Routes>
+          {/* Public Routes */}
+          <Route path="/" element={token ? <Navigate to="/dashboard" replace /> : <LandingPage />} />
+          <Route path="/login" element={<Login />} />
+          <Route path="/register" element={<Register />} />
+
+          {/* Protected Routes */}
+          <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+          <Route path="/devices" element={<ProtectedRoute><Devices /></ProtectedRoute>} />
+          <Route path="/telegram" element={<ProtectedRoute><TelegramBots /></ProtectedRoute>} />
+          <Route path="/smm-panels" element={<ProtectedRoute><SmmPanels /></ProtectedRoute>} />
+          <Route path="/panel-connections" element={<ProtectedRoute><PanelConnections /></ProtectedRoute>} />
+          <Route path="/orders" element={<ProtectedRoute><Orders /></ProtectedRoute>} />
+          <Route path="/provider-groups" element={<ProtectedRoute><ProviderGroups /></ProtectedRoute>} />
+          <Route path="/command-templates" element={<ProtectedRoute><CommandTemplates /></ProtectedRoute>} />
+          <Route path="/wallet" element={<ProtectedRoute><Wallet /></ProtectedRoute>} />
+          <Route path="/reports" element={<ProtectedRoute><Reports /></ProtectedRoute>} />
+          <Route path="/broadcast" element={<ProtectedRoute><Broadcast /></ProtectedRoute>} />
+          <Route path="/auto-reply" element={<ProtectedRoute><AutoReply /></ProtectedRoute>} />
+          <Route path="/webhook" element={<ProtectedRoute><Webhook /></ProtectedRoute>} />
+          <Route path="/contacts" element={<ProtectedRoute><Contacts /></ProtectedRoute>} />
+          <Route path="/logs" element={<ProtectedRoute><MessageLogs /></ProtectedRoute>} />
+          <Route path="/api-docs" element={<ProtectedRoute><ApiDocs /></ProtectedRoute>} />
+          {/* n8n-tutorial route - DELETED */}
+          <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
+
+          {/* Admin Routes */}
+          <Route path="/admin/users" element={<AdminRoute><UserManagement /></AdminRoute>} />
+          <Route path="/admin/staff" element={<AdminRoute><StaffManagement /></AdminRoute>} />
+          <Route path="/admin/settings" element={<AdminRoute><SystemSettings /></AdminRoute>} />
+          <Route path="/admin/payments" element={<AdminRoute><PaymentManagement /></AdminRoute>} />
+          <Route path="/admin/payment-settings" element={<AdminRoute><PaymentSettings /></AdminRoute>} />
+          <Route path="/admin/vouchers" element={<AdminRoute><VoucherManagement /></AdminRoute>} />
+
+          {/* Catch all */}
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </main>
+    </div>
+  );
+}
+
+function App() {
+  return (
+    <Router>
+      <AppContent />
+    </Router>
+  )
+}
+
+export default App
+

@@ -1,0 +1,449 @@
+/**
+ * Group Forwarding Service
+ * 
+ * Service untuk forward perintah ke provider groups
+ * Digunakan untuk refill, cancel, speed-up requests
+ */
+
+const prisma = require('../utils/prisma');
+
+class GroupForwardingService {
+    constructor() {
+        this.whatsappService = null;
+        this.io = null;
+    }
+
+    /**
+     * Set dependencies
+     */
+    setDependencies(io, whatsappService) {
+        this.io = io;
+        this.whatsappService = whatsappService;
+    }
+
+    /**
+     * Forward command to provider group
+     * @param {Object} params - { orderId, command, panelId, userId, deviceId }
+     */
+    async forwardToGroup(params) {
+        const { orderId, command, panelId, userId, deviceId } = params;
+
+        // Get order details
+        const order = await prisma.order.findFirst({
+            where: {
+                id: orderId,
+                userId
+            },
+            include: {
+                panel: {
+                    select: {
+                        id: true,
+                        name: true,
+                        alias: true
+                    }
+                }
+            }
+        });
+
+        if (!order) {
+            throw new Error('Order not found');
+        }
+
+        // Use forwardToProvider with the order
+        return this.forwardToProvider({
+            order,
+            command,
+            userId,
+            providerOrderId: order.providerOrderId,
+            providerName: order.providerName,
+            deviceId
+        });
+    }
+
+    /**
+     * Forward command to provider-specific group using Provider Order ID
+     * This is the primary method that uses Admin API data
+     * @param {Object} params - { order, command, userId, providerOrderId, providerName, deviceId }
+     */
+    async forwardToProvider(params) {
+        const { order, command, userId, providerOrderId, providerName, deviceId } = params;
+
+        if (!order) {
+            throw new Error('Order object is required');
+        }
+
+        // Find provider group - first try to match by provider name
+        let providerGroup = null;
+
+        if (providerName) {
+            // Try to find group specific to this provider
+            providerGroup = await prisma.providerGroup.findFirst({
+                where: {
+                    panelId: order.panelId,
+                    providerName: providerName,
+                    isActive: true
+                }
+            });
+
+            if (providerGroup) {
+                console.log(`[GroupForward] Found provider-specific group for ${providerName}`);
+            }
+        }
+
+        // Fallback to default group (no provider name = default)
+        if (!providerGroup) {
+            providerGroup = await prisma.providerGroup.findFirst({
+                where: {
+                    panelId: order.panelId,
+                    providerName: null, // Default group
+                    isActive: true
+                }
+            });
+
+            if (providerGroup) {
+                console.log(`[GroupForward] Using default group (no provider-specific group for "${providerName}")`);
+            }
+        }
+
+        // Last fallback - any active group for this panel
+        if (!providerGroup) {
+            providerGroup = await prisma.providerGroup.findFirst({
+                where: {
+                    panelId: order.panelId,
+                    isActive: true
+                }
+            });
+
+            if (providerGroup) {
+                console.log(`[GroupForward] ⚠️ Using fallback group "${providerGroup.name}" - consider setting up provider-specific groups`);
+            }
+        }
+
+        if (!providerGroup) {
+            const panelName = order.panel?.alias || order.panel?.name || 'Unknown';
+            console.log(`[GroupForward] ❌ No provider group found for panel "${panelName}"`);
+            return {
+                success: false,
+                reason: 'no_group',
+                message: `No provider group configured for panel "${panelName}". Please set up a provider group in SMM Integration → Provider Groups.`,
+                panelName
+            };
+        }
+
+        // Format the message with PROVIDER Order ID (if available)
+        const message = this.formatProviderMessage(command, order, providerGroup, providerOrderId);
+
+        // Send via WhatsApp
+        if (!this.whatsappService) {
+            console.error('[GroupForward] WhatsApp service not available');
+            return {
+                success: false,
+                reason: 'service_unavailable',
+                message: 'WhatsApp service not available'
+            };
+        }
+
+        try {
+            // Note: ProviderGroup doesn't have deviceId field - must use param
+            // TODO: Consider adding deviceId to ProviderGroup schema if per-group device is needed
+            const sendDeviceId = deviceId;
+
+            if (!sendDeviceId) {
+                return {
+                    success: false,
+                    reason: 'no_device',
+                    message: 'No WhatsApp device configured. Please provide a device ID.'
+                };
+            }
+
+            // Get target JID from groupId field (schema uses groupId for both group and direct)
+            const targetJid = providerGroup.groupId;
+
+            // If groupId looks like a phone number (no @g.us), format as direct
+            const isDirectNumber = targetJid && !targetJid.includes('@');
+            const formattedJid = isDirectNumber
+                ? `${targetJid.replace(/\D/g, '')}@s.whatsapp.net`
+                : targetJid;
+
+            if (!targetJid) {
+                return {
+                    success: false,
+                    reason: 'no_target',
+                    message: 'No target configured for provider group'
+                };
+            }
+
+            await this.whatsappService.sendMessage(sendDeviceId, formattedJid, message);
+
+            // Log the forwarding with provider info
+            await prisma.orderCommand.updateMany({
+                where: {
+                    orderId: order.id,
+                    command: command.toUpperCase(),
+                    status: 'SUCCESS'
+                },
+                data: {
+                    forwardedTo: providerGroup.groupName,
+                    response: JSON.stringify({
+                        forwarded: true,
+                        groupId: providerGroup.id,
+                        groupName: providerGroup.groupName,
+                        providerName: providerName,
+                        providerOrderId: providerOrderId,
+                        timestamp: new Date().toISOString()
+                    })
+                }
+            });
+
+            const displayOrderId = providerOrderId || order.externalOrderId;
+            console.log(`[GroupForward] Forwarded ${command} for order ${displayOrderId} to ${providerGroup.groupName}`);
+
+            return {
+                success: true,
+                message: `Forwarded to ${providerGroup.groupName}`,
+                groupId: providerGroup.id,
+                groupName: providerGroup.groupName,
+                usedProviderOrderId: !!providerOrderId
+            };
+        } catch (error) {
+            console.error(`[GroupForward] Failed to forward:`, error);
+            return {
+                success: false,
+                reason: 'send_failed',
+                message: error.message
+            };
+        }
+    }
+
+    /**
+     * Format message for provider group (legacy method)
+     */
+    formatMessage(command, order, providerGroup) {
+        return this.formatProviderMessage(command, order, providerGroup, null);
+    }
+
+    /**
+     * Format message for provider group with Provider Order ID
+     * Uses providerOrderId (from Admin API) if available, otherwise falls back to panel order ID
+     */
+    formatProviderMessage(command, order, providerGroup, providerOrderId) {
+        // Use custom template from providerGroup if available, otherwise use default
+        const customTemplate = providerGroup.messageTemplate;
+
+        const templates = {
+            REFILL: customTemplate || providerGroup.refillTemplate || this.getProviderTemplate('REFILL'),
+            CANCEL: customTemplate || providerGroup.cancelTemplate || this.getProviderTemplate('CANCEL'),
+            SPEED_UP: customTemplate || providerGroup.speedUpTemplate || this.getProviderTemplate('SPEED_UP')
+        };
+
+        const template = templates[command.toUpperCase()] || templates.REFILL;
+
+        return this.processProviderTemplate(template, order, providerGroup, providerOrderId);
+    }
+
+    /**
+     * Get default templates for provider forwarding (uses Provider Order ID)
+     */
+    getProviderTemplate(command) {
+        const defaults = {
+            // Provider templates use {providerOrderId} as primary identifier
+            REFILL: `🔄 *REFILL REQUEST*
+
+📦 Order: {orderDisplayId}
+🏷️ Panel: {panelAlias}
+🔗 Provider: {providerName}
+
+━━━━━━━━━━━━━━━
+📋 *Service Details*
+Service: {serviceName}
+Link: {link}
+
+📊 *Progress*
+Qty: {quantity}
+Delivered: {delivered}
+Remains: {remains}
+
+👤 Customer: {customerUsername}
+📅 Requested: {timestamp}`,
+
+            CANCEL: `❌ *CANCEL REQUEST*
+
+📦 Order: {orderDisplayId}
+🏷️ Panel: {panelAlias}
+🔗 Provider: {providerName}
+
+━━━━━━━━━━━━━━━
+📋 *Service Details*
+Service: {serviceName}
+Link: {link}
+Status: {status}
+
+📊 *Progress*
+Qty: {quantity}
+Delivered: {delivered}
+Remains: {remains}
+
+💰 Charge: {charge}
+👤 Customer: {customerUsername}
+📅 Requested: {timestamp}`,
+
+            SPEED_UP: `⚡ *SPEED-UP REQUEST*
+
+📦 Order: {orderDisplayId}
+🏷️ Panel: {panelAlias}
+🔗 Provider: {providerName}
+
+━━━━━━━━━━━━━━━
+📋 *Service Details*
+Service: {serviceName}
+Link: {link}
+Status: {status}
+
+📊 *Progress*
+Qty: {quantity}
+Start: {startCount}
+Delivered: {delivered}
+Remains: {remains}
+
+👤 Customer: {customerUsername}
+📅 Requested: {timestamp}
+
+⚠️ Please prioritize this order.`
+        };
+
+        return defaults[command] || defaults.REFILL;
+    }
+
+
+    /**
+     * Get default templates (legacy)
+     */
+    getDefaultTemplate(command) {
+        return this.getProviderTemplate(command);
+    }
+
+    /**
+     * Process template variables with provider info
+     */
+    processProviderTemplate(template, order, providerGroup, providerOrderId) {
+        const now = new Date();
+
+        // Determine which order ID to display
+        // Priority: Provider Order ID > Panel Order ID
+        const displayOrderId = providerOrderId || order.externalOrderId || 'N/A';
+
+        // Calculate delivered quantity
+        const delivered = order.quantity && order.remains !== null && order.remains !== undefined
+            ? (order.quantity - parseInt(order.remains)).toString()
+            : 'N/A';
+
+        let result = template;
+
+        // Provider-specific variables (from Admin API)
+        result = result.replace(/{providerOrderId}/gi, providerOrderId || 'N/A');
+        result = result.replace(/{providerName}/gi, order.providerName || 'N/A');
+        result = result.replace(/{orderDisplayId}/gi, displayOrderId);
+
+        // Panel order variables
+        result = result.replace(/{externalOrderId}/gi, order.externalOrderId || 'N/A');
+        result = result.replace(/{panelOrderId}/gi, order.externalOrderId || 'N/A');
+        result = result.replace(/{orderId}/gi, displayOrderId); // Use provider ID if available
+
+        // Panel info
+        result = result.replace(/{panelAlias}/gi, order.panel?.alias || 'N/A');
+        result = result.replace(/{panelName}/gi, order.panel?.name || 'N/A');
+
+        // Order details
+        result = result.replace(/{serviceName}/gi, order.serviceName || order.serviceId || 'N/A');
+        result = result.replace(/{serviceId}/gi, order.serviceId || 'N/A');
+        result = result.replace(/{link}/gi, order.link || 'N/A');
+        result = result.replace(/{quantity}/gi, order.quantity?.toString() || 'N/A');
+        result = result.replace(/{status}/gi, order.status || 'N/A');
+        result = result.replace(/{charge}/gi, order.charge ? `$${order.charge.toFixed(2)}` : 'N/A');
+
+        // Progress details (NEW)
+        result = result.replace(/{startCount}/gi, order.startCount?.toString() || 'N/A');
+        result = result.replace(/{remains}/gi, order.remains?.toString() || '0');
+        result = result.replace(/{delivered}/gi, delivered);
+
+        // Customer info (NEW)
+        result = result.replace(/{customerUsername}/gi, order.customerUsername || 'N/A');
+        result = result.replace(/{customerEmail}/gi, order.customerEmail || 'N/A');
+        result = result.replace(/{customerPhone}/gi, order.customerPhone || 'N/A');
+
+        // Actions/Guarantee (NEW)
+        result = result.replace(/{canRefill}/gi, order.canRefill ? '✅ Yes' : '❌ No');
+        result = result.replace(/{canCancel}/gi, order.canCancel ? '✅ Yes' : '❌ No');
+        result = result.replace(/{guarantee}/gi, order.canRefill ? '✅ Available' : '❌ None');
+
+        // Timestamps
+        result = result.replace(/{timestamp}/gi, now.toLocaleString());
+        result = result.replace(/{date}/gi, now.toLocaleDateString());
+        result = result.replace(/{time}/gi, now.toLocaleTimeString());
+        result = result.replace(/{orderDate}/gi, order.createdAt ? new Date(order.createdAt).toLocaleDateString() : 'N/A');
+
+        return result;
+    }
+
+
+    /**
+     * Process template variables (legacy wrapper)
+     */
+    processTemplate(template, order, providerGroup) {
+        return this.processProviderTemplate(template, order, providerGroup, order.providerOrderId);
+    }
+
+    /**
+     * Bulk forward commands
+     */
+    async bulkForward(orderIds, command, userId, deviceId) {
+        const results = [];
+
+        for (const orderId of orderIds) {
+            try {
+                const result = await this.forwardToGroup({
+                    orderId,
+                    command,
+                    userId,
+                    deviceId
+                });
+                results.push({
+                    orderId,
+                    ...result
+                });
+            } catch (error) {
+                results.push({
+                    orderId,
+                    success: false,
+                    reason: 'error',
+                    message: error.message
+                });
+            }
+        }
+
+        return {
+            total: results.length,
+            successful: results.filter(r => r.success).length,
+            failed: results.filter(r => !r.success).length,
+            results
+        };
+    }
+
+    /**
+     * Send direct message to provider
+     */
+    async sendDirectMessage(params) {
+        const { targetNumber, message, deviceId } = params;
+
+        if (!this.whatsappService) {
+            throw new Error('WhatsApp service not available');
+        }
+
+        const jid = `${targetNumber.replace(/\D/g, '')}@s.whatsapp.net`;
+        await this.whatsappService.sendMessage(deviceId, jid, message);
+
+        return { success: true, targetNumber };
+    }
+}
+
+module.exports = new GroupForwardingService();
