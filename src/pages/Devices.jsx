@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import {
     Smartphone,
     Plus,
@@ -28,6 +28,9 @@ export default function Devices() {
     const [qrCode, setQrCode] = useState(null)
     const [addLoading, setAddLoading] = useState(false)
     const [currentDeviceId, setCurrentDeviceId] = useState(null)
+    const [qrStatus, setQrStatus] = useState('idle') // idle, loading, ready, scanning, connected, error
+    const [connectionMessage, setConnectionMessage] = useState('')
+    const qrPollRef = useRef(null)
 
     const fetchDevices = async () => {
         try {
@@ -42,20 +45,106 @@ export default function Devices() {
 
     useEffect(() => {
         fetchDevices()
-        const interval = setInterval(fetchDevices, 10000) // Poll every 10s
+        const interval = setInterval(fetchDevices, 10000)
         return () => clearInterval(interval)
     }, [])
+
+    // Cleanup QR polling when modal closes
+    useEffect(() => {
+        if (!showAddModal) {
+            if (qrPollRef.current) {
+                clearInterval(qrPollRef.current)
+                qrPollRef.current = null
+            }
+        }
+    }, [showAddModal])
+
+    // Start polling for QR/status when device is created
+    const startQRPolling = (deviceId) => {
+        if (qrPollRef.current) {
+            clearInterval(qrPollRef.current)
+        }
+
+        const pollQR = async () => {
+            try {
+                const res = await api.get(`/devices/${deviceId}/qr`)
+
+                if (res.data.status === 'connected') {
+                    // Device is connected!
+                    setQrStatus('connected')
+                    setConnectionMessage('Device connected successfully!')
+                    clearInterval(qrPollRef.current)
+                    qrPollRef.current = null
+                    fetchDevices()
+
+                    // Auto close modal after 2 seconds
+                    setTimeout(() => {
+                        setShowAddModal(false)
+                        resetModal()
+                    }, 2000)
+                } else if (res.data.qrCode) {
+                    setQrCode(res.data.qrCode)
+                    setQrStatus('ready')
+                    setConnectionMessage('Scan this QR code with WhatsApp')
+                } else {
+                    setQrStatus('loading')
+                    setConnectionMessage('Generating QR code...')
+                }
+            } catch (error) {
+                console.error('QR poll error:', error)
+                // If device already connected
+                if (error?.error?.message?.includes('already connected')) {
+                    setQrStatus('connected')
+                    setConnectionMessage('Device is already connected!')
+                    clearInterval(qrPollRef.current)
+                    fetchDevices()
+                    setTimeout(() => {
+                        setShowAddModal(false)
+                        resetModal()
+                    }, 2000)
+                }
+            }
+        }
+
+        // Poll immediately, then every 2 seconds
+        pollQR()
+        qrPollRef.current = setInterval(pollQR, 2000)
+    }
+
+    const resetModal = () => {
+        setQrCode(null)
+        setQrStatus('idle')
+        setConnectionMessage('')
+        setNewDeviceName('')
+        setCurrentDeviceId(null)
+    }
 
     const handleAddDevice = async () => {
         if (!newDeviceName) return
         setAddLoading(true)
+        setQrStatus('loading')
+        setConnectionMessage('Creating device...')
+
         try {
             const res = await api.post('/devices', { name: newDeviceName })
-            setQrCode(res.data.qrCode)
             setCurrentDeviceId(res.data.id)
+
+            // If QR is returned immediately
+            if (res.data.qrCode) {
+                setQrCode(res.data.qrCode)
+                setQrStatus('ready')
+                setConnectionMessage('Scan this QR code with WhatsApp')
+            } else {
+                setConnectionMessage('Waiting for QR code...')
+            }
+
+            // Start polling for QR updates
+            startQRPolling(res.data.id)
             fetchDevices()
         } catch (error) {
             console.error('Failed to add device:', error)
+            setQrStatus('error')
+            setConnectionMessage(error?.error?.message || 'Failed to create device')
         } finally {
             setAddLoading(false)
         }
@@ -81,16 +170,26 @@ export default function Devices() {
     }
 
     const handleGetQR = async (id) => {
-        try {
-            const res = await api.get(`/devices/${id}/qr`)
-            setQrCode(res.data.qrCode)
-            setCurrentDeviceId(id)
-            setShowAddModal(true)
-            setNewDeviceName(devices.find(d => d.id === id)?.name || '')
-        } catch (error) {
-            console.error('Failed to get QR:', error)
-            alert(error.error?.message || 'Failed to get QR code')
+        setCurrentDeviceId(id)
+        setNewDeviceName(devices.find(d => d.id === id)?.name || '')
+        setShowAddModal(true)
+        setQrStatus('loading')
+        setConnectionMessage('Getting QR code...')
+        startQRPolling(id)
+    }
+
+    const handleOpenAddModal = () => {
+        setShowAddModal(true)
+        resetModal()
+    }
+
+    const handleCloseModal = () => {
+        if (qrPollRef.current) {
+            clearInterval(qrPollRef.current)
+            qrPollRef.current = null
         }
+        setShowAddModal(false)
+        resetModal()
     }
 
     const filteredDevices = devices.filter(device => {
@@ -116,12 +215,7 @@ export default function Devices() {
                     <h1 className="page-title">Device Management</h1>
                     <p className="page-subtitle">Manage your WhatsApp sessions and connected devices</p>
                 </div>
-                <button className="btn btn-primary" onClick={() => {
-                    setShowAddModal(true)
-                    setQrCode(null)
-                    setNewDeviceName('')
-                    setCurrentDeviceId(null)
-                }}>
+                <button className="btn btn-primary" onClick={handleOpenAddModal}>
                     <Plus size={16} />
                     Add Device
                 </button>
@@ -198,45 +292,36 @@ export default function Devices() {
                             marginTop: 'var(--spacing-sm)'
                         }}>
                             <Clock size={12} />
-                            Last active: {device.lastActive ? formatDistanceToNow(new Date(device.lastActive), { addSuffix: true }) : 'Never'}
+                            {device.lastActive
+                                ? `Active ${formatDistanceToNow(new Date(device.lastActive), { addSuffix: true })}`
+                                : 'Never connected'}
                         </div>
 
                         <div className="device-stats">
                             <div className="device-stat">
-                                <div className="device-stat-value" style={{ color: 'var(--primary-500)' }}>
-                                    {device.messagesSent?.toLocaleString() || 0}
-                                </div>
-                                <div className="device-stat-label">Messages</div>
+                                <MessageSquare size={14} />
+                                <span>{device.messagesSent || 0} sent</span>
                             </div>
                             <div className="device-stat">
-                                <div className="device-stat-value" style={{ color: 'var(--info)' }}>
-                                    {device.status}
-                                </div>
-                                <div className="device-stat-label">Status</div>
+                                <MessageSquare size={14} />
+                                <span>{device.messagesReceived || 0} received</span>
                             </div>
                         </div>
 
-                        <div style={{
-                            display: 'flex',
-                            gap: 'var(--spacing-sm)',
-                            marginTop: 'var(--spacing-md)',
-                            paddingTop: 'var(--spacing-md)',
-                            borderTop: '1px solid var(--border-color)'
-                        }}>
+                        <div className="device-actions">
                             {device.status === 'connected' ? (
                                 <>
-                                    <button className="btn btn-secondary btn-sm" style={{ flex: 1 }} onClick={() => handleRestartDevice(device.id)}>
+                                    <button className="btn btn-secondary btn-sm" onClick={() => handleRestartDevice(device.id)}>
                                         <RefreshCw size={14} />
                                         Restart
                                     </button>
-                                    <button className="btn btn-danger btn-sm" style={{ flex: 1 }} onClick={() => handleDeleteDevice(device.id)}>
-                                        <XCircle size={14} />
-                                        Delete
+                                    <button className="btn btn-ghost btn-sm" style={{ width: 'auto' }} onClick={() => handleDeleteDevice(device.id)}>
+                                        <Trash2 size={14} />
                                     </button>
                                 </>
                             ) : (
                                 <>
-                                    <button className="btn btn-primary btn-sm" style={{ flex: 1 }} onClick={() => handleGetQR(device.id)}>
+                                    <button className="btn btn-primary btn-sm" onClick={() => handleGetQR(device.id)}>
                                         <QrCode size={14} />
                                         Connect
                                     </button>
@@ -251,16 +336,17 @@ export default function Devices() {
             </div>
 
             {/* Add/Connect Device Modal */}
-            <div className={`modal-overlay ${showAddModal ? 'open' : ''}`} onClick={() => setShowAddModal(false)}>
+            <div className={`modal-overlay ${showAddModal ? 'open' : ''}`} onClick={handleCloseModal}>
                 <div className="modal" onClick={e => e.stopPropagation()}>
                     <div className="modal-header">
                         <h3 className="modal-title">{currentDeviceId ? 'Connect Device' : 'Add New Device'}</h3>
-                        <button className="btn btn-ghost btn-icon" onClick={() => setShowAddModal(false)}>
+                        <button className="btn btn-ghost btn-icon" onClick={handleCloseModal}>
                             <X size={20} />
                         </button>
                     </div>
                     <div className="modal-body">
-                        {!currentDeviceId && (
+                        {/* Step 1: Enter device name (only if new device) */}
+                        {!currentDeviceId && qrStatus === 'idle' && (
                             <div className="form-group">
                                 <label className="form-label">Device Name</label>
                                 <input
@@ -269,18 +355,55 @@ export default function Devices() {
                                     placeholder="e.g., Marketing Team"
                                     value={newDeviceName}
                                     onChange={(e) => setNewDeviceName(e.target.value)}
+                                    onKeyDown={(e) => e.key === 'Enter' && handleAddDevice()}
                                 />
                                 <p className="form-hint">Give this device a memorable name</p>
+                                <button
+                                    className="btn btn-primary w-full"
+                                    onClick={handleAddDevice}
+                                    disabled={addLoading || !newDeviceName}
+                                    style={{ marginTop: 'var(--spacing-lg)' }}
+                                >
+                                    {addLoading ? <Loader2 className="animate-spin" size={16} /> : <Plus size={16} />}
+                                    Create & Connect
+                                </button>
                             </div>
                         )}
 
-                        {qrCode ? (
+                        {/* Loading state */}
+                        {qrStatus === 'loading' && (
                             <div style={{
                                 textAlign: 'center',
-                                padding: 'var(--spacing-xl)',
+                                padding: 'var(--spacing-xl) 0'
+                            }}>
+                                <div style={{
+                                    width: '80px',
+                                    height: '80px',
+                                    margin: '0 auto var(--spacing-lg)',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    background: 'rgba(37, 211, 102, 0.1)',
+                                    borderRadius: '50%'
+                                }}>
+                                    <Loader2 className="animate-spin" size={40} style={{ color: 'var(--primary-500)' }} />
+                                </div>
+                                <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
+                                    {connectionMessage}
+                                </p>
+                                <p style={{ color: 'var(--text-muted)', fontSize: '0.75rem', marginTop: 'var(--spacing-xs)' }}>
+                                    Please wait...
+                                </p>
+                            </div>
+                        )}
+
+                        {/* QR Code Ready */}
+                        {qrStatus === 'ready' && qrCode && (
+                            <div style={{
+                                textAlign: 'center',
+                                padding: 'var(--spacing-lg)',
                                 background: 'white',
                                 borderRadius: 'var(--radius-lg)',
-                                marginTop: 'var(--spacing-lg)',
                                 border: '1px solid var(--border-color)'
                             }}>
                                 <div style={{
@@ -289,7 +412,10 @@ export default function Devices() {
                                     margin: '0 auto var(--spacing-lg)',
                                     display: 'flex',
                                     alignItems: 'center',
-                                    justifyContent: 'center'
+                                    justifyContent: 'center',
+                                    background: '#fff',
+                                    borderRadius: 'var(--radius-md)',
+                                    padding: 'var(--spacing-sm)'
                                 }}>
                                     <img src={qrCode} alt="QR Code" style={{ width: '100%', height: '100%' }} />
                                 </div>
@@ -299,28 +425,95 @@ export default function Devices() {
                                 <p style={{ color: 'var(--text-muted)', fontSize: '0.75rem', marginTop: 'var(--spacing-xs)' }}>
                                     Open WhatsApp → Settings → Linked Devices → Link a Device
                                 </p>
-                            </div>
-                        ) : (
-                            !currentDeviceId && (
-                                <div style={{ marginTop: 'var(--spacing-lg)' }}>
-                                    <button
-                                        className="btn btn-primary w-full"
-                                        onClick={handleAddDevice}
-                                        disabled={addLoading || !newDeviceName}
-                                    >
-                                        {addLoading ? <Loader2 className="animate-spin" size={16} /> : <Plus size={16} />}
-                                        Initialize Device
-                                    </button>
+                                <div style={{
+                                    marginTop: 'var(--spacing-lg)',
+                                    padding: 'var(--spacing-sm)',
+                                    background: 'rgba(37, 211, 102, 0.1)',
+                                    borderRadius: 'var(--radius-md)',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    gap: 'var(--spacing-sm)'
+                                }}>
+                                    <Loader2 className="animate-spin" size={14} style={{ color: 'var(--primary-500)' }} />
+                                    <span style={{ color: 'var(--primary-500)', fontSize: '0.75rem' }}>
+                                        Waiting for scan...
+                                    </span>
                                 </div>
-                            )
+                            </div>
+                        )}
+
+                        {/* Connected success */}
+                        {qrStatus === 'connected' && (
+                            <div style={{
+                                textAlign: 'center',
+                                padding: 'var(--spacing-xl) 0'
+                            }}>
+                                <div style={{
+                                    width: '80px',
+                                    height: '80px',
+                                    margin: '0 auto var(--spacing-lg)',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    background: 'rgba(37, 211, 102, 0.15)',
+                                    borderRadius: '50%'
+                                }}>
+                                    <CheckCircle size={40} style={{ color: 'var(--primary-500)' }} />
+                                </div>
+                                <p style={{ color: 'var(--primary-500)', fontSize: '1rem', fontWeight: 600 }}>
+                                    {connectionMessage}
+                                </p>
+                                <p style={{ color: 'var(--text-muted)', fontSize: '0.75rem', marginTop: 'var(--spacing-xs)' }}>
+                                    Closing automatically...
+                                </p>
+                            </div>
+                        )}
+
+                        {/* Error state */}
+                        {qrStatus === 'error' && (
+                            <div style={{
+                                textAlign: 'center',
+                                padding: 'var(--spacing-xl) 0'
+                            }}>
+                                <div style={{
+                                    width: '80px',
+                                    height: '80px',
+                                    margin: '0 auto var(--spacing-lg)',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    background: 'rgba(239, 68, 68, 0.1)',
+                                    borderRadius: '50%'
+                                }}>
+                                    <XCircle size={40} style={{ color: 'var(--error)' }} />
+                                </div>
+                                <p style={{ color: 'var(--error)', fontSize: '0.875rem', fontWeight: 500 }}>
+                                    {connectionMessage}
+                                </p>
+                                <button
+                                    className="btn btn-secondary"
+                                    onClick={() => {
+                                        if (currentDeviceId) {
+                                            startQRPolling(currentDeviceId)
+                                        } else {
+                                            resetModal()
+                                        }
+                                    }}
+                                    style={{ marginTop: 'var(--spacing-lg)' }}
+                                >
+                                    <RefreshCw size={14} />
+                                    Try Again
+                                </button>
+                            </div>
                         )}
                     </div>
                     <div className="modal-footer">
-                        <button className="btn btn-secondary" onClick={() => setShowAddModal(false)}>
-                            {qrCode ? 'Done' : 'Cancel'}
+                        <button className="btn btn-secondary" onClick={handleCloseModal}>
+                            {qrStatus === 'connected' ? 'Close' : 'Cancel'}
                         </button>
-                        {qrCode && (
-                            <button className="btn btn-primary" onClick={() => handleGetQR(currentDeviceId)}>
+                        {qrStatus === 'ready' && (
+                            <button className="btn btn-primary" onClick={() => startQRPolling(currentDeviceId)}>
                                 <RefreshCw size={16} />
                                 Refresh QR
                             </button>
