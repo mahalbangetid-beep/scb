@@ -824,7 +824,7 @@ export default function Settings() {
                                     </p>
                                     <div style={{ display: 'flex', gap: 'var(--spacing-sm)' }}>
                                         <code style={{ flex: 1, padding: '8px', background: 'rgba(0,0,0,0.2)', borderRadius: '4px', fontSize: '0.875rem' }}>{newKey}</code>
-                                        <button className="btn btn-secondary btn-sm" onClick={async () => { const { copyToClipboard } = await import('../utils/clipboard'); copyToClipboard(newKey); alert('Copied!'); }}><Copy size={14} /></button>
+                                        <button className="btn btn-secondary btn-sm" onClick={() => { navigator.clipboard.writeText(newKey); alert('Copied!'); }}><Copy size={14} /></button>
                                         <button className="btn btn-ghost btn-sm" onClick={() => setNewKey(null)}><X size={14} /></button>
                                     </div>
                                 </div>

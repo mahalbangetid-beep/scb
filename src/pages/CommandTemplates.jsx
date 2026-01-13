@@ -160,9 +160,8 @@ function CommandTemplates() {
         }
     };
 
-    const copyVariable = async (varName) => {
-        const { copyToClipboard } = await import('../utils/clipboard');
-        copyToClipboard(`{${varName}}`);
+    const copyVariable = (varName) => {
+        navigator.clipboard.writeText(`{${varName}}`);
     };
 
     const getCommandInfo = (command) => {

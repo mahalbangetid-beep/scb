@@ -150,22 +150,16 @@ export default function VoucherManagement() {
         }
     }
 
-    const copyCode = async (code) => {
-        const { copyToClipboard } = await import('../../utils/clipboard');
-        const success = await copyToClipboard(code);
-        if (success) {
-            setCopiedCode(code);
-            setTimeout(() => setCopiedCode(null), 2000);
-        }
+    const copyCode = (code) => {
+        navigator.clipboard.writeText(code)
+        setCopiedCode(code)
+        setTimeout(() => setCopiedCode(null), 2000)
     }
 
-    const copyAllCodes = async () => {
-        const codes = generatedVouchers.map(v => v.code).join('\n');
-        const { copyToClipboard } = await import('../../utils/clipboard');
-        const success = await copyToClipboard(codes);
-        if (success) {
-            setSuccess('All codes copied to clipboard');
-        }
+    const copyAllCodes = () => {
+        const codes = generatedVouchers.map(v => v.code).join('\n')
+        navigator.clipboard.writeText(codes)
+        setSuccess('All codes copied to clipboard')
     }
 
     return (

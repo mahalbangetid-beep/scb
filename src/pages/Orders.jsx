@@ -174,9 +174,8 @@ export default function Orders() {
         }
     }
 
-    const handleCopyToClipboard = async (text) => {
-        const { copyToClipboard } = await import('../utils/clipboard');
-        copyToClipboard(text);
+    const copyToClipboard = (text) => {
+        navigator.clipboard.writeText(text)
     }
 
     return (
