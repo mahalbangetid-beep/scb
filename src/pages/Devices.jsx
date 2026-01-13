@@ -247,86 +247,130 @@ export default function Devices() {
             {/* Devices Grid */}
             <div style={{
                 display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fill, minmax(350px, 1fr))',
+                gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
                 gap: 'var(--spacing-lg)'
             }}>
                 {filteredDevices.map((device) => (
                     <div
                         key={device.id}
-                        className={`device-card ${device.status === 'connected' ? 'connected' : ''}`}
+                        style={{
+                            background: 'var(--bg-secondary)',
+                            borderRadius: 'var(--radius-lg)',
+                            padding: 'var(--spacing-lg)',
+                            border: device.status === 'connected'
+                                ? '1px solid rgba(37, 211, 102, 0.3)'
+                                : '1px solid var(--border-color)',
+                            transition: 'all 0.2s ease'
+                        }}
                     >
-                        <div className="device-header">
-                            <div className="device-info">
-                                <div className="device-avatar" style={{
+                        {/* Header */}
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 'var(--spacing-md)' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--spacing-md)' }}>
+                                <div style={{
+                                    width: '48px',
+                                    height: '48px',
+                                    borderRadius: '12px',
                                     background: device.status === 'connected'
-                                        ? 'rgba(37, 211, 102, 0.15)'
-                                        : 'var(--bg-tertiary)'
+                                        ? 'linear-gradient(135deg, rgba(37, 211, 102, 0.2), rgba(37, 211, 102, 0.1))'
+                                        : 'var(--bg-tertiary)',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center'
                                 }}>
-                                    <Smartphone
-                                        size={24}
-                                        style={{
-                                            color: device.status === 'connected'
-                                                ? 'var(--primary-500)'
-                                                : 'var(--text-muted)'
-                                        }}
-                                    />
+                                    <Smartphone size={24} style={{
+                                        color: device.status === 'connected' ? '#25D366' : 'var(--text-muted)'
+                                    }} />
                                 </div>
                                 <div>
-                                    <div className="device-name">{device.name}</div>
-                                    <div className="device-number">{device.phone || 'Not connected'}</div>
+                                    <div style={{ fontWeight: 600, fontSize: '1rem', color: 'var(--text-primary)' }}>
+                                        {device.name}
+                                    </div>
+                                    <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+                                        {device.phone || 'Not connected'}
+                                    </div>
                                 </div>
                             </div>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--spacing-sm)' }}>
-                                <span className={`badge ${device.status === 'connected' ? 'badge-success' : 'badge-error'}`}>
-                                    <span className={`status-dot ${device.status === 'connected' ? 'online' : 'offline'}`}></span>
-                                    {device.status === 'connected' ? 'Online' : device.status === 'connecting' ? 'Connecting' : 'Offline'}
-                                </span>
+                            <div style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '6px',
+                                padding: '6px 12px',
+                                borderRadius: '20px',
+                                fontSize: '0.75rem',
+                                fontWeight: 500,
+                                background: device.status === 'connected'
+                                    ? 'rgba(37, 211, 102, 0.15)'
+                                    : 'rgba(239, 68, 68, 0.1)',
+                                color: device.status === 'connected' ? '#25D366' : '#ef4444'
+                            }}>
+                                <span style={{
+                                    width: '6px',
+                                    height: '6px',
+                                    borderRadius: '50%',
+                                    background: device.status === 'connected' ? '#25D366' : '#ef4444'
+                                }}></span>
+                                {device.status === 'connected' ? 'Online' : 'Offline'}
                             </div>
                         </div>
 
+                        {/* Stats */}
                         <div style={{
                             display: 'flex',
-                            alignItems: 'center',
-                            gap: 'var(--spacing-sm)',
-                            color: 'var(--text-muted)',
-                            fontSize: '0.75rem',
-                            marginTop: 'var(--spacing-sm)'
+                            gap: 'var(--spacing-lg)',
+                            padding: 'var(--spacing-md) 0',
+                            borderTop: '1px solid var(--border-color)',
+                            borderBottom: '1px solid var(--border-color)',
+                            marginBottom: 'var(--spacing-md)'
                         }}>
-                            <Clock size={12} />
-                            {device.lastActive
-                                ? `Active ${formatDistanceToNow(new Date(device.lastActive), { addSuffix: true })}`
-                                : 'Never connected'}
-                        </div>
-
-                        <div className="device-stats">
-                            <div className="device-stat">
-                                <MessageSquare size={14} />
-                                <span>{device.messagesSent || 0} sent</span>
+                            <div style={{ flex: 1, textAlign: 'center' }}>
+                                <div style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                                    {device.messagesSent || 0}
+                                </div>
+                                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Sent</div>
                             </div>
-                            <div className="device-stat">
-                                <MessageSquare size={14} />
-                                <span>{device.messagesReceived || 0} received</span>
+                            <div style={{ flex: 1, textAlign: 'center' }}>
+                                <div style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                                    {device.messagesReceived || 0}
+                                </div>
+                                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Received</div>
                             </div>
                         </div>
 
-                        <div className="device-actions">
+                        {/* Actions */}
+                        <div style={{ display: 'flex', gap: 'var(--spacing-sm)' }}>
                             {device.status === 'connected' ? (
                                 <>
-                                    <button className="btn btn-secondary btn-sm" onClick={() => handleRestartDevice(device.id)}>
+                                    <button
+                                        className="btn btn-secondary btn-sm"
+                                        style={{ flex: 1 }}
+                                        onClick={() => handleRestartDevice(device.id)}
+                                    >
                                         <RefreshCw size={14} />
                                         Restart
                                     </button>
-                                    <button className="btn btn-ghost btn-sm" style={{ width: 'auto' }} onClick={() => handleDeleteDevice(device.id)}>
+                                    <button
+                                        className="btn btn-ghost btn-sm"
+                                        style={{ padding: '8px' }}
+                                        onClick={() => handleDeleteDevice(device.id)}
+                                    >
                                         <Trash2 size={14} />
                                     </button>
                                 </>
                             ) : (
                                 <>
-                                    <button className="btn btn-primary btn-sm" onClick={() => handleGetQR(device.id)}>
+                                    <button
+                                        className="btn btn-primary btn-sm"
+                                        style={{ flex: 1 }}
+                                        onClick={() => handleGetQR(device.id)}
+                                    >
                                         <QrCode size={14} />
                                         Connect
                                     </button>
-                                    <button className="btn btn-ghost btn-sm" style={{ width: 'auto' }} onClick={() => handleDeleteDevice(device.id)}>
+                                    <button
+                                        className="btn btn-ghost btn-sm"
+                                        style={{ padding: '8px' }}
+                                        onClick={() => handleDeleteDevice(device.id)}
+                                    >
                                         <Trash2 size={14} />
                                     </button>
                                 </>
@@ -400,46 +444,33 @@ export default function Devices() {
 
                         {/* QR Code Ready */}
                         {qrStatus === 'ready' && qrCode && (
-                            <div style={{
-                                textAlign: 'center',
-                                padding: 'var(--spacing-lg)',
-                                background: 'white',
-                                borderRadius: 'var(--radius-lg)',
-                                border: '1px solid var(--border-color)'
-                            }}>
+                            <div style={{ textAlign: 'center' }}>
                                 <div style={{
-                                    width: '320px',
-                                    height: '320px',
-                                    margin: '0 auto var(--spacing-lg)',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
                                     background: '#fff',
-                                    borderRadius: 'var(--radius-md)',
-                                    padding: '16px'
+                                    borderRadius: '16px',
+                                    padding: '24px',
+                                    display: 'inline-block'
                                 }}>
-                                    <img src={qrCode} alt="QR Code" style={{ width: '100%', height: '100%', imageRendering: 'pixelated' }} />
+                                    <img
+                                        src={qrCode}
+                                        alt="QR Code"
+                                        style={{
+                                            width: '280px',
+                                            height: '280px',
+                                            display: 'block'
+                                        }}
+                                    />
                                 </div>
-                                <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', fontWeight: 500 }}>
-                                    Scan this QR code with your WhatsApp app
-                                </p>
-                                <p style={{ color: 'var(--text-muted)', fontSize: '0.75rem', marginTop: 'var(--spacing-xs)' }}>
-                                    Open WhatsApp → Settings → Linked Devices → Link a Device
-                                </p>
                                 <div style={{
                                     marginTop: 'var(--spacing-lg)',
-                                    padding: 'var(--spacing-sm)',
-                                    background: 'rgba(37, 211, 102, 0.1)',
-                                    borderRadius: 'var(--radius-md)',
                                     display: 'flex',
                                     alignItems: 'center',
                                     justifyContent: 'center',
-                                    gap: 'var(--spacing-sm)'
+                                    gap: '8px',
+                                    color: '#25D366'
                                 }}>
-                                    <Loader2 className="animate-spin" size={14} style={{ color: 'var(--primary-500)' }} />
-                                    <span style={{ color: 'var(--primary-500)', fontSize: '0.75rem' }}>
-                                        Waiting for scan...
-                                    </span>
+                                    <Loader2 className="animate-spin" size={16} />
+                                    <span style={{ fontSize: '0.875rem' }}>Waiting for scan...</span>
                                 </div>
                             </div>
                         )}
