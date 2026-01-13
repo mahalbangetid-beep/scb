@@ -78,7 +78,6 @@ export default function Broadcast() {
                 .split('\n')
                 .map(r => r.trim())
                 .filter(r => r !== '')
-                .map(r => ({ phone: r, name: '' }))
 
             await api.post('/broadcast', {
                 name: formData.name,
@@ -103,12 +102,16 @@ export default function Broadcast() {
         switch (status) {
             case 'completed':
                 return <span className="badge badge-success"><CheckCircle size={12} /> Completed</span>
+            case 'processing':
+                return <span className="badge badge-info"><Loader2 size={12} className="animate-spin" /> Processing</span>
             case 'pending':
-                return <span className="badge badge-info"><Loader2 size={12} className="animate-spin" /> Pending</span>
+                return <span className="badge badge-warning"><Clock size={12} /> Pending</span>
             case 'scheduled':
-                return <span className="badge badge-warning"><Clock size={12} /> Scheduled</span>
+                return <span className="badge badge-warning"><Calendar size={12} /> Scheduled</span>
             case 'failed':
                 return <span className="badge badge-error"><XCircle size={12} /> Failed</span>
+            case 'cancelled':
+                return <span className="badge badge-neutral"><XCircle size={12} /> Cancelled</span>
             default:
                 return <span className="badge badge-neutral">{status}</span>
         }
