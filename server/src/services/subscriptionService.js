@@ -371,14 +371,14 @@ class SubscriptionService {
             case 'DEVICE':
                 await prisma.device.update({
                     where: { id: resourceId },
-                    data: { status: 'CONNECTED' }
+                    data: { status: 'connected' }
                 }).catch(() => { });
                 break;
 
             case 'TELEGRAM_BOT':
                 await prisma.telegramBot.update({
                     where: { id: resourceId },
-                    data: { status: 'ACTIVE' }
+                    data: { status: 'connected' }  // TelegramBot uses 'connected' status
                 }).catch(() => { });
                 break;
 

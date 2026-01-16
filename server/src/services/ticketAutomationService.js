@@ -345,7 +345,7 @@ class TicketAutomationService {
         try {
             const whatsAppService = require('./whatsapp');
             const device = await prisma.device.findFirst({
-                where: { userId: ticket.userId, status: 'CONNECTED' }
+                where: { userId: ticket.userId, status: 'connected' }
             });
 
             if (device) {

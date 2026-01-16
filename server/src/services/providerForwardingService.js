@@ -234,7 +234,7 @@ class ProviderForwardingService {
         const device = await prisma.device.findFirst({
             where: {
                 userId,
-                status: 'CONNECTED'
+                status: 'connected'
             }
         });
 
@@ -264,7 +264,7 @@ class ProviderForwardingService {
         const bot = await prisma.telegramBot.findFirst({
             where: {
                 userId,
-                status: 'ACTIVE'
+                status: 'connected'  // TelegramBot uses 'connected' status
             }
         });
 
