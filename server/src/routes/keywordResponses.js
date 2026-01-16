@@ -12,6 +12,15 @@ const { authenticate } = require('../middleware/auth');
 const { successResponse, createdResponse, paginatedResponse, parsePagination } = require('../utils/response');
 const { AppError } = require('../middleware/errorHandler');
 
+// Safe JSON parse helper
+const safeJSONParse = (str, defaultValue = {}) => {
+    try {
+        return JSON.parse(str || JSON.stringify(defaultValue));
+    } catch {
+        return defaultValue;
+    }
+};
+
 // All routes require authentication
 router.use(authenticate);
 
@@ -33,7 +42,7 @@ router.get('/', async (req, res, next) => {
         // Parse actionConfig for each response
         const parsed = responses.map(r => ({
             ...r,
-            actionConfig: r.actionConfig ? JSON.parse(r.actionConfig) : {}
+            actionConfig: safeJSONParse(r.actionConfig, {})
         }));
 
         successResponse(res, parsed);
@@ -70,7 +79,7 @@ router.get('/:id', async (req, res, next) => {
         // Parse actionConfig
         const parsed = {
             ...response,
-            actionConfig: response.actionConfig ? JSON.parse(response.actionConfig) : {}
+            actionConfig: safeJSONParse(response.actionConfig, {})
         };
 
         successResponse(res, parsed);
@@ -103,7 +112,7 @@ router.post('/', async (req, res, next) => {
 
         createdResponse(res, {
             ...response,
-            actionConfig: response.actionConfig ? JSON.parse(response.actionConfig) : {}
+            actionConfig: safeJSONParse(response.actionConfig, {})
         }, 'Keyword response created');
     } catch (error) {
         next(error);
@@ -124,7 +133,7 @@ router.put('/:id', async (req, res, next) => {
 
         successResponse(res, {
             ...response,
-            actionConfig: response.actionConfig ? JSON.parse(response.actionConfig) : {}
+            actionConfig: safeJSONParse(response.actionConfig, {})
         }, 'Keyword response updated');
     } catch (error) {
         next(error);

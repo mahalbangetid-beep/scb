@@ -262,13 +262,17 @@ class SubscriptionService {
     /**
      * Resume a paused subscription (after balance added)
      */
-    async resumeSubscription(subscriptionId) {
-        const subscription = await prisma.monthlySubscription.findUnique({
-            where: { id: subscriptionId }
+    async resumeSubscription(subscriptionId, userId) {
+        const subscription = await prisma.monthlySubscription.findFirst({
+            where: { id: subscriptionId, userId }
         });
 
-        if (!subscription || subscription.status !== 'PAUSED') {
-            throw new Error('Subscription not found or not paused');
+        if (!subscription) {
+            throw new Error('Subscription not found');
+        }
+
+        if (subscription.status !== 'PAUSED') {
+            throw new Error('Subscription is not paused');
         }
 
         // Check if user now has sufficient balance

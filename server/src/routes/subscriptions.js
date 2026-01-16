@@ -79,7 +79,10 @@ router.get('/fees', async (req, res, next) => {
  */
 router.post('/:id/resume', async (req, res, next) => {
     try {
-        const subscription = await subscriptionService.resumeSubscription(req.params.id);
+        const subscription = await subscriptionService.resumeSubscription(
+            req.params.id,
+            req.user.id
+        );
         successResponse(res, subscription, 'Subscription resumed successfully');
     } catch (error) {
         next(error);
