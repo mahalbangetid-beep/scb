@@ -1,5 +1,6 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
 const router = express.Router();
 const prisma = require('../utils/prisma');
 const { successResponse, createdResponse, paginatedResponse, parsePagination, parseSort } = require('../utils/response');
@@ -360,6 +361,95 @@ router.post('/users/:id/activate', async (req, res, next) => {
         });
 
         successResponse(res, null, 'User activated successfully');
+    } catch (error) {
+        next(error);
+    }
+});
+
+// POST /api/admin/users/:id/impersonate - Login as user (Admin/Master Admin only)
+router.post('/users/:id/impersonate', async (req, res, next) => {
+    try {
+        const targetUserId = req.params.id;
+        const adminUser = req.user;
+
+        // Fetch target user
+        const targetUser = await prisma.user.findUnique({
+            where: { id: targetUserId },
+            select: {
+                id: true,
+                username: true,
+                email: true,
+                name: true,
+                role: true,
+                status: true,
+                creditBalance: true
+            }
+        });
+
+        if (!targetUser) {
+            throw new AppError('User not found', 404);
+        }
+
+        // Security: Cannot impersonate MASTER_ADMIN
+        if (targetUser.role === ROLES.MASTER_ADMIN) {
+            throw new AppError('Cannot impersonate Master Admin', 403);
+        }
+
+        // Security: Admin cannot impersonate other Admins (only Master Admin can)
+        if (targetUser.role === ROLES.ADMIN && adminUser.role !== ROLES.MASTER_ADMIN) {
+            throw new AppError('Only Master Admin can impersonate Admin users', 403);
+        }
+
+        // Security: Cannot impersonate yourself
+        if (targetUser.id === adminUser.id) {
+            throw new AppError('Cannot impersonate yourself', 400);
+        }
+
+        // Security: Target user must be active
+        if (targetUser.status === 'BANNED') {
+            throw new AppError('Cannot impersonate banned users', 400);
+        }
+
+        // Generate impersonation token (short-lived: 1 hour)
+        const impersonationToken = jwt.sign(
+            {
+                userId: targetUser.id,
+                impersonatedBy: adminUser.id,
+                isImpersonation: true
+            },
+            process.env.JWT_SECRET,
+            { expiresIn: '1h' }
+        );
+
+        // Log impersonation action
+        await prisma.activityLog.create({
+            data: {
+                userId: adminUser.id,
+                action: 'USER_IMPERSONATION',
+                category: 'admin',
+                description: `Admin ${adminUser.username} logged in as user ${targetUser.username}`,
+                metadata: JSON.stringify({
+                    targetUserId: targetUser.id,
+                    targetUsername: targetUser.username,
+                    adminId: adminUser.id,
+                    adminUsername: adminUser.username
+                }),
+                ipAddress: req.headers['x-forwarded-for']?.split(',')[0] || req.connection?.remoteAddress || 'unknown'
+            }
+        });
+
+        console.log(`[Admin] Impersonation: ${adminUser.username} (${adminUser.role}) logged in as ${targetUser.username}`);
+
+        successResponse(res, {
+            token: impersonationToken,
+            user: targetUser,
+            impersonatedBy: {
+                id: adminUser.id,
+                username: adminUser.username,
+                role: adminUser.role
+            },
+            expiresIn: '1 hour'
+        }, `Successfully impersonating user: ${targetUser.username}`);
     } catch (error) {
         next(error);
     }

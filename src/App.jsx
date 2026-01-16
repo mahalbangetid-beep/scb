@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import Sidebar from './components/Sidebar'
+import ImpersonationBanner from './components/ImpersonationBanner'
 import Dashboard from './pages/Dashboard'
 import Devices from './pages/Devices'
 import Broadcast from './pages/Broadcast'
@@ -90,6 +91,7 @@ function AppContent() {
 
   return (
     <div className="app-layout">
+      <ImpersonationBanner />
       {showSidebar && <Sidebar collapsed={sidebarCollapsed} onToggle={toggleSidebar} />}
       <main className={`main-content ${sidebarCollapsed ? 'collapsed' : ''} ${!showSidebar ? 'full-width' : ''}`}>
         <Routes>

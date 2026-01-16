@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import {
     Users, Search, Filter, MoreVertical, Ban, CheckCircle2,
     DollarSign, Edit3, Trash2, X, Loader2, AlertCircle,
-    Mail, Phone, Calendar, Shield, CreditCard, Activity
+    Mail, Phone, Calendar, Shield, CreditCard, Activity, LogIn
 } from 'lucide-react'
 import api from '../../services/api'
 
@@ -127,6 +127,39 @@ export default function UserManagement() {
             window.dispatchEvent(new CustomEvent('user-data-updated'))
         } catch (err) {
             setError(err.error?.message || err.message)
+        } finally {
+            setActionLoading(false)
+        }
+    }
+
+    const handleImpersonate = async (user) => {
+        if (!user) return
+        setActionLoading(true)
+        try {
+            const res = await api.post(`/admin/users/${user.id}/impersonate`)
+
+            if (res.token) {
+                // Store original admin credentials for returning later
+                const currentToken = localStorage.getItem('token')
+                const currentUser = localStorage.getItem('user')
+                localStorage.setItem('admin_original_token', currentToken)
+                localStorage.setItem('admin_original_user', currentUser)
+
+                // Set impersonation data
+                localStorage.setItem('token', res.token)
+                localStorage.setItem('user', JSON.stringify(res.user))
+                localStorage.setItem('impersonation_active', 'true')
+                localStorage.setItem('impersonated_by', JSON.stringify(res.impersonatedBy))
+
+                setSuccess(`Logging in as ${user.username}...`)
+
+                // Redirect to dashboard in new window or same window
+                setTimeout(() => {
+                    window.location.href = '/dashboard'
+                }, 500)
+            }
+        } catch (err) {
+            setError(err.error?.message || err.message || 'Failed to impersonate user')
         } finally {
             setActionLoading(false)
         }
@@ -277,6 +310,14 @@ export default function UserManagement() {
                                         <td>{new Date(user.createdAt).toLocaleDateString()}</td>
                                         <td>
                                             <div className="action-buttons">
+                                                <button
+                                                    className="btn btn-ghost btn-sm btn-impersonate"
+                                                    onClick={() => handleImpersonate(user)}
+                                                    title="Login as this user"
+                                                    disabled={user.role === 'MASTER_ADMIN' || actionLoading}
+                                                >
+                                                    <LogIn size={16} />
+                                                </button>
                                                 <button
                                                     className="btn btn-ghost btn-sm"
                                                     onClick={() => openModal('credit', user)}
@@ -658,6 +699,14 @@ export default function UserManagement() {
 
                 .btn-success:hover {
                     background: #16a34a;
+                }
+
+                .btn-impersonate {
+                    color: #3b82f6 !important;
+                }
+
+                .btn-impersonate:hover {
+                    background: rgba(59, 130, 246, 0.1);
                 }
 
                 .loading-container {
