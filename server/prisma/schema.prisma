@@ -183,6 +183,7 @@ model SmmPanel {
   user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
   orders         Order[]
   providerGroups ProviderGroup[]
+  devices        Device[]        // WhatsApp devices bound to this panel
 
   @@unique([url, userId])
 }
@@ -312,6 +313,10 @@ model Device {
   sessionData  String?  // Store session JSON
   lastActive   DateTime?
   
+  // Panel Binding - Which SMM Panel this device serves
+  // If null, device will search orders across ALL user's panels
+  panelId      String?
+  
   // Charging
   isFreeLogin  Boolean  @default(true) // First login is free
   chargeType   String?  // MONTHLY, ONE_TIME
@@ -323,6 +328,7 @@ model Device {
   updatedAt    DateTime @updatedAt
 
   user        User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  panel       SmmPanel?       @relation(fields: [panelId], references: [id], onDelete: SetNull)
   messages    Message[]
   broadcasts  Broadcast[]
   autoReplies AutoReplyRule[]

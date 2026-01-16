@@ -14,17 +14,20 @@ import {
     MessageSquare,
     Clock,
     X,
-    Loader2
+    Loader2,
+    Link2
 } from 'lucide-react'
 import api from '../services/api'
 import { formatDistanceToNow } from 'date-fns'
 
 export default function Devices() {
     const [devices, setDevices] = useState([])
+    const [panels, setPanels] = useState([])  // Available SMM panels
     const [loading, setLoading] = useState(true)
     const [showAddModal, setShowAddModal] = useState(false)
     const [activeTab, setActiveTab] = useState('all')
     const [newDeviceName, setNewDeviceName] = useState('')
+    const [selectedPanelId, setSelectedPanelId] = useState('')  // Selected panel for device
     const [qrCode, setQrCode] = useState(null)
     const [addLoading, setAddLoading] = useState(false)
     const [currentDeviceId, setCurrentDeviceId] = useState(null)
@@ -43,8 +46,18 @@ export default function Devices() {
         }
     }
 
+    const fetchPanels = async () => {
+        try {
+            const res = await api.get('/panels')
+            setPanels(res.data || [])
+        } catch (error) {
+            console.error('Failed to fetch panels:', error)
+        }
+    }
+
     useEffect(() => {
         fetchDevices()
+        fetchPanels()  // Fetch panels for the dropdown
         const interval = setInterval(fetchDevices, 10000)
         return () => clearInterval(interval)
     }, [])
@@ -123,6 +136,7 @@ export default function Devices() {
         setQrStatus('idle')
         setConnectionMessage('')
         setNewDeviceName('')
+        setSelectedPanelId('')  // Reset panel selection
         setCurrentDeviceId(null)
     }
 
@@ -133,7 +147,12 @@ export default function Devices() {
         setConnectionMessage('Creating device...')
 
         try {
-            const res = await api.post('/devices', { name: newDeviceName })
+            // Send panelId if selected (null/empty means no panel assigned)
+            const payload = {
+                name: newDeviceName,
+                panelId: selectedPanelId || null  // Include panel binding
+            }
+            const res = await api.post('/devices', payload)
             setCurrentDeviceId(res.data.id)
 
             // If QR is returned immediately
@@ -294,6 +313,37 @@ export default function Devices() {
                                     <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
                                         {device.phone || 'Not connected'}
                                     </div>
+                                    {/* Panel Badge */}
+                                    {device.panel ? (
+                                        <div style={{
+                                            display: 'inline-flex',
+                                            alignItems: 'center',
+                                            gap: '4px',
+                                            marginTop: '4px',
+                                            padding: '2px 8px',
+                                            borderRadius: '12px',
+                                            fontSize: '0.7rem',
+                                            background: 'rgba(59, 130, 246, 0.1)',
+                                            color: '#3b82f6'
+                                        }}>
+                                            <Link2 size={10} />
+                                            {device.panel.alias || device.panel.name}
+                                        </div>
+                                    ) : (
+                                        <div style={{
+                                            display: 'inline-flex',
+                                            alignItems: 'center',
+                                            gap: '4px',
+                                            marginTop: '4px',
+                                            padding: '2px 8px',
+                                            borderRadius: '12px',
+                                            fontSize: '0.7rem',
+                                            background: 'rgba(156, 163, 175, 0.1)',
+                                            color: '#9ca3af'
+                                        }}>
+                                            All Panels
+                                        </div>
+                                    )}
                                 </div>
                             </div>
                             <div style={{
@@ -396,7 +446,7 @@ export default function Devices() {
                         </button>
                     </div>
                     <div className="modal-body">
-                        {/* Step 1: Enter device name (only if new device) */}
+                        {/* Step 1: Enter device name and select panel (only if new device) */}
                         {!currentDeviceId && qrStatus === 'idle' && (
                             <div className="form-group">
                                 <label className="form-label">Device Name</label>
@@ -409,6 +459,32 @@ export default function Devices() {
                                     onKeyDown={(e) => e.key === 'Enter' && handleAddDevice()}
                                 />
                                 <p className="form-hint">Give this device a memorable name</p>
+
+                                {/* Panel Selection */}
+                                <div style={{ marginTop: 'var(--spacing-lg)' }}>
+                                    <label className="form-label">
+                                        <Link2 size={14} style={{ marginRight: '6px', display: 'inline' }} />
+                                        Assign to Panel (Optional)
+                                    </label>
+                                    <select
+                                        className="form-select"
+                                        value={selectedPanelId}
+                                        onChange={(e) => setSelectedPanelId(e.target.value)}
+                                    >
+                                        <option value="">All Panels (No specific binding)</option>
+                                        {panels.map(panel => (
+                                            <option key={panel.id} value={panel.id}>
+                                                {panel.alias || panel.name} - {panel.url}
+                                            </option>
+                                        ))}
+                                    </select>
+                                    <p className="form-hint" style={{ marginTop: '4px' }}>
+                                        {selectedPanelId
+                                            ? '✅ This device will only handle orders from the selected panel'
+                                            : '⚠️ This device will handle orders from ALL your panels'}
+                                    </p>
+                                </div>
+
                                 <button
                                     className="btn btn-primary w-full"
                                     onClick={handleAddDevice}

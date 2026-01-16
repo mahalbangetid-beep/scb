@@ -332,10 +332,20 @@ class WhatsAppService {
                 // Process incoming message through botMessageHandler
                 // This handles: SMM commands, auto-reply, and other workflows
                 if (!messageData.fromMe && content) {
-                    // Get device userId
+                    // Get device userId and panelId for panel-specific order handling
                     const device = await prisma.device.findUnique({
                         where: { id: deviceId },
-                        select: { userId: true }
+                        select: {
+                            userId: true,
+                            panelId: true,
+                            panel: {
+                                select: {
+                                    id: true,
+                                    name: true,
+                                    alias: true
+                                }
+                            }
+                        }
                     });
 
                     if (device?.userId) {
@@ -343,6 +353,8 @@ class WhatsAppService {
                             const handlerResult = await botMessageHandler.handleMessage({
                                 deviceId,
                                 userId: device.userId,
+                                panelId: device.panelId,  // Pass panelId for panel-specific order lookup
+                                panel: device.panel,       // Pass panel info for logging
                                 message: content,
                                 senderNumber: messageData.from,
                                 senderName: messageData.pushName,
@@ -355,7 +367,7 @@ class WhatsAppService {
                                 // Send reply to the correct JID (group or private)
                                 const replyJid = msg.key.remoteJid;
                                 await socket.sendMessage(replyJid, { text: handlerResult.response });
-                                console.log(`[WA:${deviceId}] Response sent: ${handlerResult.type}`);
+                                console.log(`[WA:${deviceId}] Response sent: ${handlerResult.type}${device.panelId ? ` (Panel: ${device.panel?.alias || device.panel?.name})` : ''}`);
                             }
                         } catch (err) {
                             console.error(`[WA:${deviceId}] BotMessageHandler error:`, err.message);

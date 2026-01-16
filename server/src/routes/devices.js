@@ -15,7 +15,17 @@ router.get('/', authenticate, async (req, res, next) => {
                 where: { userId: req.user.id },
                 skip,
                 take: limit,
-                orderBy: { createdAt: 'desc' }
+                orderBy: { createdAt: 'desc' },
+                include: {
+                    panel: {
+                        select: {
+                            id: true,
+                            name: true,
+                            alias: true,
+                            url: true
+                        }
+                    }
+                }
             }),
             prisma.device.count({
                 where: { userId: req.user.id }
@@ -27,7 +37,7 @@ router.get('/', authenticate, async (req, res, next) => {
             })
         ]);
 
-        // Map database status to UI format and include message counts
+        // Map database status to UI format and include message counts + panel info
         const formattedDevices = devices.map(device => {
             const sent = messageStats.find(s => s.deviceId === device.id && s.type === 'outgoing')?._count || 0;
             const received = messageStats.find(s => s.deviceId === device.id && s.type === 'incoming')?._count || 0;
@@ -37,6 +47,8 @@ router.get('/', authenticate, async (req, res, next) => {
                 name: device.name,
                 phone: device.phone,
                 status: device.status,
+                panelId: device.panelId,
+                panel: device.panel,  // Include panel info
                 lastActive: device.lastActive,
                 messagesSent: sent,
                 messagesReceived: received,
@@ -78,18 +90,41 @@ router.get('/:id', authenticate, async (req, res, next) => {
 // POST /api/devices - Add new device
 router.post('/', authenticate, async (req, res, next) => {
     try {
-        const { name } = req.body;
+        const { name, panelId } = req.body;
 
         if (!name) {
             throw new AppError('Device name is required', 400);
         }
 
-        // Create in database
+        // Validate panelId if provided
+        if (panelId) {
+            const panel = await prisma.smmPanel.findFirst({
+                where: {
+                    id: panelId,
+                    userId: req.user.id
+                }
+            });
+            if (!panel) {
+                throw new AppError('Panel not found or does not belong to you', 400);
+            }
+        }
+
+        // Create in database with optional panel binding
         const device = await prisma.device.create({
             data: {
                 name,
                 userId: req.user.id,
+                panelId: panelId || null,  // Bind to panel if provided
                 status: 'pending'
+            },
+            include: {
+                panel: {
+                    select: {
+                        id: true,
+                        name: true,
+                        alias: true
+                    }
+                }
             }
         });
 
@@ -100,7 +135,7 @@ router.post('/', authenticate, async (req, res, next) => {
         successResponse(res, {
             ...device,
             qrCode: session.qr // Note: This might be null if already connected or error
-        }, 'Device created. Please scan the QR code to connect.', 201);
+        }, `Device created${panelId ? ' and bound to panel' : ''}. Please scan the QR code to connect.`, 201);
     } catch (error) {
         next(error);
     }

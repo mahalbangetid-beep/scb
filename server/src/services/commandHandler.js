@@ -35,11 +35,11 @@ class CommandHandlerService {
 
     /**
      * Process a command message
-     * @param {Object} params - { userId, message, senderNumber, platform, isGroup }
+     * @param {Object} params - { userId, panelId, message, senderNumber, platform, isGroup }
      * @returns {Object} - { success, responses[], summary }
      */
     async processCommand(params) {
-        const { userId, message, senderNumber, platform = 'WHATSAPP', isGroup = false } = params;
+        const { userId, panelId, message, senderNumber, platform = 'WHATSAPP', isGroup = false } = params;
 
         // Parse the command
         const parsed = commandParser.parse(message);
@@ -76,6 +76,7 @@ class CommandHandlerService {
             try {
                 const result = await this.processOrderCommand({
                     userId,
+                    panelId,    // Pass panelId for panel-specific order lookup
                     orderId,
                     command,
                     senderNumber,
@@ -119,14 +120,26 @@ class CommandHandlerService {
      * Process a single order command
      */
     async processOrderCommand(params) {
-        const { userId, orderId, command, senderNumber, isGroup = false } = params;
+        const { userId, panelId, orderId, command, senderNumber, isGroup = false } = params;
+
+        // Build order query - filter by panelId if provided
+        const whereClause = {
+            externalOrderId: orderId,
+            userId
+        };
+
+        // If panelId is specified, only search in that panel's orders
+        // If panelId is null, search across ALL user's panels (backward compatible)
+        if (panelId) {
+            whereClause.panelId = panelId;
+            console.log(`[CommandHandler] Looking for order ${orderId} in panel ${panelId}`);
+        } else {
+            console.log(`[CommandHandler] Looking for order ${orderId} across all user panels (no panelId specified)`);
+        }
 
         // Find the order - check by external order ID (from panel)
         let order = await prisma.order.findFirst({
-            where: {
-                externalOrderId: orderId,
-                userId
-            },
+            where: whereClause,
             include: {
                 panel: {
                     select: {
@@ -142,10 +155,12 @@ class CommandHandlerService {
 
         // If not found - use sanitized error message
         if (!order) {
+            const panelInfo = panelId ? ` in the assigned panel` : '';
+            console.log(`[CommandHandler] Order ${orderId} not found${panelInfo}`);
             return {
                 success: false,
                 message: securityService.sanitizeErrorMessage('not_found', 'order'),
-                details: { reason: 'not_found' }
+                details: { reason: 'not_found', panelId }
             };
         }
 

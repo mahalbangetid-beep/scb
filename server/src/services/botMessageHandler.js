@@ -27,13 +27,13 @@ class BotMessageHandler {
 
     /**
      * Handle incoming message
-     * @param {Object} params - { deviceId, userId, message, senderNumber, senderName, isGroup, platform }
+     * @param {Object} params - { deviceId, userId, panelId, panel, message, senderNumber, senderName, isGroup, platform }
      * @returns {Object} - { handled, response, type }
      */
     async handleMessage(params) {
-        const { deviceId, userId, message, senderNumber, senderName, isGroup, platform = 'WHATSAPP' } = params;
+        const { deviceId, userId, panelId, panel, message, senderNumber, senderName, isGroup, platform = 'WHATSAPP' } = params;
 
-        console.log(`[BotHandler] Processing message from ${senderNumber}: ${message.substring(0, 50)}...`);
+        console.log(`[BotHandler] Processing message from ${senderNumber}${panelId ? ` (Panel: ${panel?.alias || panel?.name || panelId})` : ''}: ${message.substring(0, 50)}...`);
 
         // Get user details
         const user = await prisma.user.findUnique({
@@ -130,6 +130,7 @@ class BotMessageHandler {
                 message,
                 senderNumber,
                 deviceId,
+                panelId,    // Pass panelId for panel-specific order lookup
                 platform,
                 isGroup
             });
@@ -162,7 +163,7 @@ class BotMessageHandler {
      * Handle SMM command
      */
     async handleSmmCommand(params) {
-        const { userId, user, message, senderNumber, deviceId, platform, isGroup } = params;
+        const { userId, user, message, senderNumber, deviceId, panelId, platform, isGroup } = params;
 
         // Check if user has sufficient balance for response
         const rate = await creditService.getMessageRate(platform, isGroup, user);
@@ -182,9 +183,10 @@ class BotMessageHandler {
             };
         }
 
-        // Process the command
+        // Process the command with panelId for panel-specific order lookup
         const result = await commandHandler.processCommand({
             userId,
+            panelId,    // Pass panelId to filter orders by specific panel
             message,
             senderNumber,
             platform,
