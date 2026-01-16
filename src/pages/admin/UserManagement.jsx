@@ -135,10 +135,15 @@ export default function UserManagement() {
     const handleImpersonate = async (user) => {
         if (!user) return
         setActionLoading(true)
+        setError(null)
         try {
             const res = await api.post(`/admin/users/${user.id}/impersonate`)
+            console.log('[Impersonate] Response:', res)
 
-            if (res.token) {
+            // Response structure: { success: true, data: { token, user, impersonatedBy, expiresIn } }
+            const data = res.data || res
+
+            if (data && data.token) {
                 // Store original admin credentials for returning later
                 const currentToken = localStorage.getItem('token')
                 const currentUser = localStorage.getItem('user')
@@ -146,24 +151,29 @@ export default function UserManagement() {
                 localStorage.setItem('admin_original_user', currentUser)
 
                 // Set impersonation data
-                localStorage.setItem('token', res.token)
-                localStorage.setItem('user', JSON.stringify(res.user))
+                localStorage.setItem('token', data.token)
+                localStorage.setItem('user', JSON.stringify(data.user))
                 localStorage.setItem('impersonation_active', 'true')
-                localStorage.setItem('impersonated_by', JSON.stringify(res.impersonatedBy))
+                localStorage.setItem('impersonated_by', JSON.stringify(data.impersonatedBy))
 
                 setSuccess(`Logging in as ${user.username}...`)
 
-                // Redirect to dashboard in new window or same window
+                // Redirect to dashboard
                 setTimeout(() => {
                     window.location.href = '/dashboard'
                 }, 500)
+            } else {
+                setError('Invalid response from server')
+                console.error('[Impersonate] No token in response:', res)
             }
         } catch (err) {
+            console.error('[Impersonate] Error:', err)
             setError(err.error?.message || err.message || 'Failed to impersonate user')
         } finally {
             setActionLoading(false)
         }
     }
+
 
     const getStatusBadge = (status) => {
         const styles = {
