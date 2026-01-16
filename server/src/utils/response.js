@@ -43,8 +43,10 @@ const errorResponse = (res, message = 'Error', statusCode = 400) => {
 
 // Parse pagination from query
 const parsePagination = (query) => {
-    const page = parseInt(query.page) || 1;
-    const limit = parseInt(query.limit) || 10;
+    const page = Math.max(1, parseInt(query.page) || 1);
+    const requestedLimit = parseInt(query.limit) || 10;
+    // Cap limit at 100 to prevent DoS
+    const limit = Math.min(Math.max(1, requestedLimit), 100);
     const skip = (page - 1) * limit;
 
     return { page, limit, skip };
