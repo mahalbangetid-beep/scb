@@ -65,13 +65,26 @@ router.get('/bots/:id', async (req, res, next) => {
  */
 router.post('/bots', async (req, res, next) => {
     try {
-        const { botToken } = req.body;
+        const { botToken, panelId } = req.body;
 
         if (!botToken) {
             throw new AppError('Bot token is required', 400);
         }
 
-        const bot = await telegramService.createBot(req.user.id, botToken);
+        // Validate panelId if provided
+        if (panelId) {
+            const panel = await prisma.smmPanel.findFirst({
+                where: {
+                    id: panelId,
+                    userId: req.user.id
+                }
+            });
+            if (!panel) {
+                throw new AppError('Panel not found or does not belong to you', 400);
+            }
+        }
+
+        const bot = await telegramService.createBot(req.user.id, botToken, panelId);
         createdResponse(res, bot, 'Telegram bot created successfully');
     } catch (error) {
         next(error);

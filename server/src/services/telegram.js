@@ -49,7 +49,7 @@ class TelegramService {
     /**
      * Create a new Telegram bot
      */
-    async createBot(userId, botToken) {
+    async createBot(userId, botToken, panelId = null) {
         // Validate token format
         if (!botToken || !botToken.includes(':')) {
             throw new Error('Invalid bot token format');
@@ -86,8 +86,18 @@ class TelegramService {
                 botToken: encryptedToken,
                 botUsername: botInfo.username,
                 botName: botInfo.first_name,
+                panelId: panelId || null,  // Panel binding
                 status: 'pending',
                 isFreeLogin: await this.isFirstBot(userId)
+            },
+            include: {
+                panel: {
+                    select: {
+                        id: true,
+                        name: true,
+                        alias: true
+                    }
+                }
             }
         });
 
@@ -95,7 +105,9 @@ class TelegramService {
             id: telegramBot.id,
             botUsername: botInfo.username,
             botName: botInfo.first_name,
-            status: 'pending'
+            status: 'pending',
+            panelId: telegramBot.panelId,
+            panel: telegramBot.panel
         };
     }
 
@@ -115,7 +127,16 @@ class TelegramService {
     async startBot(botId) {
         const botRecord = await prisma.telegramBot.findUnique({
             where: { id: botId },
-            include: { user: true }
+            include: {
+                user: true,
+                panel: {
+                    select: {
+                        id: true,
+                        name: true,
+                        alias: true
+                    }
+                }
+            }
         });
 
         if (!botRecord) {
@@ -366,13 +387,20 @@ class TelegramService {
             );
 
             // Call the command handler with proper parameters
+            // Pass panelId for panel-specific order lookup
             const result = await commandHandler.processCommand({
                 userId: botRecord.userId,
+                panelId: botRecord.panelId,  // Pass panelId for panel-specific lookup
                 message: text,
                 senderNumber: senderNumber,
                 platform: 'TELEGRAM',
                 isGroup: isGroup
             });
+
+            // Log panel info if bound
+            if (botRecord.panelId) {
+                console.log(`[Telegram] Command processed for panel: ${botRecord.panel?.alias || botRecord.panel?.name || botRecord.panelId}`);
+            }
 
             // Delete processing message
             try {
@@ -556,7 +584,16 @@ class TelegramService {
     async getUserBots(userId) {
         const bots = await prisma.telegramBot.findMany({
             where: { userId },
-            orderBy: { createdAt: 'desc' }
+            orderBy: { createdAt: 'desc' },
+            include: {
+                panel: {
+                    select: {
+                        id: true,
+                        name: true,
+                        alias: true
+                    }
+                }
+            }
         });
 
         return bots.map(bot => ({
@@ -564,6 +601,8 @@ class TelegramService {
             botUsername: bot.botUsername,
             botName: bot.botName,
             status: this.bots.has(bot.id) ? 'connected' : bot.status,
+            panelId: bot.panelId,
+            panel: bot.panel,
             lastActive: bot.lastActive,
             isFreeLogin: bot.isFreeLogin,
             createdAt: bot.createdAt

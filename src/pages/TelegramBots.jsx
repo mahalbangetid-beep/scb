@@ -16,17 +16,20 @@ import {
     Key,
     Eye,
     EyeOff,
-    AlertCircle
+    AlertCircle,
+    Link2
 } from 'lucide-react'
 import api from '../services/api'
 import { formatDistanceToNow } from 'date-fns'
 
 export default function TelegramBots() {
     const [bots, setBots] = useState([])
+    const [panels, setPanels] = useState([])  // Available SMM panels
     const [loading, setLoading] = useState(true)
     const [showModal, setShowModal] = useState(false)
     const [showTokenModal, setShowTokenModal] = useState(false)
     const [newBotToken, setNewBotToken] = useState('')
+    const [selectedPanelId, setSelectedPanelId] = useState('')  // Selected panel for bot
     const [showToken, setShowToken] = useState(false)
     const [formLoading, setFormLoading] = useState(false)
     const [error, setError] = useState(null)
@@ -34,6 +37,7 @@ export default function TelegramBots() {
 
     useEffect(() => {
         fetchBots()
+        fetchPanels()  // Fetch panels for the dropdown
     }, [])
 
     const fetchBots = async () => {
@@ -48,15 +52,28 @@ export default function TelegramBots() {
         }
     }
 
+    const fetchPanels = async () => {
+        try {
+            const res = await api.get('/panels')
+            setPanels(res.data || [])
+        } catch (error) {
+            console.error('Failed to fetch panels:', error)
+        }
+    }
+
     const handleAddBot = async (e) => {
         e.preventDefault()
         setFormLoading(true)
         setError(null)
 
         try {
-            await api.post('/telegram/bots', { botToken: newBotToken.trim() })
+            await api.post('/telegram/bots', {
+                botToken: newBotToken.trim(),
+                panelId: selectedPanelId || null  // Include panel binding
+            })
             setShowModal(false)
             setNewBotToken('')
+            setSelectedPanelId('')  // Reset panel selection
             fetchBots()
         } catch (err) {
             setError(err.response?.data?.message || err.message || 'Failed to add bot')
@@ -191,6 +208,13 @@ export default function TelegramBots() {
                                     <MessageSquare size={16} />
                                     <span>Free Login: {bot.isFreeLogin ? 'Yes' : 'No'}</span>
                                 </div>
+                                <div className="bot-stat">
+                                    <Link2 size={16} />
+                                    <span>Panel: {bot.panel
+                                        ? <span style={{ color: '#3b82f6', fontWeight: 500 }}>{bot.panel.alias || bot.panel.name}</span>
+                                        : <span style={{ color: '#9ca3af' }}>All Panels</span>}
+                                    </span>
+                                </div>
                             </div>
 
                             <div className="bot-card-footer">
@@ -275,6 +299,31 @@ export default function TelegramBots() {
                                     </button>
                                 </div>
                                 <p className="form-hint">Your bot token will be encrypted before storing</p>
+                            </div>
+
+                            {/* Panel Selection */}
+                            <div className="form-group">
+                                <label className="form-label">
+                                    <Link2 size={14} style={{ marginRight: '6px', verticalAlign: 'middle' }} />
+                                    Assign to Panel (Optional)
+                                </label>
+                                <select
+                                    className="form-select"
+                                    value={selectedPanelId}
+                                    onChange={(e) => setSelectedPanelId(e.target.value)}
+                                >
+                                    <option value="">All Panels (No specific binding)</option>
+                                    {panels.map(panel => (
+                                        <option key={panel.id} value={panel.id}>
+                                            {panel.alias || panel.name} - {panel.url}
+                                        </option>
+                                    ))}
+                                </select>
+                                <p className="form-hint">
+                                    {selectedPanelId
+                                        ? '✅ This bot will only handle orders from the selected panel'
+                                        : '⚠️ This bot will handle orders from ALL your panels'}
+                                </p>
                             </div>
                         </div>
                         <div className="modal-footer">
