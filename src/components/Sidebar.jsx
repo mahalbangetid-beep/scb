@@ -21,7 +21,8 @@ import {
     FileText,
     Zap,
     Radio,
-    Plug
+    Plug,
+    Ticket
 } from 'lucide-react'
 import api from '../services/api'
 
@@ -42,17 +43,22 @@ const smmNavigation = [
     { name: 'Panel Connections', icon: Plug, path: '/panel-connections' },
     { name: 'Orders', icon: Package, path: '/orders' },
     { name: 'Provider Groups', icon: Radio, path: '/provider-groups' },
+    { name: 'Tickets', icon: Ticket, path: '/tickets' },
 ]
 
 // Automation - Bot behavior & templates
 const automationNavigation = [
     // { name: 'Auto Reply', icon: Bot, path: '/auto-reply' }, // Hidden for now
     { name: 'Response Templates', icon: FileText, path: '/command-templates' },
+    { name: 'Keyword Responses', icon: MessageCircle, path: '/keyword-responses' },
+    { name: 'User Mappings', icon: Users, path: '/user-mappings' },
+    { name: 'Bot Settings', icon: Zap, path: '/bot-settings' },
 ]
 
 // Finance - Credits & reporting
 const financeNavigation = [
     { name: 'Wallet', icon: Wallet, path: '/wallet' },
+    { name: 'Subscriptions', icon: CreditCard, path: '/subscriptions' },
     { name: 'Reports', icon: BarChart3, path: '/reports' },
 ]
 
@@ -67,6 +73,7 @@ const adminNavigation = [
     { name: 'Staff Management', icon: Shield, path: '/admin/staff' },
     { name: 'Payments', icon: CreditCard, path: '/admin/payments' },
     { name: 'Payment Settings', icon: Settings, path: '/admin/payment-settings' },
+    { name: 'Credit Packages', icon: Package, path: '/admin/credit-packages' },
     { name: 'Vouchers', icon: Gift, path: '/admin/vouchers' },
     { name: 'System Settings', icon: Settings, path: '/admin/settings' },
 ]

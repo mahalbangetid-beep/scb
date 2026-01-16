@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import {
     Wallet, CreditCard, ArrowUpRight, ArrowDownLeft,
     Gift, Clock, CheckCircle2, XCircle, AlertCircle,
-    Plus, Loader2, X, RefreshCw, DollarSign, TrendingUp
+    Plus, Loader2, X, RefreshCw, DollarSign, TrendingUp, Package, Star
 } from 'lucide-react'
 import api from '../services/api'
 
@@ -11,13 +11,16 @@ export default function WalletPage() {
     const [summary, setSummary] = useState(null)
     const [transactions, setTransactions] = useState([])
     const [payments, setPayments] = useState([])
+    const [creditPackages, setCreditPackages] = useState([])
     const [loading, setLoading] = useState(true)
     const [activeTab, setActiveTab] = useState('overview')
     const [showTopUpModal, setShowTopUpModal] = useState(false)
     const [showVoucherModal, setShowVoucherModal] = useState(false)
+    const [showPackagesModal, setShowPackagesModal] = useState(false)
     const [topUpForm, setTopUpForm] = useState({ amount: '', method: 'BANK_TRANSFER' })
     const [voucherCode, setVoucherCode] = useState('')
     const [formLoading, setFormLoading] = useState(false)
+    const [purchaseLoading, setPurchaseLoading] = useState(null)
     const [error, setError] = useState(null)
     const [success, setSuccess] = useState(null)
 
@@ -28,17 +31,19 @@ export default function WalletPage() {
     const fetchData = async () => {
         try {
             setLoading(true)
-            const [walletRes, summaryRes, txRes, payRes] = await Promise.all([
+            const [walletRes, summaryRes, txRes, payRes, packagesRes] = await Promise.all([
                 api.get('/wallet'),
                 api.get('/wallet/summary'),
                 api.get('/wallet/transactions?limit=10'),
-                api.get('/wallet/payments?limit=10')
+                api.get('/wallet/payments?limit=10'),
+                api.get('/credit-packages').catch(() => ({ data: { data: [] } }))
             ])
             // API returns { success, message, data } - extract .data
             setWalletInfo(walletRes.data || walletRes)
             setSummary(summaryRes.data || summaryRes)
             setTransactions(txRes.data || [])
             setPayments(payRes.data || [])
+            setCreditPackages(packagesRes.data?.data || packagesRes.data || [])
         } catch (err) {
             setError(err.message || 'Failed to load wallet data')
         } finally {
@@ -96,6 +101,22 @@ export default function WalletPage() {
             setError(err.error?.message || err.message || 'Invalid voucher code')
         } finally {
             setFormLoading(false)
+        }
+    }
+
+    const handlePurchasePackage = async (packageId) => {
+        setPurchaseLoading(packageId)
+        setError(null)
+        try {
+            const res = await api.post(`/credit-packages/${packageId}/purchase`)
+            setSuccess(res.data?.message || 'Package purchased successfully!')
+            setShowPackagesModal(false)
+            fetchData()
+            window.dispatchEvent(new CustomEvent('user-data-updated'))
+        } catch (err) {
+            setError(err.response?.data?.message || err.message || 'Failed to purchase package')
+        } finally {
+            setPurchaseLoading(null)
         }
     }
 
@@ -190,9 +211,13 @@ export default function WalletPage() {
                             <Plus size={18} />
                             Top Up
                         </button>
+                        <button className="btn btn-secondary" onClick={() => setShowPackagesModal(true)}>
+                            <Package size={18} />
+                            Buy Credits
+                        </button>
                         <button className="btn btn-secondary" onClick={() => setShowVoucherModal(true)}>
                             <Gift size={18} />
-                            Redeem Voucher
+                            Voucher
                         </button>
                     </div>
                 </div>
@@ -422,6 +447,64 @@ export default function WalletPage() {
                                 </button>
                             </div>
                         </form>
+                    </div>
+                </div>
+            )}
+
+            {/* Credit Packages Modal */}
+            {showPackagesModal && (
+                <div className="modal-overlay open" onClick={() => setShowPackagesModal(false)}>
+                    <div className="modal packages-modal" onClick={(e) => e.stopPropagation()}>
+                        <div className="modal-header">
+                            <h2>Buy Credit Package</h2>
+                            <button className="modal-close" onClick={() => setShowPackagesModal(false)}>
+                                <X size={20} />
+                            </button>
+                        </div>
+                        <div className="modal-body">
+                            <p className="modal-subtitle">Select a package to purchase with your balance</p>
+                            <div className="packages-grid-modal">
+                                {creditPackages.length === 0 ? (
+                                    <div className="empty-state-sm">
+                                        <p>No packages available</p>
+                                    </div>
+                                ) : (
+                                    creditPackages.map(pkg => (
+                                        <div key={pkg.id} className={`package-card-modal ${pkg.isFeatured ? 'featured' : ''}`}>
+                                            {pkg.isFeatured && (
+                                                <div className="featured-ribbon">
+                                                    <Star size={12} /> Popular
+                                                </div>
+                                            )}
+                                            <div className="pkg-name">{pkg.name}</div>
+                                            <div className="pkg-price">${pkg.price}</div>
+                                            <div className="pkg-credits">
+                                                <strong>{pkg.credits.toLocaleString()}</strong> credits
+                                                {pkg.bonusCredits > 0 && (
+                                                    <span className="pkg-bonus">+{pkg.bonusCredits.toLocaleString()} bonus</span>
+                                                )}
+                                            </div>
+                                            {pkg.description && (
+                                                <p className="pkg-desc">{pkg.description}</p>
+                                            )}
+                                            <button
+                                                className="btn btn-primary btn-block"
+                                                onClick={() => handlePurchasePackage(pkg.id)}
+                                                disabled={purchaseLoading === pkg.id || (walletInfo?.balance || 0) < pkg.price}
+                                            >
+                                                {purchaseLoading === pkg.id ? (
+                                                    <Loader2 className="animate-spin" size={18} />
+                                                ) : (walletInfo?.balance || 0) < pkg.price ? (
+                                                    'Insufficient Balance'
+                                                ) : (
+                                                    'Purchase'
+                                                )}
+                                            </button>
+                                        </div>
+                                    ))
+                                )}
+                            </div>
+                        </div>
                     </div>
                 </div>
             )}
@@ -752,6 +835,89 @@ export default function WalletPage() {
                 .header-actions {
                     display: flex;
                     gap: var(--spacing-md);
+                }
+
+                .packages-modal {
+                    max-width: 700px;
+                    width: 90%;
+                }
+
+                .modal-subtitle {
+                    color: var(--text-secondary);
+                    margin-bottom: var(--spacing-lg);
+                }
+
+                .packages-grid-modal {
+                    display: grid;
+                    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+                    gap: var(--spacing-md);
+                }
+
+                .package-card-modal {
+                    background: var(--bg-tertiary);
+                    border: 2px solid var(--border-color);
+                    border-radius: var(--radius-lg);
+                    padding: var(--spacing-lg);
+                    position: relative;
+                    text-align: center;
+                    transition: all 0.2s;
+                }
+
+                .package-card-modal:hover {
+                    border-color: var(--primary-500);
+                }
+
+                .package-card-modal.featured {
+                    border-color: #f59e0b;
+                    background: linear-gradient(135deg, rgba(245, 158, 11, 0.05), transparent);
+                }
+
+                .featured-ribbon {
+                    position: absolute;
+                    top: -8px;
+                    right: 10px;
+                    background: linear-gradient(135deg, #f59e0b, #d97706);
+                    color: white;
+                    padding: 2px 8px;
+                    border-radius: 10px;
+                    font-size: 0.7rem;
+                    display: flex;
+                    align-items: center;
+                    gap: 4px;
+                }
+
+                .pkg-name {
+                    font-weight: 600;
+                    font-size: 1rem;
+                    margin-bottom: var(--spacing-xs);
+                }
+
+                .pkg-price {
+                    font-size: 1.75rem;
+                    font-weight: 700;
+                    color: var(--primary-500);
+                    margin-bottom: var(--spacing-xs);
+                }
+
+                .pkg-credits {
+                    font-size: 0.9rem;
+                    margin-bottom: var(--spacing-sm);
+                }
+
+                .pkg-bonus {
+                    display: block;
+                    color: #22c55e;
+                    font-size: 0.8rem;
+                }
+
+                .pkg-desc {
+                    font-size: 0.8rem;
+                    color: var(--text-secondary);
+                    margin-bottom: var(--spacing-md);
+                }
+
+                .btn-block {
+                    width: 100%;
                 }
             `}</style>
         </div>

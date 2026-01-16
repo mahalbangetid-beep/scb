@@ -21,6 +21,11 @@ import Wallet from './pages/Wallet'
 import Reports from './pages/Reports'
 import TelegramBots from './pages/TelegramBots'
 import CommandTemplates from './pages/CommandTemplates'
+import BotSettings from './pages/BotSettings'
+import KeywordResponses from './pages/KeywordResponses'
+import UserMappings from './pages/UserMappings'
+import Subscriptions from './pages/Subscriptions'
+import Tickets from './pages/Tickets'
 import LandingPage from './pages/LandingPage'
 import './styles/landing.css'
 // Admin Pages
@@ -30,6 +35,7 @@ import SystemSettings from './pages/admin/SystemSettings'
 import PaymentManagement from './pages/admin/PaymentManagement'
 import PaymentSettings from './pages/admin/PaymentSettings'
 import VoucherManagement from './pages/admin/VoucherManagement'
+import CreditPackages from './pages/admin/CreditPackages'
 import './index.css'
 
 
@@ -111,6 +117,11 @@ function AppContent() {
           <Route path="/api-docs" element={<ProtectedRoute><ApiDocs /></ProtectedRoute>} />
           {/* n8n-tutorial route - DELETED */}
           <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
+          <Route path="/bot-settings" element={<ProtectedRoute><BotSettings /></ProtectedRoute>} />
+          <Route path="/keyword-responses" element={<ProtectedRoute><KeywordResponses /></ProtectedRoute>} />
+          <Route path="/user-mappings" element={<ProtectedRoute><UserMappings /></ProtectedRoute>} />
+          <Route path="/subscriptions" element={<ProtectedRoute><Subscriptions /></ProtectedRoute>} />
+          <Route path="/tickets" element={<ProtectedRoute><Tickets /></ProtectedRoute>} />
 
           {/* Admin Routes */}
           <Route path="/admin/users" element={<AdminRoute><UserManagement /></AdminRoute>} />
@@ -119,6 +130,7 @@ function AppContent() {
           <Route path="/admin/payments" element={<AdminRoute><PaymentManagement /></AdminRoute>} />
           <Route path="/admin/payment-settings" element={<AdminRoute><PaymentSettings /></AdminRoute>} />
           <Route path="/admin/vouchers" element={<AdminRoute><VoucherManagement /></AdminRoute>} />
+          <Route path="/admin/credit-packages" element={<AdminRoute><CreditPackages /></AdminRoute>} />
 
           {/* Catch all */}
           <Route path="*" element={<Navigate to="/" replace />} />

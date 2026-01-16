@@ -11,6 +11,7 @@ const commandParser = require('./commandParser');
 const groupForwardingService = require('./groupForwarding');
 const securityService = require('./securityService');
 const commandTemplateService = require('./commandTemplateService');
+const botFeatureService = require('./botFeatureService');
 
 class CommandHandlerService {
     constructor() {
@@ -58,6 +59,17 @@ class CommandHandlerService {
             success: 0,
             failed: 0
         };
+
+        // ==================== CHECK COMMAND PERMISSION ====================
+        // Check if this command type is enabled in user's bot feature toggles
+        const isCommandAllowed = await botFeatureService.isCommandAllowed(userId, command);
+        if (!isCommandAllowed) {
+            return {
+                success: false,
+                error: `❌ The "${command}" command is currently disabled. Please enable it in Bot Settings.`,
+                responses: []
+            };
+        }
 
         // Process each order ID
         for (const orderId of orderIds) {
@@ -308,6 +320,32 @@ class CommandHandlerService {
                 }),
                 details: { reason: 'status', status: order.status }
             };
+        }
+
+        // ==================== GUARANTEE VALIDATION ====================
+        // Check if order is within guarantee period
+        try {
+            const guaranteeService = require('./guaranteeService');
+            const guaranteeCheck = await guaranteeService.checkGuarantee(order, order.userId);
+
+            if (!guaranteeCheck.valid) {
+                console.log(`[CommandHandler] Guarantee check failed for order ${orderId}:`, guaranteeCheck.reason);
+
+                return {
+                    success: false,
+                    message: guaranteeService.formatGuaranteeMessage(guaranteeCheck, order),
+                    details: {
+                        reason: 'guarantee_failed',
+                        guaranteeReason: guaranteeCheck.reason,
+                        ...guaranteeCheck.details
+                    }
+                };
+            }
+
+            console.log(`[CommandHandler] Guarantee check passed for order ${orderId}:`, guaranteeCheck.reason);
+        } catch (guaranteeError) {
+            // Log but don't fail the command if guarantee service has issues
+            console.error('[CommandHandler] Guarantee validation error:', guaranteeError.message);
         }
 
         try {

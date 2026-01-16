@@ -230,6 +230,9 @@ model Order {
   canCancel           Boolean   @default(false)  // Whether cancel button is available
   actionsUpdatedAt    DateTime? // Last time actions were synced from panel
 
+  // ==================== GUARANTEE TRACKING ====================
+  // For guarantee validation on refill requests
+  completedAt         DateTime? // When order was marked as completed
   
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
@@ -746,4 +749,391 @@ model SystemCommandTemplate {
   variables   String   // JSON array of available variables for this command
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+}
+
+// ==================== BOT FEATURE TOGGLES ====================
+// User-configurable toggles for enabling/disabling bot features
+// Phase 4: Rule-Based Bot Control
+
+model BotFeatureToggles {
+  id     String @id @default(cuid())
+  userId String @unique
+  
+  // ==================== HIGH-RISK RULES (Opt-in only) ====================
+  // These features can affect orders, funds, or account data
+  
+  // Error/Failed Order Auto Handling
+  // Allows failed/error orders to be auto-cancelled or refunded
+  autoHandleFailedOrders      Boolean @default(false)
+  failedOrderAction           String  @default("NOTIFY") // CANCEL, REFUND, NOTIFY, IGNORE
+  
+  // Force Order Status to Completed (DANGEROUS!)
+  // Allows marking orders as completed regardless of actual status
+  allowForceCompleted         Boolean @default(false)
+  
+  // Order Link Update via Chatbot
+  // Allows users to update order link through WhatsApp
+  allowLinkUpdateViaBot       Boolean @default(false)
+  
+  // Payment Verification Mode
+  // Bot can check payment/transaction status
+  allowPaymentVerification    Boolean @default(false)
+  
+  // User Account Details via Chatbot
+  // Bot replies with username, balance, total spent
+  allowAccountDetailsViaBot   Boolean @default(false)
+  
+  // Ticket Auto-Reply
+  // Bot automatically replies to panel tickets
+  allowTicketAutoReply        Boolean @default(false)
+  
+  // ==================== COMMAND TOGGLES ====================
+  // Enable/disable specific command types
+  
+  allowRefillCommand          Boolean @default(true)
+  allowCancelCommand          Boolean @default(true)
+  allowSpeedUpCommand         Boolean @default(true)
+  allowStatusCommand          Boolean @default(true)
+  
+  // ==================== PROCESSING STATUS RULES ====================
+  // Special handling for orders with "Processing" status
+  
+  processingSpeedUpEnabled    Boolean @default(true)   // Allow speed-up for processing orders
+  processingCancelEnabled     Boolean @default(false)  // Allow cancel for processing orders
+  autoForwardProcessingCancel Boolean @default(false)  // Auto-forward cancel to provider
+  
+  // ==================== PROVIDER COMMAND TEMPLATES ====================
+  // Custom command formats for provider forwarding
+  
+  providerSpeedUpTemplate     String  @default("{speed}")
+  providerRefillTemplate      String  @default("{refill}")
+  providerCancelTemplate      String  @default("{cancel}")
+  
+  // ==================== RESPONSE SETTINGS ====================
+  
+  bulkResponseThreshold       Int     @default(5)   // Switch to compact mode after this many orders
+  maxBulkOrders               Int     @default(100) // Max orders per message
+  showProviderInResponse      Boolean @default(false)
+  showDetailedStatus          Boolean @default(false)
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ==================== GUARANTEE CONFIG ====================
+// User-configurable patterns for detecting guarantee in service names
+// Phase 2: Refill guarantee validation
+
+model GuaranteeConfig {
+  id          String   @id @default(cuid())
+  userId      String   @unique
+  
+  // Pattern configuration (JSON array of regex patterns)
+  // Example: ["(\\d+)\\s*Days?\\s*♻️", "Guarantee\\s*(\\d+)"]
+  patterns    String   @default("[]")
+  
+  // Simple keyword matching (comma-separated)
+  // Example: "guarantee,♻️,refill,days"
+  keywords    String?
+  
+  // Emoji patterns (comma-separated)
+  // Example: "♻️,🔄,✅"
+  emojis      String?
+  
+  // Default guarantee days if pattern found but no days specified
+  defaultDays Int      @default(30)
+  
+  // Whether to enable guarantee validation
+  isEnabled   Boolean  @default(true)
+  
+  // What to do when no guarantee found
+  // ALLOW = allow refill anyway, DENY = deny refill, ASK = ask user
+  noGuaranteeAction String @default("DENY")
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// ==================== CREDIT PACKAGES ====================
+// Predefined credit packages for purchase
+// From clientupdate2.md: $50 = 5000 credits model
+
+model CreditPackage {
+  id          String   @id @default(cuid())
+  
+  // Package info
+  name        String   // "Starter", "Pro", "Enterprise"
+  description String?
+  
+  // Pricing
+  price       Float    // USD amount
+  credits     Int      // Number of message credits
+  
+  // Bonus credits for larger packages
+  bonusCredits  Int    @default(0)
+  
+  // Discount percentage (for display)
+  discountPct   Float  @default(0)
+  
+  // Package limits
+  minPurchase   Int    @default(1)  // Min qty per transaction
+  maxPurchase   Int?   // Max qty per transaction (null = unlimited)
+  
+  // Status and display
+  isActive      Boolean @default(true)
+  isFeatured    Boolean @default(false)  // Highlight this package
+  sortOrder     Int     @default(0)       // Display order
+  
+  // Admin tracking
+  createdBy     String?
+  
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  
+  @@index([isActive])
+  @@index([sortOrder])
+}
+
+// ==================== MONTHLY SUBSCRIPTIONS ====================
+// Recurring subscriptions for devices, panels, bots
+// From clientupdate2.md: Auto-renewal system
+
+model MonthlySubscription {
+  id          String   @id @default(cuid())
+  userId      String
+  
+  // What is being subscribed to
+  resourceType String  // DEVICE, TELEGRAM_BOT, SMM_PANEL
+  resourceId   String  // ID of the device/bot/panel
+  resourceName String? // Display name for reference
+  
+  // Pricing
+  monthlyFee   Float
+  currency     String  @default("USD")
+  
+  // Status
+  status       String  @default("ACTIVE") // ACTIVE, PAUSED, CANCELLED, EXPIRED, PENDING
+  
+  // Billing cycle
+  startDate       DateTime
+  nextBillingDate DateTime
+  lastBilledAt    DateTime?
+  
+  // Grace period settings
+  gracePeriodDays Int      @default(3)
+  pausedAt        DateTime?
+  expiresAt       DateTime? // After grace period ends
+  
+  // Payment tracking
+  failedAttempts  Int      @default(0)
+  lastFailReason  String?
+  lastFailedAt    DateTime?
+  
+  // Free first login tracking
+  isFreeFirst     Boolean  @default(false)
+  
+  // Notifications sent
+  reminderSentAt  DateTime?
+  expiringSentAt  DateTime?
+  
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  
+  @@index([userId])
+  @@index([resourceType, resourceId])
+  @@index([nextBillingDate])
+  @@index([status])
+}
+
+// ==================== USER WHATSAPP MAPPING ====================
+// Maps panel usernames to WhatsApp numbers for validation
+// Phase 1: Username & User Validation System
+
+model UserWhatsAppMapping {
+  id              String   @id @default(cuid())
+  userId          String   // Panel owner (WABAR user)
+  
+  // Panel user info
+  panelUsername   String   // Username on the SMM panel
+  panelEmail      String?  // Email on the SMM panel
+  panelUserId     String?  // User ID on the SMM panel
+  
+  // WhatsApp mappings (JSON array of phone numbers)
+  // Example: ["628123456789", "628987654321"]
+  whatsappNumbers String   @default("[]")
+  
+  // Group IDs (JSON array of WhatsApp group JIDs)
+  // Example: ["123456789@g.us", "987654321@g.us"]
+  groupIds        String   @default("[]")
+  
+  // Bot control per user
+  isBotEnabled    Boolean  @default(true)  // Active/Disabled toggle
+  
+  // Admin notes (internal only)
+  adminNotes      String?
+  
+  // Auto-suspend for spam/abuse
+  isAutoSuspended Boolean  @default(false)
+  suspendReason   String?
+  suspendedAt     DateTime?
+  
+  // Spam tracking
+  spamCount       Int      @default(0)
+  lastSpamAt      DateTime?
+  
+  // Activity tracking
+  lastMessageAt   DateTime?
+  totalMessages   Int      @default(0)
+  
+  // Verification status
+  isVerified      Boolean  @default(false)
+  verifiedAt      DateTime?
+  verifiedBy      String?  // "SELF", "ADMIN", "AUTO"
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  @@unique([userId, panelUsername])
+  @@index([panelEmail])
+  @@index([whatsappNumbers])
+  @@index([userId])
+}
+
+// ==================== PROVIDER DOMAIN MAPPING ====================
+// Stores hidden provider domain info for internal use
+// Phase 5: Provider Integration & Security
+
+model ProviderDomainMapping {
+  id            String   @id @default(cuid())
+  userId        String
+  panelId       String
+  
+  // Provider identification
+  providerId    String   // Provider ID from panel (e.g., "130")
+  providerName  String   // Original provider name from panel
+  
+  // Hidden domain (INTERNAL ONLY - never exposed to UI!)
+  // This is for security and provider identification
+  hiddenDomain  String?  // e.g., "smmrapid.com", extracted from provider data
+  
+  // Public alias (user-facing, configurable)
+  publicAlias   String   // e.g., "SMMRPD"
+  
+  // Multiple forwarding destinations (JSON array)
+  // Structure: [{type: "WHATSAPP_GROUP", id: "xxx@g.us", name: "Support"}, ...]
+  // Types: WHATSAPP_GROUP, WHATSAPP_NUMBER, TELEGRAM_GROUP, TELEGRAM_USERNAME
+  forwardDestinations String @default("[]")
+  
+  // Forwarding control
+  isForwardingEnabled Boolean @default(true)
+  isApiRequestEnabled Boolean @default(true)  // Also send API request to panel
+  
+  // Stats
+  totalForwarded Int      @default(0)
+  lastForwardedAt DateTime?
+  
+  lastSyncedAt  DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  
+  @@unique([userId, panelId, providerId])
+  @@index([hiddenDomain])
+  @@index([publicAlias])
+  @@index([userId])
+}
+
+// ==================== KEYWORD RESPONSES ====================
+// Separated keyword-response configuration
+// From clientupdate2.md: "Create a separate section where keywords define replies"
+
+model KeywordResponse {
+  id          String   @id @default(cuid())
+  userId      String
+  
+  // Keyword configuration
+  keyword     String   // The keyword to match
+  
+  // Match type: EXACT, CONTAINS, STARTS_WITH, ENDS_WITH, REGEX
+  matchType   String   @default("CONTAINS")
+  
+  // Case sensitivity
+  caseSensitive Boolean @default(false)
+  
+  // Response configuration
+  responseText  String   // The reply message
+  responseMedia String?  // Optional media URL (image, document, etc.)
+  
+  // Optional actions when keyword matched
+  // NONE, FORWARD_TO_ADMIN, CREATE_TICKET, TRIGGER_WEBHOOK, BLOCK_USER
+  triggerAction String?  @default("NONE")
+  
+  // Action configuration (JSON)
+  // e.g., { "webhookUrl": "...", "adminPhone": "..." }
+  actionConfig  String?  @default("{}")
+  
+  // Targeting
+  deviceId      String?  // Specific device only, null = all devices
+  platform      String   @default("ALL") // WHATSAPP, TELEGRAM, ALL
+  applyToGroups Boolean  @default(true)  // Apply in group chats
+  applyToDMs    Boolean  @default(true)  // Apply in direct messages
+  
+  // Priority (higher = checked first)
+  priority      Int      @default(0)
+  
+  // Status
+  isActive      Boolean  @default(true)
+  
+  // Stats
+  triggerCount  Int      @default(0)
+  lastTriggeredAt DateTime?
+  
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  
+  @@index([userId])
+  @@index([keyword])
+  @@index([priority])
+}
+
+// ==================== TICKET AUTOMATION ====================
+
+model Ticket {
+  id              String   @id @default(uuid())
+  userId          String
+  ticketNumber    String   @unique
+  
+  // Related order (optional)
+  orderId         String?
+  orderExternalId String?
+  panelId         String?
+  
+  // Customer info
+  customerPhone   String?
+  customerUsername String?
+  
+  // Ticket details
+  category        String   @default("GENERAL") // REFILL, CANCEL, SPEEDUP, PARTIAL, GENERAL, TECHNICAL
+  subject         String
+  status          String   @default("OPEN") // OPEN, PENDING, IN_PROGRESS, WAITING_CUSTOMER, RESOLVED, CLOSED
+  priority        String   @default("NORMAL") // LOW, NORMAL, HIGH, URGENT
+  source          String   @default("WHATSAPP") // WHATSAPP, TELEGRAM, WEB, API
+  
+  // Messages stored as JSON array
+  messages        String   @default("[]") @db.Text
+  
+  // Panel integration
+  panelTicketId   String?
+  syncedAt        DateTime?
+  
+  // Timestamps
+  assignedAt      DateTime?
+  resolvedAt      DateTime?
+  lastReplyAt     DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  @@index([userId])
+  @@index([ticketNumber])
+  @@index([status])
+  @@index([customerPhone])
 }

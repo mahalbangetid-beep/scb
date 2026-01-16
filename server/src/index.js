@@ -27,6 +27,15 @@ const telegramRoutes = require('./routes/telegram');
 const commandTemplateRoutes = require('./routes/commandTemplates');
 const paymentRoutes = require('./routes/payments');
 const paymentWebhookRoutes = require('./routes/paymentWebhooks');
+const botFeaturesRoutes = require('./routes/botFeatures');
+const guaranteeRoutes = require('./routes/guarantee');
+const keywordResponsesRoutes = require('./routes/keywordResponses');
+const creditPackagesRoutes = require('./routes/creditPackages');
+const subscriptionsRoutes = require('./routes/subscriptions');
+const userMappingsRoutes = require('./routes/userMappings');
+const providerDomainsRoutes = require('./routes/providerDomains');
+const ticketsRoutes = require('./routes/tickets');
+const highRiskRoutes = require('./routes/highRisk');
 
 // Import middleware
 const { errorHandler, notFound } = require('./middleware/errorHandler');
@@ -121,7 +130,15 @@ app.use('/api/telegram', telegramRoutes);
 app.use('/api/command-templates', commandTemplateRoutes);
 app.use('/api/payments', paymentRoutes);
 app.use('/api/payment-webhooks', paymentWebhookRoutes);
-
+app.use('/api/bot-features', botFeaturesRoutes);
+app.use('/api/guarantee', guaranteeRoutes);
+app.use('/api/keyword-responses', keywordResponsesRoutes);
+app.use('/api/credit-packages', creditPackagesRoutes);
+app.use('/api/subscriptions', subscriptionsRoutes);
+app.use('/api/user-mappings', userMappingsRoutes);
+app.use('/api/provider-domains', providerDomainsRoutes);
+app.use('/api/tickets', ticketsRoutes);
+app.use('/api/high-risk', highRiskRoutes);
 
 // Socket.IO connection handler
 io.on('connection', (socket) => {
