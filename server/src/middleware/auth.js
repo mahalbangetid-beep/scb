@@ -172,7 +172,7 @@ const authorize = (...roles) => {
 
 /**
  * Middleware to require specific role or higher in hierarchy
- * @param {string} minRole - Minimum required role
+ * @param {string|string[]} minRole - Minimum required role OR array of allowed roles
  */
 const requireRole = (minRole) => {
     return (req, res, next) => {
@@ -180,6 +180,15 @@ const requireRole = (minRole) => {
             return next(new AppError('Not authenticated', 401));
         }
 
+        // Handle array of allowed roles
+        if (Array.isArray(minRole)) {
+            if (minRole.includes(req.user.role)) {
+                return next();
+            }
+            return next(new AppError(`Requires one of: ${minRole.join(', ')}`, 403));
+        }
+
+        // Handle single role with hierarchy check
         const userRoleLevel = ROLE_HIERARCHY[req.user.role] || 0;
         const requiredRoleLevel = ROLE_HIERARCHY[minRole] || 0;
 
@@ -190,6 +199,7 @@ const requireRole = (minRole) => {
         next();
     };
 };
+
 
 /**
  * Middleware to require Master Admin only

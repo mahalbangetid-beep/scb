@@ -30,7 +30,7 @@ class UserMappingService {
         }
 
         // Check for existing mapping
-        const existing = await prisma.userWhatsAppMapping.findFirst({
+        const existing = await prisma.userPanelMapping.findFirst({
             where: {
                 userId,
                 panelUsername: data.panelUsername
@@ -58,7 +58,7 @@ class UserMappingService {
             groupIds = Array.isArray(data.groupIds) ? data.groupIds : [data.groupIds];
         }
 
-        return prisma.userWhatsAppMapping.create({
+        return prisma.userPanelMapping.create({
             data: {
                 userId,
                 panelUsername: data.panelUsername,
@@ -101,7 +101,7 @@ class UserMappingService {
             where.isAutoSuspended = options.isAutoSuspended;
         }
 
-        const mappings = await prisma.userWhatsAppMapping.findMany({
+        const mappings = await prisma.userPanelMapping.findMany({
             where,
             orderBy: options.orderBy || { createdAt: 'desc' },
             take: options.limit || 100,
@@ -119,7 +119,7 @@ class UserMappingService {
         const where = { id };
         if (userId) where.userId = userId;
 
-        const mapping = await prisma.userWhatsAppMapping.findFirst({ where });
+        const mapping = await prisma.userPanelMapping.findFirst({ where });
         return mapping ? this.parseMapping(mapping) : null;
     }
 
@@ -129,7 +129,7 @@ class UserMappingService {
     async findByPhone(userId, phone) {
         const normalizedPhone = this.normalizePhone(phone);
 
-        const mappings = await prisma.userWhatsAppMapping.findMany({
+        const mappings = await prisma.userPanelMapping.findMany({
             where: {
                 userId,
                 whatsappNumbers: { contains: normalizedPhone }
@@ -151,7 +151,7 @@ class UserMappingService {
      * Find mapping by panel username
      */
     async findByUsername(userId, panelUsername) {
-        const mapping = await prisma.userWhatsAppMapping.findFirst({
+        const mapping = await prisma.userPanelMapping.findFirst({
             where: {
                 userId,
                 panelUsername: {
@@ -168,7 +168,7 @@ class UserMappingService {
      * Find mapping by group ID
      */
     async findByGroup(userId, groupId) {
-        const mappings = await prisma.userWhatsAppMapping.findMany({
+        const mappings = await prisma.userPanelMapping.findMany({
             where: {
                 userId,
                 groupIds: { contains: groupId }
@@ -217,7 +217,7 @@ class UserMappingService {
             updateData.groupIds = JSON.stringify(groups);
         }
 
-        const updated = await prisma.userWhatsAppMapping.update({
+        const updated = await prisma.userPanelMapping.update({
             where: { id },
             data: updateData
         });
@@ -291,7 +291,7 @@ class UserMappingService {
         const existing = await this.getById(id, userId);
         if (!existing) throw new Error('Mapping not found');
 
-        return prisma.userWhatsAppMapping.delete({
+        return prisma.userPanelMapping.delete({
             where: { id }
         });
     }
@@ -300,7 +300,7 @@ class UserMappingService {
      * Verify a user mapping
      */
     async verifyMapping(id, userId, verifiedBy = 'ADMIN') {
-        return prisma.userWhatsAppMapping.update({
+        return prisma.userPanelMapping.update({
             where: { id },
             data: {
                 isVerified: true,
@@ -314,7 +314,7 @@ class UserMappingService {
      * Unverify a user mapping
      */
     async unverifyMapping(id, userId) {
-        return prisma.userWhatsAppMapping.update({
+        return prisma.userPanelMapping.update({
             where: { id },
             data: {
                 isVerified: false,
@@ -331,7 +331,7 @@ class UserMappingService {
         const mapping = await this.getById(id, userId);
         if (!mapping) throw new Error('Mapping not found');
 
-        return prisma.userWhatsAppMapping.update({
+        return prisma.userPanelMapping.update({
             where: { id },
             data: { isBotEnabled: !mapping.isBotEnabled }
         });
@@ -341,7 +341,7 @@ class UserMappingService {
      * Record message activity (for spam tracking)
      */
     async recordActivity(mappingId) {
-        return prisma.userWhatsAppMapping.update({
+        return prisma.userPanelMapping.update({
             where: { id: mappingId },
             data: {
                 lastMessageAt: new Date(),
@@ -354,7 +354,7 @@ class UserMappingService {
      * Record spam incident
      */
     async recordSpam(mappingId) {
-        const mapping = await prisma.userWhatsAppMapping.findUnique({
+        const mapping = await prisma.userPanelMapping.findUnique({
             where: { id: mappingId }
         });
 
@@ -363,7 +363,7 @@ class UserMappingService {
         const newSpamCount = (mapping.spamCount || 0) + 1;
         const shouldSuspend = newSpamCount >= this.autoSuspendThreshold;
 
-        return prisma.userWhatsAppMapping.update({
+        return prisma.userPanelMapping.update({
             where: { id: mappingId },
             data: {
                 spamCount: newSpamCount,
@@ -379,7 +379,7 @@ class UserMappingService {
      * Suspend a user mapping
      */
     async suspendMapping(id, userId, reason = null) {
-        return prisma.userWhatsAppMapping.update({
+        return prisma.userPanelMapping.update({
             where: { id },
             data: {
                 isAutoSuspended: true,
@@ -393,7 +393,7 @@ class UserMappingService {
      * Unsuspend a user mapping
      */
     async unsuspendMapping(id, userId) {
-        return prisma.userWhatsAppMapping.update({
+        return prisma.userPanelMapping.update({
             where: { id },
             data: {
                 isAutoSuspended: false,
@@ -486,10 +486,10 @@ class UserMappingService {
      */
     async getStats(userId) {
         const [total, verified, botEnabled, suspended] = await Promise.all([
-            prisma.userWhatsAppMapping.count({ where: { userId } }),
-            prisma.userWhatsAppMapping.count({ where: { userId, isVerified: true } }),
-            prisma.userWhatsAppMapping.count({ where: { userId, isBotEnabled: true } }),
-            prisma.userWhatsAppMapping.count({ where: { userId, isAutoSuspended: true } })
+            prisma.userPanelMapping.count({ where: { userId } }),
+            prisma.userPanelMapping.count({ where: { userId, isVerified: true } }),
+            prisma.userPanelMapping.count({ where: { userId, isBotEnabled: true } }),
+            prisma.userPanelMapping.count({ where: { userId, isAutoSuspended: true } })
         ]);
 
         return {

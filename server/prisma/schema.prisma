@@ -1137,3 +1137,120 @@ model Ticket {
   @@index([status])
   @@index([customerPhone])
 }
+
+// ==================== MONTHLY SUBSCRIPTION ====================
+
+model MonthlySubscription {
+  id              String   @id @default(cuid())
+  userId          String
+  
+  // Resource info
+  resourceType    String   // DEVICE, TELEGRAM_BOT, SMM_PANEL
+  resourceId      String
+  resourceName    String?
+  
+  // Billing
+  monthlyFee      Float    @default(0)
+  status          String   @default("ACTIVE") // ACTIVE, PAUSED, CANCELLED, EXPIRED
+  
+  // Dates
+  startDate       DateTime @default(now())
+  nextBillingDate DateTime
+  lastBilledAt    DateTime?
+  pausedAt        DateTime?
+  
+  // Grace period
+  gracePeriodDays Int      @default(3)
+  failedAttempts  Int      @default(0)
+  lastFailReason  String?
+  lastFailedAt    DateTime?
+  
+  // Flags
+  isFreeFirst     Boolean  @default(false)
+  reminderSentAt  DateTime?
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  @@index([userId])
+  @@index([resourceType, resourceId])
+  @@index([status])
+  @@index([nextBillingDate])
+}
+
+// ==================== USER PANEL MAPPING ====================
+
+model UserPanelMapping {
+  id              String   @id @default(cuid())
+  userId          String
+  
+  // Panel user info
+  panelUsername   String
+  panelEmail      String?
+  panelUserId     String?
+  
+  // WhatsApp numbers (stored as JSON array)
+  whatsappNumbers String   @default("[]") @db.Text
+  
+  // Group IDs (stored as JSON array)
+  groupIds        String   @default("[]") @db.Text
+  
+  // Status
+  isVerified      Boolean  @default(false)
+  verifiedAt      DateTime?
+  verifiedBy      String?  // SELF, ADMIN, API, ORDER
+  
+  isBotEnabled    Boolean  @default(true)
+  isAutoSuspended Boolean  @default(false)
+  suspendedAt     DateTime?
+  suspendReason   String?
+  
+  // Spam tracking
+  spamCount       Int      @default(0)
+  lastSpamAt      DateTime?
+  
+  // Admin
+  adminNotes      String?  @db.Text
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  @@unique([userId, panelUsername])
+  @@index([userId])
+  @@index([panelUsername])
+}
+
+// ==================== CREDIT PACKAGES ====================
+
+model CreditPackage {
+  id              String   @id @default(cuid())
+  
+  // Package info
+  name            String
+  description     String?
+  
+  // Pricing
+  price           Float    // Price in USD
+  credits         Int      // Base credits
+  bonusCredits    Int      @default(0)
+  
+  // Status
+  isActive        Boolean  @default(true)
+  isFeatured      Boolean  @default(false)
+  sortOrder       Int      @default(0)
+  
+  // Limits
+  minPurchase     Int      @default(1)
+  maxPurchase     Int      @default(10)
+  
+  // Tracking
+  purchaseCount   Int      @default(0)
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  createdBy       String?
+  
+  @@index([isActive])
+  @@index([sortOrder])
+}
+

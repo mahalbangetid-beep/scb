@@ -169,7 +169,7 @@ class ResourceSubscriptionHook {
         console.log(`[ResourceHook] Resource deleted: ${resourceType} ${resourceId}`);
 
         // Find and cancel subscription
-        const subscription = await prisma.subscriptionResource.findFirst({
+        const subscription = await prisma.monthlySubscription.findFirst({
             where: {
                 userId,
                 resourceType,
@@ -190,7 +190,7 @@ class ResourceSubscriptionHook {
      * Get subscription status for a resource
      */
     async getResourceSubscription(userId, resourceType, resourceId) {
-        const subscription = await prisma.subscriptionResource.findFirst({
+        const subscription = await prisma.monthlySubscription.findFirst({
             where: {
                 userId,
                 resourceType,
@@ -232,7 +232,7 @@ class ResourceSubscriptionHook {
             prisma.device.count({ where: { userId } }),
             prisma.telegramBot.count({ where: { userId } }),
             prisma.smmPanel.count({ where: { userId } }),
-            prisma.subscriptionResource.findMany({
+            prisma.monthlySubscription.findMany({
                 where: { userId },
                 select: { resourceType: true, status: true, monthlyFee: true }
             })
