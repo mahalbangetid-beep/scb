@@ -421,6 +421,14 @@ router.put('/admin/payments/:id/reject', requireAdmin, async (req, res, next) =>
             throw new AppError('Payment is not pending', 400);
         }
 
+        // Safe parse existing metadata
+        let existingMeta = {};
+        try {
+            existingMeta = JSON.parse(payment.metadata || '{}');
+        } catch {
+            existingMeta = {};
+        }
+
         await prisma.payment.update({
             where: { id: payment.id },
             data: {
@@ -428,7 +436,7 @@ router.put('/admin/payments/:id/reject', requireAdmin, async (req, res, next) =>
                 processedAt: new Date(),
                 processedBy: req.user.id,
                 metadata: JSON.stringify({
-                    ...JSON.parse(payment.metadata || '{}'),
+                    ...existingMeta,
                     rejectReason: reason
                 })
             }
