@@ -368,11 +368,10 @@ class BotMessageHandler {
                     type: 'incoming',
                     to: 'bot',
                     from: params.senderNumber || 'unknown',
-                    content,
+                    message: content,  // Schema uses 'message' field, not 'content'
                     status: 'received',
-                    platform,
-                    creditCharged,
-                    metadata: metadata ? JSON.stringify(metadata) : null
+                    creditCharged: creditCharged || 0
+                    // Note: 'platform' and 'metadata' are not in Message schema
                 }
             });
         } catch (error) {
