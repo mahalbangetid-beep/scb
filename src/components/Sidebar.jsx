@@ -83,17 +83,13 @@ export default function Sidebar({ collapsed, onToggle }) {
     const location = useLocation()
     const navigate = useNavigate()
     const userStr = localStorage.getItem('user')
-
-    // Safe JSON parse with fallback
-    let initialUser = { name: 'Admin User', role: 'admin', creditBalance: 0 }
-    try {
-        if (userStr) {
-            initialUser = JSON.parse(userStr)
+    const initialUser = (() => {
+        try {
+            return userStr ? JSON.parse(userStr) : { name: 'Admin User', role: 'admin', creditBalance: 0 }
+        } catch (e) {
+            return { name: 'Admin User', role: 'admin', creditBalance: 0 }
         }
-    } catch (e) {
-        console.error('Failed to parse user from localStorage:', e)
-        localStorage.removeItem('user')
-    }
+    })()
 
     const [user, setUser] = useState(initialUser)
 
