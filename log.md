@@ -52,3 +52,58 @@ If the refill period has expired, the bot should reply:
 “Refill period has expired.”
 
 The process ends.
+
+
+START
+  │
+  ▼
+Refill Request Received
+(Order ID: 3500)
+  │
+  ▼
+Check Order Status
+  │
+  ├── Is Status = Completed?
+  │        │
+  │        ├── NO
+  │        │     └── STOP
+  │        │         (Order not eligible for refill)
+  │        │
+  │        └── YES
+  │
+  ▼
+Check Service Name
+(Guarantee Keyword?)
+  │
+  ├── NO Guarantee Keyword Found
+  │        │
+  │        └── Reply to User:
+  │            "This is not possible to refill.
+  │             This is a no-refill, no-support service."
+  │
+  │        └── STOP
+  │
+  └── Guarantee Keyword Found
+           │
+           ▼
+     Check Refill Validity
+ (Order Date → Current Date)
+           │
+           ├── Refill Period VALID
+           │        │
+           │        ├── Reply:
+           │        │    "Refill request added"
+           │        │
+           │        ├── Send Refill Command
+           │        │    to Provider
+           │        │
+           │        ├── Send External Order ID
+           │        │
+           │        └── STOP
+           │
+           └── Refill Period EXPIRED
+                    │
+                    ├── Reply:
+                    │    "Refill period has expired"
+                    │
+                    └── STOP

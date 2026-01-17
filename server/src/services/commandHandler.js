@@ -202,6 +202,7 @@ class CommandHandlerService {
 
                     if (orderData && orderData.status) {
                         console.log(`[CommandHandler] Order ${orderId} found in panel ${panel.alias}, creating local record...`);
+                        console.log(`[CommandHandler] Order data: status=${orderData.status}, serviceName="${orderData.serviceName}"`);
 
                         // Normalize status
                         const smmPanelService = require('./smmPanel');
@@ -209,19 +210,27 @@ class CommandHandlerService {
                             ? orderData.status  // Already normalized from Admin API
                             : smmPanelService.mapStatus(orderData.status);
 
+                        // Prepare create data
+                        const createData = {
+                            externalOrderId: orderId,
+                            panelId: panel.id,
+                            userId,
+                            status: normalizedStatus,
+                            charge: orderData.charge,
+                            startCount: orderData.startCount,
+                            remains: orderData.remains,
+                            serviceName: orderData.serviceName,
+                            link: orderData.link
+                        };
+
+                        // Set completedAt if order is already COMPLETED
+                        if (normalizedStatus === 'COMPLETED') {
+                            createData.completedAt = new Date();
+                        }
+
                         // Create order record in database
                         order = await prisma.order.create({
-                            data: {
-                                externalOrderId: orderId,
-                                panelId: panel.id,
-                                userId,
-                                status: normalizedStatus,
-                                charge: orderData.charge,
-                                startCount: orderData.startCount,
-                                remains: orderData.remains,
-                                serviceName: orderData.serviceName,
-                                link: orderData.link
-                            },
+                            data: createData,
                             include: {
                                 panel: {
                                     select: {
@@ -237,7 +246,7 @@ class CommandHandlerService {
                             }
                         });
 
-                        console.log(`[CommandHandler] Order ${orderId} created from API response`);
+                        console.log(`[CommandHandler] Order ${orderId} created from API response (status: ${normalizedStatus}, serviceName: "${order.serviceName}")`);
                         break; // Found it, stop searching
                     }
                 } catch (apiError) {
@@ -298,14 +307,24 @@ class CommandHandlerService {
             if (latestStatus && latestStatus.status && latestStatus.status !== order.status) {
                 console.log(`[CommandHandler] Updating order ${orderId} status: ${order.status} -> ${latestStatus.status}`);
 
+                // Set completedAt if status is now COMPLETED
+                const updateData = {
+                    status: latestStatus.status,
+                    startCount: latestStatus.startCount ?? order.startCount,
+                    remains: latestStatus.remains ?? order.remains,
+                    charge: latestStatus.charge ?? order.charge,
+                    serviceName: latestStatus.serviceName || order.serviceName,
+                    link: latestStatus.link || order.link
+                };
+
+                // Set completedAt when order becomes COMPLETED for the first time
+                if (latestStatus.status === 'COMPLETED' && !order.completedAt) {
+                    updateData.completedAt = new Date();
+                }
+
                 order = await prisma.order.update({
                     where: { id: order.id },
-                    data: {
-                        status: latestStatus.status,
-                        startCount: latestStatus.startCount ?? order.startCount,
-                        remains: latestStatus.remains ?? order.remains,
-                        charge: latestStatus.charge ?? order.charge
-                    },
+                    data: updateData,
                     include: {
                         panel: {
                             select: {
@@ -320,6 +339,8 @@ class CommandHandlerService {
                         }
                     }
                 });
+
+                console.log(`[CommandHandler] Order ${orderId} updated - serviceName: "${order.serviceName}", completedAt: ${order.completedAt}`);
             }
         } catch (refreshError) {
             console.log(`[CommandHandler] Status refresh failed (using cached):`, refreshError.message);
@@ -506,17 +527,32 @@ class CommandHandlerService {
         }
 
         // ==================== GUARANTEE VALIDATION ====================
-        // Check if order is within guarantee period
+        // Check if order is within guarantee period based on service name keywords
         try {
             const guaranteeService = require('./guaranteeService');
+
+            console.log(`[CommandHandler] Checking guarantee for order ${orderId}:`);
+            console.log(`  - Service Name: "${order.serviceName}"`);
+            console.log(`  - Completed At: ${order.completedAt}`);
+
             const guaranteeCheck = await guaranteeService.checkGuarantee(order, order.userId);
 
             if (!guaranteeCheck.valid) {
-                console.log(`[CommandHandler] Guarantee check failed for order ${orderId}:`, guaranteeCheck.reason);
+                console.log(`[CommandHandler] Guarantee check FAILED for order ${orderId}: ${guaranteeCheck.reason}`);
+
+                // Format message based on reason
+                let message;
+                if (guaranteeCheck.reason === 'NO_GUARANTEE') {
+                    message = `❌ Order ${orderId}: This is not possible to refill. This is a no-refill, no-support service.`;
+                } else if (guaranteeCheck.reason === 'EXPIRED') {
+                    message = `❌ Order ${orderId}: Refill period has expired.`;
+                } else {
+                    message = guaranteeService.formatGuaranteeMessage(guaranteeCheck, order);
+                }
 
                 return {
                     success: false,
-                    message: guaranteeService.formatGuaranteeMessage(guaranteeCheck, order),
+                    message,
                     details: {
                         reason: 'guarantee_failed',
                         guaranteeReason: guaranteeCheck.reason,
@@ -525,7 +561,7 @@ class CommandHandlerService {
                 };
             }
 
-            console.log(`[CommandHandler] Guarantee check passed for order ${orderId}:`, guaranteeCheck.reason);
+            console.log(`[CommandHandler] Guarantee check PASSED for order ${orderId}: ${guaranteeCheck.reason}`);
         } catch (guaranteeError) {
             // Log but don't fail the command if guarantee service has issues
             console.error('[CommandHandler] Guarantee validation error:', guaranteeError.message);
