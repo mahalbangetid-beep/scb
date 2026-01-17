@@ -367,8 +367,20 @@ class WhatsAppService {
                             if (handlerResult.handled && handlerResult.response) {
                                 // Send reply to the correct JID (group or private)
                                 const replyJid = msg.key.remoteJid;
-                                await socket.sendMessage(replyJid, { text: handlerResult.response });
-                                console.log(`[WA:${deviceId}] Response sent: ${handlerResult.type}${device.panelId ? ` (Panel: ${device.panel?.alias || device.panel?.name})` : ''}`);
+
+                                // In groups, mention the user who sent the command
+                                if (isGroup && messageData.from) {
+                                    const userJid = `${messageData.from}@s.whatsapp.net`;
+                                    const mentionText = `@${messageData.from}\n\n${handlerResult.response}`;
+                                    await socket.sendMessage(replyJid, {
+                                        text: mentionText,
+                                        mentions: [userJid]
+                                    });
+                                } else {
+                                    await socket.sendMessage(replyJid, { text: handlerResult.response });
+                                }
+
+                                console.log(`[WA:${deviceId}] Response sent: ${handlerResult.type}${device.panelId ? ` (Panel: ${device.panel?.alias || device.panel?.name})` : ''}${isGroup ? ' (with mention)' : ''}`);
                             }
                         } catch (err) {
                             console.error(`[WA:${deviceId}] BotMessageHandler error:`, err.message);
