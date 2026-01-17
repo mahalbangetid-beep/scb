@@ -23,83 +23,9 @@ router.get('/', authenticate, async (req, res, next) => {
     }
 });
 
-// GET /api/settings/:key - Get specific setting
-router.get('/:key', authenticate, async (req, res, next) => {
-    try {
-        const setting = await prisma.setting.findUnique({
-            where: {
-                key_userId: {
-                    key: req.params.key,
-                    userId: req.user.id
-                }
-            }
-        });
-
-        if (!setting) {
-            return successResponse(res, null);
-        }
-
-        successResponse(res, setting.value);
-    } catch (error) {
-        next(error);
-    }
-});
-
-// POST /api/settings - Update or create multiple settings
-router.post('/', authenticate, async (req, res, next) => {
-    try {
-        const settings = req.body; // Expecting { key: value, ... }
-
-        const operations = Object.entries(settings).map(([key, value]) => {
-            return prisma.setting.upsert({
-                where: {
-                    key_userId: {
-                        key,
-                        userId: req.user.id
-                    }
-                },
-                update: { value },
-                create: {
-                    key,
-                    value,
-                    userId: req.user.id
-                }
-            });
-        });
-
-        await Promise.all(operations);
-
-        successResponse(res, null, 'Settings updated');
-    } catch (error) {
-        next(error);
-    }
-});
-
-// PUT /api/settings/:key - Update or create specific setting
-router.put('/:key', authenticate, async (req, res, next) => {
-    try {
-        const { value } = req.body;
-
-        const setting = await prisma.setting.upsert({
-            where: {
-                key_userId: {
-                    key: req.params.key,
-                    userId: req.user.id
-                }
-            },
-            update: { value },
-            create: {
-                key: req.params.key,
-                value,
-                userId: req.user.id
-            }
-        });
-
-        successResponse(res, setting.value, 'Setting updated');
-    } catch (error) {
-        next(error);
-    }
-});
+// NOTE: GET /:key and PUT /:key routes have been moved to the END of this file
+// because Express matches routes in order, and /:key would match all named routes
+// like /stats/dashboard, /bot-security, /bot-toggles, etc.
 
 // GET /api/settings/stats/dashboard - Dashboard statistics
 router.get('/stats/dashboard', authenticate, async (req, res, next) => {
@@ -432,5 +358,86 @@ router.put('/bot-toggles', authenticate, async (req, res, next) => {
     }
 });
 
+// ==================== WILDCARD ROUTES (MUST BE LAST) ====================
+// These routes use /:key which would match any path
+// They MUST be defined after all specific named routes
+
+// POST /api/settings - Update or create multiple settings
+router.post('/', authenticate, async (req, res, next) => {
+    try {
+        const settings = req.body; // Expecting { key: value, ... }
+
+        const operations = Object.entries(settings).map(([key, value]) => {
+            return prisma.setting.upsert({
+                where: {
+                    key_userId: {
+                        key,
+                        userId: req.user.id
+                    }
+                },
+                update: { value },
+                create: {
+                    key,
+                    value,
+                    userId: req.user.id
+                }
+            });
+        });
+
+        await Promise.all(operations);
+
+        successResponse(res, null, 'Settings updated');
+    } catch (error) {
+        next(error);
+    }
+});
+
+// GET /api/settings/:key - Get specific setting (MUST BE AFTER NAMED ROUTES)
+router.get('/:key', authenticate, async (req, res, next) => {
+    try {
+        const setting = await prisma.setting.findUnique({
+            where: {
+                key_userId: {
+                    key: req.params.key,
+                    userId: req.user.id
+                }
+            }
+        });
+
+        if (!setting) {
+            return successResponse(res, null);
+        }
+
+        successResponse(res, setting.value);
+    } catch (error) {
+        next(error);
+    }
+});
+
+// PUT /api/settings/:key - Update or create specific setting (MUST BE AFTER NAMED ROUTES)
+router.put('/:key', authenticate, async (req, res, next) => {
+    try {
+        const { value } = req.body;
+
+        const setting = await prisma.setting.upsert({
+            where: {
+                key_userId: {
+                    key: req.params.key,
+                    userId: req.user.id
+                }
+            },
+            update: { value },
+            create: {
+                key: req.params.key,
+                value,
+                userId: req.user.id
+            }
+        });
+
+        successResponse(res, setting.value, 'Setting updated');
+    } catch (error) {
+        next(error);
+    }
+});
 
 module.exports = router;

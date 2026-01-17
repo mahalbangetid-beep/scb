@@ -53,6 +53,69 @@ router.get('/', async (req, res, next) => {
     }
 });
 
+// ==================== NAMED ROUTES (BEFORE /:id) ====================
+
+// POST /api/provider-groups/forward - Forward command to provider group
+// NOTE: This MUST be before /:id route
+router.post('/forward', async (req, res, next) => {
+    try {
+        const { orderId, command, deviceId } = req.body;
+
+        if (!orderId || !command) {
+            throw new AppError('Order ID and command are required', 400);
+        }
+
+        // Set dependencies if not already set
+        const io = req.app.get('io');
+        const whatsappService = req.app.get('whatsapp');
+        groupForwardingService.setDependencies(io, whatsappService);
+
+        const result = await groupForwardingService.forwardToGroup({
+            orderId,
+            command,
+            userId: req.user.id,
+            deviceId
+        });
+
+        successResponse(res, result);
+    } catch (error) {
+        next(error);
+    }
+});
+
+// GET /api/provider-groups/whatsapp-groups/:deviceId - List WhatsApp groups
+// NOTE: This MUST be before /:id route
+router.get('/whatsapp-groups/:deviceId', async (req, res, next) => {
+    try {
+        const device = await prisma.device.findFirst({
+            where: {
+                id: req.params.deviceId,
+                userId: req.user.id
+            }
+        });
+
+        if (!device) {
+            throw new AppError('Device not found', 404);
+        }
+
+        if (device.status !== 'connected') {
+            throw new AppError('Device is not connected', 400);
+        }
+
+        const whatsappService = req.app.get('whatsapp');
+        if (!whatsappService) {
+            throw new AppError('WhatsApp service not available', 500);
+        }
+
+        // Get groups from WhatsApp
+        const groups = await whatsappService.getGroups(device.id);
+
+        successResponse(res, groups || []);
+    } catch (error) {
+        next(error);
+    }
+});
+
 // GET /api/provider-groups/:id - Get provider group details
 router.get('/:id', async (req, res, next) => {
     try {
@@ -268,11 +331,12 @@ router.post('/:id/test', async (req, res, next) => {
         const group = await prisma.providerGroup.findFirst({
             where: {
                 id: req.params.id,
-                userId: req.user.id
+                panel: {
+                    userId: req.user.id
+                }
             },
             include: {
-                panel: true,
-                device: true
+                panel: true
             }
         });
 
@@ -314,67 +378,6 @@ Timestamp: ${new Date().toLocaleString()}`;
             message: 'Test message sent successfully',
             target: targetJid
         });
-    } catch (error) {
-        next(error);
-    }
-});
-
-// POST /api/provider-groups/forward - Forward command to provider group
-router.post('/forward', async (req, res, next) => {
-    try {
-        const { orderId, command, deviceId } = req.body;
-
-        if (!orderId || !command) {
-            throw new AppError('Order ID and command are required', 400);
-        }
-
-        // Set dependencies if not already set
-        const io = req.app.get('io');
-        const whatsappService = req.app.get('whatsapp');
-        groupForwardingService.setDependencies(io, whatsappService);
-
-        const result = await groupForwardingService.forwardToGroup({
-            orderId,
-            command,
-            userId: req.user.id,
-            deviceId
-        });
-
-        successResponse(res, result);
-    } catch (error) {
-        next(error);
-    }
-});
-
-// ==================== WHATSAPP GROUPS DISCOVERY ====================
-
-// GET /api/provider-groups/whatsapp-groups/:deviceId - List WhatsApp groups
-router.get('/whatsapp-groups/:deviceId', async (req, res, next) => {
-    try {
-        const device = await prisma.device.findFirst({
-            where: {
-                id: req.params.deviceId,
-                userId: req.user.id
-            }
-        });
-
-        if (!device) {
-            throw new AppError('Device not found', 404);
-        }
-
-        if (device.status !== 'connected') {
-            throw new AppError('Device is not connected', 400);
-        }
-
-        const whatsappService = req.app.get('whatsapp');
-        if (!whatsappService) {
-            throw new AppError('WhatsApp service not available', 500);
-        }
-
-        // Get groups from WhatsApp
-        const groups = await whatsappService.getGroups(device.id);
-
-        successResponse(res, groups || []);
     } catch (error) {
         next(error);
     }
