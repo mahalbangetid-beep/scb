@@ -582,23 +582,38 @@ class AdminApiService {
                 throw new Error(response.error);
             }
 
-            const orderData = response.data || response;
-            console.log(`[AdminAPI] Raw order data for ${orderId}:`, JSON.stringify(orderData, null, 2));
+            // Handle nested response structure: { data: { id, status, ... }, error_message, error_code }
+            // The actual order data is inside response.data.data (or response.data if already unwrapped)
+            let orderData = response.data || response;
+            if (orderData.data && typeof orderData.data === 'object' && orderData.data.id) {
+                orderData = orderData.data;  // Unwrap nested data
+            }
+
+            console.log(`[AdminAPI] Extracted order data for ${orderId}: status=${orderData.status}, provider=${orderData.provider}`);
+
+            // Handle charge which can be an object with 'value' or a direct number
+            let chargeValue = null;
+            if (orderData.charge) {
+                chargeValue = typeof orderData.charge === 'object'
+                    ? parseFloat(orderData.charge.value)
+                    : parseFloat(orderData.charge);
+            }
 
             return {
                 success: true,
                 status: this.normalizeStatus(orderData.status),
-                charge: orderData.charge ? parseFloat(orderData.charge) : null,
+                charge: chargeValue,
                 startCount: orderData.start_count ? parseInt(orderData.start_count) : null,
-                remains: orderData.remains ? parseInt(orderData.remains) : null,
+                remains: orderData.remains !== undefined ? parseInt(orderData.remains) : null,
                 quantity: orderData.quantity ? parseInt(orderData.quantity) : null,
                 link: orderData.link,
-                serviceName: orderData.service_name || orderData.service?.name,
-                providerName: orderData.provider?.name || orderData.provider_name,
-                providerOrderId: orderData.provider?.order_id || orderData.provider_order_id,
-                providerStatus: orderData.provider?.status,
-                canRefill: orderData.can_refill || orderData.refill_available,
-                canCancel: orderData.can_cancel || orderData.cancel_available
+                serviceName: orderData.service_name,
+                providerName: typeof orderData.provider === 'string' ? orderData.provider : orderData.provider?.name,
+                providerOrderId: orderData.external_id || orderData.provider_order_id,
+                providerStatus: orderData.status,
+                // Check actions object for refill/cancel availability
+                canRefill: orderData.actions?.refill === true || orderData.actions?.resend === true,
+                canCancel: orderData.actions?.cancel_and_refund === true || orderData.actions?.request_cancel === true
             };
         } catch (error) {
             console.error('[AdminAPI] getOrderStatus error:', error.message);
