@@ -65,8 +65,91 @@ router.get('/stats', async (req, res, next) => {
 });
 
 /**
+ * POST /api/keyword-responses/test
+ * Test a message against current rules
+ * NOTE: Must be before /:id route
+ */
+router.post('/test', async (req, res, next) => {
+    try {
+        const { message, platform, isGroup } = req.body;
+
+        if (!message) {
+            throw new AppError('Message is required', 400);
+        }
+
+        const match = await keywordResponseService.findMatch(req.user.id, message, {
+            platform: platform || 'WHATSAPP',
+            isGroup: isGroup || false
+        });
+
+        if (match) {
+            successResponse(res, {
+                matched: true,
+                keyword: match.keyword,
+                matchType: match.matchType,
+                responseText: match.responseText,
+                triggerAction: match.triggerAction
+            });
+        } else {
+            successResponse(res, {
+                matched: false,
+                message: 'No matching keyword found'
+            });
+        }
+    } catch (error) {
+        next(error);
+    }
+});
+
+/**
+ * POST /api/keyword-responses/bulk
+ * Bulk create keyword responses
+ * NOTE: Must be before /:id route
+ */
+router.post('/bulk', async (req, res, next) => {
+    try {
+        const { items } = req.body;
+
+        if (!Array.isArray(items) || items.length === 0) {
+            throw new AppError('Items array is required', 400);
+        }
+
+        if (items.length > 50) {
+            throw new AppError('Maximum 50 items per bulk operation', 400);
+        }
+
+        const results = [];
+        const errors = [];
+
+        for (const item of items) {
+            try {
+                if (!item.keyword || !item.responseText) {
+                    errors.push({ item, error: 'keyword and responseText are required' });
+                    continue;
+                }
+
+                const response = await keywordResponseService.create(req.user.id, item);
+                results.push(response);
+            } catch (error) {
+                errors.push({ item, error: error.message });
+            }
+        }
+
+        successResponse(res, {
+            created: results.length,
+            failed: errors.length,
+            results,
+            errors
+        }, `${results.length} keyword responses created`);
+    } catch (error) {
+        next(error);
+    }
+});
+
+/**
  * GET /api/keyword-responses/:id
  * Get a single keyword response
+ * NOTE: This must be AFTER all named routes like /stats, /test, /bulk
  */
 router.get('/:id', async (req, res, next) => {
     try {
@@ -161,86 +244,6 @@ router.post('/:id/toggle', async (req, res, next) => {
     try {
         const response = await keywordResponseService.toggleActive(req.params.id, req.user.id);
         successResponse(res, response, `Keyword response ${response.isActive ? 'activated' : 'deactivated'}`);
-    } catch (error) {
-        next(error);
-    }
-});
-
-/**
- * POST /api/keyword-responses/test
- * Test a message against current rules
- */
-router.post('/test', async (req, res, next) => {
-    try {
-        const { message, platform, isGroup } = req.body;
-
-        if (!message) {
-            throw new AppError('Message is required', 400);
-        }
-
-        const match = await keywordResponseService.findMatch(req.user.id, message, {
-            platform: platform || 'WHATSAPP',
-            isGroup: isGroup || false
-        });
-
-        if (match) {
-            successResponse(res, {
-                matched: true,
-                keyword: match.keyword,
-                matchType: match.matchType,
-                responseText: match.responseText,
-                triggerAction: match.triggerAction
-            });
-        } else {
-            successResponse(res, {
-                matched: false,
-                message: 'No matching keyword found'
-            });
-        }
-    } catch (error) {
-        next(error);
-    }
-});
-
-/**
- * POST /api/keyword-responses/bulk
- * Bulk create keyword responses
- */
-router.post('/bulk', async (req, res, next) => {
-    try {
-        const { items } = req.body;
-
-        if (!Array.isArray(items) || items.length === 0) {
-            throw new AppError('Items array is required', 400);
-        }
-
-        if (items.length > 50) {
-            throw new AppError('Maximum 50 items per bulk operation', 400);
-        }
-
-        const results = [];
-        const errors = [];
-
-        for (const item of items) {
-            try {
-                if (!item.keyword || !item.responseText) {
-                    errors.push({ item, error: 'keyword and responseText are required' });
-                    continue;
-                }
-
-                const response = await keywordResponseService.create(req.user.id, item);
-                results.push(response);
-            } catch (error) {
-                errors.push({ item, error: error.message });
-            }
-        }
-
-        successResponse(res, {
-            created: results.length,
-            failed: errors.length,
-            results,
-            errors
-        }, `${results.length} keyword responses created`);
     } catch (error) {
         next(error);
     }

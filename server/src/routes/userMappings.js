@@ -52,8 +52,93 @@ router.get('/stats', async (req, res, next) => {
 });
 
 /**
+ * GET /api/user-mappings/find/by-phone/:phone
+ * Find mapping by phone number
+ * NOTE: Must be before /:id route
+ */
+router.get('/find/by-phone/:phone', async (req, res, next) => {
+    try {
+        const mapping = await userMappingService.findByPhone(req.user.id, req.params.phone);
+
+        if (!mapping) {
+            successResponse(res, { found: false, mapping: null });
+        } else {
+            successResponse(res, { found: true, mapping });
+        }
+    } catch (error) {
+        next(error);
+    }
+});
+
+/**
+ * GET /api/user-mappings/find/by-username/:username
+ * Find mapping by panel username
+ * NOTE: Must be before /:id route
+ */
+router.get('/find/by-username/:username', async (req, res, next) => {
+    try {
+        const mapping = await userMappingService.findByUsername(req.user.id, req.params.username);
+
+        if (!mapping) {
+            successResponse(res, { found: false, mapping: null });
+        } else {
+            successResponse(res, { found: true, mapping });
+        }
+    } catch (error) {
+        next(error);
+    }
+});
+
+/**
+ * POST /api/user-mappings/bulk-import
+ * Bulk import mappings
+ * NOTE: Must be before /:id route
+ */
+router.post('/bulk-import', async (req, res, next) => {
+    try {
+        const { mappings } = req.body;
+
+        if (!Array.isArray(mappings) || mappings.length === 0) {
+            throw new AppError('Mappings array is required', 400);
+        }
+
+        if (mappings.length > 100) {
+            throw new AppError('Maximum 100 mappings per import', 400);
+        }
+
+        const results = await userMappingService.bulkImport(req.user.id, mappings);
+        successResponse(res, results, `Imported ${results.success} mappings`);
+    } catch (error) {
+        next(error);
+    }
+});
+
+/**
+ * POST /api/user-mappings/check-sender
+ * Check if a sender is allowed to use bot
+ * NOTE: Must be before /:id route
+ */
+router.post('/check-sender', async (req, res, next) => {
+    try {
+        const { phone, isGroup, groupId } = req.body;
+
+        const result = await userMappingService.checkSenderAllowed(
+            req.user.id,
+            phone,
+            isGroup || false,
+            groupId
+        );
+
+        successResponse(res, result);
+    } catch (error) {
+        next(error);
+    }
+});
+
+/**
  * GET /api/user-mappings/:id
  * Get a single mapping
+ * NOTE: This must be AFTER all named routes
  */
 router.get('/:id', async (req, res, next) => {
     try {
@@ -246,86 +331,6 @@ router.post('/:id/unsuspend', async (req, res, next) => {
     try {
         const mapping = await userMappingService.unsuspendMapping(req.params.id, req.user.id);
         successResponse(res, userMappingService.parseMapping(mapping), 'User unsuspended');
-    } catch (error) {
-        next(error);
-    }
-});
-
-/**
- * GET /api/user-mappings/find/by-phone/:phone
- * Find mapping by phone number
- */
-router.get('/find/by-phone/:phone', async (req, res, next) => {
-    try {
-        const mapping = await userMappingService.findByPhone(req.user.id, req.params.phone);
-
-        if (!mapping) {
-            successResponse(res, { found: false, mapping: null });
-        } else {
-            successResponse(res, { found: true, mapping });
-        }
-    } catch (error) {
-        next(error);
-    }
-});
-
-/**
- * GET /api/user-mappings/find/by-username/:username
- * Find mapping by panel username
- */
-router.get('/find/by-username/:username', async (req, res, next) => {
-    try {
-        const mapping = await userMappingService.findByUsername(req.user.id, req.params.username);
-
-        if (!mapping) {
-            successResponse(res, { found: false, mapping: null });
-        } else {
-            successResponse(res, { found: true, mapping });
-        }
-    } catch (error) {
-        next(error);
-    }
-});
-
-/**
- * POST /api/user-mappings/bulk-import
- * Bulk import mappings
- */
-router.post('/bulk-import', async (req, res, next) => {
-    try {
-        const { mappings } = req.body;
-
-        if (!Array.isArray(mappings) || mappings.length === 0) {
-            throw new AppError('Mappings array is required', 400);
-        }
-
-        if (mappings.length > 100) {
-            throw new AppError('Maximum 100 mappings per import', 400);
-        }
-
-        const results = await userMappingService.bulkImport(req.user.id, mappings);
-        successResponse(res, results, `Imported ${results.success} mappings`);
-    } catch (error) {
-        next(error);
-    }
-});
-
-/**
- * POST /api/user-mappings/check-sender
- * Check if a sender is allowed to use bot
- */
-router.post('/check-sender', async (req, res, next) => {
-    try {
-        const { phone, isGroup, groupId } = req.body;
-
-        const result = await userMappingService.checkSenderAllowed(
-            req.user.id,
-            phone,
-            isGroup || false,
-            groupId
-        );
-
-        successResponse(res, result);
     } catch (error) {
         next(error);
     }
