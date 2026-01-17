@@ -146,6 +146,8 @@ class CommandHandlerService {
                         id: true,
                         name: true,
                         alias: true,
+                        url: true,
+                        adminApiBaseUrl: true,
                         supportsAdminApi: true,
                         adminApiKey: true
                     }
@@ -226,6 +228,8 @@ class CommandHandlerService {
                                         id: true,
                                         name: true,
                                         alias: true,
+                                        url: true,
+                                        adminApiBaseUrl: true,
                                         supportsAdminApi: true,
                                         adminApiKey: true
                                     }
@@ -308,6 +312,8 @@ class CommandHandlerService {
                                 id: true,
                                 name: true,
                                 alias: true,
+                                url: true,
+                                adminApiBaseUrl: true,
                                 supportsAdminApi: true,
                                 adminApiKey: true
                             }
@@ -411,7 +417,10 @@ class CommandHandlerService {
                                     id: true,
                                     name: true,
                                     alias: true,
-                                    supportsAdminApi: true
+                                    url: true,
+                                    adminApiBaseUrl: true,
+                                    supportsAdminApi: true,
+                                    adminApiKey: true
                                 }
                             }
                         }
