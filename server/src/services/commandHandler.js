@@ -153,16 +153,72 @@ class CommandHandlerService {
             }
         });
 
-        // If not found - use sanitized error message
+        // ==================== AUTO-FETCH FROM PANEL API ====================
+        // If order not found in database, try to fetch from Panel API
+        if (!order) {
+            console.log(`[CommandHandler] Order ${orderId} not in DB, attempting API fetch...`);
+
+            // Get user's panels to search
+            const panelsToSearch = panelId
+                ? [await prisma.smmPanel.findUnique({ where: { id: panelId } })]
+                : await prisma.smmPanel.findMany({ where: { userId, isActive: true } });
+
+            for (const panel of panelsToSearch) {
+                if (!panel) continue;
+
+                try {
+                    // Try to get order status from panel API
+                    const smmPanelService = require('./smmPanel');
+                    const orderData = await smmPanelService.getOrderStatus(panel.id, orderId);
+
+                    if (orderData && orderData.status) {
+                        console.log(`[CommandHandler] Order ${orderId} found in panel ${panel.alias}, creating local record...`);
+
+                        // Create order record in database
+                        order = await prisma.order.create({
+                            data: {
+                                externalOrderId: orderId,
+                                panelId: panel.id,
+                                userId,
+                                status: smmPanelService.mapStatus(orderData.status),
+                                charge: orderData.charge,
+                                startCount: orderData.startCount,
+                                remains: orderData.remains
+                            },
+                            include: {
+                                panel: {
+                                    select: {
+                                        id: true,
+                                        name: true,
+                                        alias: true,
+                                        supportsAdminApi: true,
+                                        adminApiKey: true
+                                    }
+                                }
+                            }
+                        });
+
+                        console.log(`[CommandHandler] Order ${orderId} created from API response`);
+                        break; // Found it, stop searching
+                    }
+                } catch (apiError) {
+                    console.log(`[CommandHandler] Panel ${panel.alias} API error for order ${orderId}:`, apiError.message);
+                    // Continue to next panel
+                }
+            }
+        }
+
+        // If still not found after API fetch attempts
         if (!order) {
             const panelInfo = panelId ? ` in the assigned panel` : '';
-            console.log(`[CommandHandler] Order ${orderId} not found${panelInfo}`);
+            console.log(`[CommandHandler] Order ${orderId} not found${panelInfo} (neither in DB nor via API)`);
             return {
                 success: false,
                 message: securityService.sanitizeErrorMessage('not_found', 'order'),
                 details: { reason: 'not_found', panelId }
             };
         }
+
 
         // ==================== SECURITY CHECKS ====================
         const securityCheck = await securityService.performSecurityChecks({
