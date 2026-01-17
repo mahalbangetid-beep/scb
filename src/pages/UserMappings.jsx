@@ -33,8 +33,11 @@ const UserMappings = () => {
                 api.get('/user-mappings'),
                 api.get('/user-mappings/stats')
             ]);
-            setMappings(mappingsRes.data.data || []);
-            setStats(statsRes.data.data);
+            // API might return data directly or wrapped in .data
+            const mappingsData = mappingsRes.data?.data || mappingsRes.data || [];
+            const statsData = statsRes.data?.data || statsRes.data;
+            setMappings(Array.isArray(mappingsData) ? mappingsData : []);
+            setStats(statsData);
         } catch (err) {
             setError('Failed to load user mappings');
         } finally {

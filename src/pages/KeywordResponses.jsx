@@ -37,9 +37,14 @@ const KeywordResponses = () => {
                 api.get('/keyword-responses'),
                 api.get('/keyword-responses/stats')
             ]);
-            setResponses(responsesRes.data.data || []);
-            setStats(statsRes.data.data);
+            // API might return data directly or wrapped in .data
+            const responseData = responsesRes.data?.data || responsesRes.data || [];
+            const statsData = statsRes.data?.data || statsRes.data;
+            console.log('[KeywordResponses] Parsed responses:', responseData);
+            setResponses(Array.isArray(responseData) ? responseData : []);
+            setStats(statsData);
         } catch (err) {
+            console.error('[KeywordResponses] Fetch error:', err);
             setError('Failed to load keyword responses');
         } finally {
             setLoading(false);
