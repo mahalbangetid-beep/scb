@@ -828,6 +828,13 @@ model BotFeatureToggles {
   showProviderInResponse      Boolean @default(false)
   showDetailedStatus          Boolean @default(false)
   
+  // ==================== REPLY TO ALL MESSAGES ====================
+  // When enabled, bot replies to all incoming messages
+  // When disabled, bot only responds to recognized commands
+  
+  replyToAllMessages          Boolean @default(false)  // Toggle for replying to all messages
+  fallbackMessage             String? @db.Text         // Message sent when no handler matches
+  
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }

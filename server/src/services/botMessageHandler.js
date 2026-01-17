@@ -166,6 +166,34 @@ class BotMessageHandler {
         // Priority 3: Custom keyword workflows (future)
         // ... implementasi di Phase berikutnya
 
+        // Priority 4: Reply to all messages fallback
+        // If enabled, bot will reply to ANY message with a fallback response
+        try {
+            const botToggles = await prisma.botFeatureToggles.findUnique({
+                where: { userId }
+            });
+
+            if (botToggles?.replyToAllMessages) {
+                const fallbackMessage = botToggles.fallbackMessage ||
+                    `I didn't understand your message.\n\n` +
+                    `📋 *Available Commands:*\n` +
+                    `• \`[Order ID] status\` - Check order status\n` +
+                    `• \`[Order ID] refill\` - Request refill\n` +
+                    `• \`[Order ID] cancel\` - Cancel order\n` +
+                    `• \`.help\` - Show all commands\n\n` +
+                    `Example: \`12345 status\``;
+
+                console.log(`[BotHandler] No handler matched, sending fallback response`);
+                return {
+                    handled: true,
+                    type: 'fallback',
+                    response: fallbackMessage
+                };
+            }
+        } catch (fallbackError) {
+            console.log(`[BotHandler] Fallback check error:`, fallbackError.message);
+        }
+
         // No handler matched
         return { handled: false, reason: 'no_handler' };
     }

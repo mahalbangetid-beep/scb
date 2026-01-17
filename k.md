@@ -1,127 +1,349 @@
-# Bug Analysis: Panel-Device Binding Issue
+# Client Feature Requests - Development Plan
 
 > **Date:** 2026-01-17
-> **Reported By:** Client (clientupdate4.md)
-> **Severity:** 🔴 CRITICAL
-> **Status:** ✅ **IMPLEMENTED**
+> **Source:** Client feedback via WhatsApp
+> **Priority:** High
 
 ---
 
-## 📋 Issue Summary
+## 📋 Summary of Requests
 
-Client melaporkan bahwa:
-1. Bot membalas pesan dengan benar di grup
-2. Ketika mengirim command order dari nomor random, selalu menunjukkan "Order not found"
-3. Command tidak dicek dari panel yang benar
-4. Sistem membalas dengan respons auto-reply preset, bukan data dari panel API
+Client meminta 5 fitur utama:
+
+| # | Feature | Priority | Status | Complexity |
+|---|---------|----------|--------|------------|
+| 1 | Customizable Bot Responses | 🔴 High | ⏳ Planning | Medium |
+| 2 | Provider Forwarding Configuration | 🔴 High | ⏳ Planning | High |
+| 3 | Reply to All Messages Toggle | 🟡 Medium | ⏳ Planning | Low |
+| 4 | Keyword-Based Auto-Reply | ✅ Done | ✅ Already exists | - |
+| 5 | Testing & Bug Reports | ✅ Noted | Ongoing | - |
 
 ---
 
-## ✅ Solution Implemented: Device-Panel Binding (Option A)
+## Feature 1: Customizable Bot Responses
 
-### Schema Changes
+### 📝 Requirement
+> "Bot responses must be fully customizable, not hardcoded"
+
+### Current State
+- Response templates are in `commandParser.js` → `generateResponse()`
+- Messages are hardcoded in code
+
+### Solution Plan
+
+#### Database Schema
 ```prisma
-model Device {
-  id       String    @id
-  userId   String
-  panelId  String?   // NEW: Optional panel binding
+model ResponseTemplate {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
   
-  panel    SmmPanel? @relation(fields: [panelId], references: [id], onDelete: SetNull)
+  // Response category
+  category    String   // e.g., "status", "refill", "cancel", "error", "general"
+  responseKey String   // e.g., "success", "pending", "not_found", "no_guarantee"
+  
+  // Template content (supports variables)
+  template    String   @db.Text
+  
+  // Language support
+  language    String   @default("en")
+  
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@unique([userId, category, responseKey, language])
 }
+```
 
-model SmmPanel {
-  // existing fields...
-  devices  Device[]  // NEW: Devices bound to this panel
+#### Variables Support
+```
+{order_id}     → Order ID
+{status}       → Order status
+{service}      → Service name
+{link}         → Order link
+{remains}      → Remaining count
+{start_count}  → Start count
+{charge}       → Order charge
+{provider}     → Provider name
+{date}         → Order date
+{guarantee}    → Guarantee days
+{error}        → Error message
+```
+
+#### Default Templates
+```javascript
+// Status Response
+"status.completed": "✅ Order #{order_id}: COMPLETED\n📦 Service: {service}\n📊 Start: {start_count}",
+"status.pending": "⏳ Order #{order_id}: PENDING\n📦 Service: {service}",
+"status.not_found": "❌ Order #{order_id} not found in this panel.",
+
+// Refill Response
+"refill.success": "✅ Order #{order_id}: Refill request submitted!",
+"refill.no_guarantee": "❌ Order #{order_id}: No refill available. This is a no-refill, no-support service.",
+"refill.expired": "❌ Order #{order_id}: Refill period has expired ({guarantee} days).",
+
+// Cancel Response
+"cancel.success": "✅ Order #{order_id}: Cancel request submitted!",
+"cancel.failed": "❌ Order #{order_id}: Cannot cancel. {error}",
+
+// General
+"error.unknown": "❌ An error occurred. Please try again later.",
+"fallback.message": "I didn't understand your message. Send an Order ID to check status."
+```
+
+#### UI: Settings → Response Templates
+- Category tabs: Status | Refill | Cancel | Error | General
+- Edit each template with live preview
+- Reset to default button
+- Test template with sample data
+
+### Files to Modify
+- [ ] `server/prisma/schema.prisma` - Add ResponseTemplate model
+- [ ] `server/src/services/responseTemplateService.js` - New service
+- [ ] `server/src/services/commandParser.js` - Use templates instead of hardcoded
+- [ ] `server/src/routes/settings.js` - API endpoints for templates
+- [ ] `src/pages/Settings.jsx` - UI for managing templates
+
+---
+
+## Feature 2: Provider Forwarding Configuration
+
+### 📝 Requirement
+> "Provider-side handling must be fully configurable"
+> - Which provider receives which request type
+> - WhatsApp/Telegram group per provider
+> - Error forwarding to specific groups
+
+### Current State
+- No provider forwarding feature exists
+- Commands are processed locally via Admin API
+
+### Solution Plan
+
+#### Database Schema
+```prisma
+model ProviderConfig {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  
+  // Provider info
+  name        String   // e.g., "smmnepal", "main_provider"
+  alias       String?
+  
+  // Forwarding settings
+  forwardRefill     Boolean  @default(true)
+  forwardCancel     Boolean  @default(true)
+  forwardSpeedup    Boolean  @default(true)
+  forwardStatus     Boolean  @default(false)
+  
+  // Target destinations
+  whatsappGroupJid  String?  // WhatsApp group ID for forwarding
+  whatsappNumber    String?  // WhatsApp number for forwarding
+  telegramChatId    String?  // Telegram chat/group ID
+  
+  // Error handling
+  errorGroupJid     String?  // Where to forward errors
+  errorNotifyEnabled Boolean @default(true)
+  
+  // Message format
+  messageFormat     String?  @db.Text  // Custom message format
+  
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }
 ```
 
-### Flow Setelah Fix:
-
+#### Flow Diagram
 ```
-User sends: "123456 cancel" via WhatsApp Device A (bound to Panel X)
-    ↓
-whatsapp.js: Get device with panelId
-    ↓
-botMessageHandler.js: Pass panelId to command handler
-    ↓
-commandHandler.js: Query orders WHERE externalOrderId = '123456' AND panelId = 'panel-x'
-    ↓
-Order found → Execute cancel → Send response
+User: "3500 refill"
+        ↓
+Bot validates → Guarantee OK
+        ↓
+Check ProviderConfig for order's provider
+        ↓
+┌─────────────────────────────────────────┐
+│ ProviderConfig: "smmnepal"              │
+│ - forwardRefill: true                   │
+│ - whatsappGroupJid: "120363xxx@g.us"    │
+│ - telegramChatId: "-1001234567890"      │
+└─────────────────────────────────────────┘
+        ↓
+┌─────────────────────┬─────────────────────┐
+│ Send to WhatsApp    │ Send to Telegram    │
+│ Group               │ Group               │
+├─────────────────────┼─────────────────────┤
+│ "REFILL REQUEST     │ "REFILL REQUEST     │
+│  Order: 3500        │  Order: 3500        │
+│  Provider ID: 7392622│  Provider ID: 7392622│
+│  Service: TikTok... │  Service: TikTok... │
+│  Link: https://..." │  Link: https://..." │
+└─────────────────────┴─────────────────────┘
+        ↓
+Reply to user: "✅ Refill request forwarded to provider"
 ```
 
-### If Device Has No Panel Binding (panelId = null):
-- Searches across ALL user's panels (backward compatible)
-- Warning shown in UI when creating device
+#### Error Forwarding
+```
+If refill API fails:
+        ↓
+Check ProviderConfig.errorGroupJid
+        ↓
+Send error notification:
+"❌ REFILL ERROR
+ Order: 3500
+ Provider: smmnepal
+ Error: API timeout
+ User: @628xxx"
+```
+
+#### UI: Settings → Provider Forwarding
+- List of configured providers
+- Add/Edit provider config
+- Test forward button
+- View forward logs
+
+### Files to Create/Modify
+- [ ] `server/prisma/schema.prisma` - Add ProviderConfig model
+- [ ] `server/src/services/providerForwardingService.js` - New service
+- [ ] `server/src/services/commandHandler.js` - Integrate forwarding after command
+- [ ] `server/src/routes/providerConfig.js` - API endpoints
+- [ ] `src/pages/ProviderForwarding.jsx` - New UI page
 
 ---
 
-## 📁 Files Changed
+## Feature 3: Reply to All Messages Toggle
 
-| File | Changes |
-|------|---------|
-| `server/prisma/schema.prisma` | Added `panelId` field and relations |
-| `server/src/services/whatsapp.js` | Include panel info when handling messages |
-| `server/src/services/botMessageHandler.js` | Accept and pass `panelId` |
-| `server/src/services/commandHandler.js` | Filter orders by `panelId` |
-| `server/src/routes/devices.js` | Accept `panelId` on create, include panel in responses |
-| `src/pages/Devices.jsx` | Add panel dropdown, show panel badge on cards |
+### 📝 Requirement
+> "Bot should reply to every incoming message, controlled by toggle"
+> - Enabled → Reply to all messages
+> - Disabled → Only reply to valid commands
+
+### Current State
+- Bot only responds to recognized commands
+- Ignores random/irrelevant messages
+
+### Solution Plan
+
+#### Database Schema
+```prisma
+model UserSettings {
+  // Add new field:
+  replyToAllMessages  Boolean  @default(false)
+  fallbackMessage     String?  @db.Text  // Message when nothing matches
+}
+```
+
+#### Flow Change
+```
+Message received
+        ↓
+┌─────────────────────────────────────────┐
+│ Check handlers:                          │
+│ 1. Verification response? → Handle       │
+│ 2. Utility command (.ping)? → Handle     │
+│ 3. SMM command (order ID)? → Handle      │
+│ 4. Auto-reply keyword? → Handle          │
+│ 5. Nothing matched...                    │
+└─────────────────────────────────────────┘
+        ↓
+Check: replyToAllMessages === true?
+        │
+   ┌────┴────┐
+  YES       NO
+   │         │
+   ▼         ▼
+Send        Ignore
+fallback    message
+message     (no reply)
+```
+
+#### Default Fallback Message
+```
+"I didn't understand your message. 
+
+To check order status, send: [Order ID] status
+To request refill, send: [Order ID] refill
+To cancel order, send: [Order ID] cancel
+
+For help, send: .help"
+```
+
+#### UI: Settings → Bot Settings
+- Toggle: "Reply to all messages"
+- Textarea: "Fallback message" (when toggle is ON)
+
+### Files to Modify
+- [ ] `server/prisma/schema.prisma` - Add field to UserSettings
+- [ ] `server/src/services/botMessageHandler.js` - Add fallback logic
+- [ ] `server/src/routes/settings.js` - API for toggle
+- [ ] `src/pages/Settings.jsx` - UI for toggle and fallback message
 
 ---
 
-## 🎯 Frontend UI Changes
+## Feature 4: Keyword-Based Auto-Reply ✅
 
-### When Adding Device:
-- New dropdown: "Assign to Panel (Optional)"
-- Options: "All Panels (No specific binding)" + list of user's panels
-- Hint message: Shows whether device will handle all panels or specific panel
+### 📝 Requirement
+> "Keyword-based replies must be fully customizable"
 
-### Device Card:
-- Shows panel badge if assigned (blue color)
-- Shows "All Panels" badge if not assigned (gray color)
+### Status: ✅ ALREADY IMPLEMENTED!
 
----
+#### Current Features
+- **Auto Reply page** in dashboard
+- User can add custom keywords
+- Set response message for each keyword
+- Enable/disable individual rules
+- Support for exact match or contains match
 
-## 📝 Testing Checklist
+#### Where to Find
+- Dashboard → Auto Reply
+- Click "Add Rule" to create new keyword trigger
 
-- [x] Schema migration successful
-- [x] Backend syntax validation passed
-- [ ] Create device with panel binding
-- [ ] Create device without panel binding
-- [ ] Send command from bound device → should only search in assigned panel
-- [ ] Send command from unbound device → should search all panels
-- [ ] Frontend displays panel dropdown correctly
-- [ ] Frontend shows panel badge on device cards
+#### Inform Client
+> "This feature is already available! Go to Auto Reply page in dashboard. You can add keywords and set custom responses for each."
 
 ---
 
-## � How It Works Now
+## 📅 Implementation Priority
 
-### Scenario 1: User has 2 panels, 2 WhatsApp devices
+### Phase 1: Quick Wins (1-2 days)
+- [x] Feature 4: Keyword Auto-Reply ✅ Already done
+- [ ] Feature 3: Reply to All Messages Toggle (Low complexity)
 
-| Device | Assigned Panel |
-|--------|----------------|
-| WA-1   | Panel A (smmapiprovider.com) |
-| WA-2   | Panel B (otherpanel.com) |
+### Phase 2: Response Templates (3-4 days)
+- [ ] Feature 1: Customizable Bot Responses
+  - Schema migration
+  - Template service
+  - API endpoints
+  - Settings UI
 
-**Result:**
-- Command via WA-1 → Only looks in Panel A's orders
-- Command via WA-2 → Only looks in Panel B's orders
-- ✅ No more "Order not found" for valid orders!
-
-### Scenario 2: Device not assigned to any panel
-
-| Device | Assigned Panel |
-|--------|----------------|
-| WA-1   | (none) |
-
-**Result:**
-- Command via WA-1 → Searches ALL panels
-- ⚠️ May still cause confusion if same order ID exists in multiple panels
+### Phase 3: Provider Forwarding (5-7 days)
+- [ ] Feature 2: Provider Forwarding Configuration
+  - Schema migration
+  - Forwarding service
+  - Integration with command handler
+  - API endpoints
+  - New UI page
 
 ---
 
-## 📅 Implementation Date
+## 📝 Notes
 
-- **Implemented:** 2026-01-17
-- **Commit:** f85bd5d
-- **Pushed to:** main branch
+- Client is actively testing the system
+- Will report bugs as found
+- Need to maintain backward compatibility
+- All features should be optional/configurable per user
+
+---
+
+## 📊 Estimated Timeline
+
+| Phase | Feature | Duration | Target |
+|-------|---------|----------|--------|
+| 1 | Reply All Toggle | 1 day | ASAP |
+| 2 | Response Templates | 3-4 days | Week 1 |
+| 3 | Provider Forwarding | 5-7 days | Week 2 |
+
+**Total Estimated: 9-12 days**

@@ -364,4 +364,73 @@ router.post('/cleanup-cooldowns', authenticate, async (req, res, next) => {
 });
 
 
+// ==================== BOT FEATURE TOGGLES ====================
+
+// GET /api/settings/bot-toggles - Get bot feature toggles
+router.get('/bot-toggles', authenticate, async (req, res, next) => {
+    try {
+        let toggles = await prisma.botFeatureToggles.findUnique({
+            where: { userId: req.user.id }
+        });
+
+        // Create default if not exists
+        if (!toggles) {
+            toggles = await prisma.botFeatureToggles.create({
+                data: { userId: req.user.id }
+            });
+        }
+
+        successResponse(res, toggles, 'Bot feature toggles retrieved');
+    } catch (error) {
+        next(error);
+    }
+});
+
+// PUT /api/settings/bot-toggles - Update bot feature toggles
+router.put('/bot-toggles', authenticate, async (req, res, next) => {
+    try {
+        const { replyToAllMessages, fallbackMessage, ...otherToggles } = req.body;
+
+        // Prepare update data
+        const updateData = {};
+
+        if (replyToAllMessages !== undefined) {
+            updateData.replyToAllMessages = !!replyToAllMessages;
+        }
+
+        if (fallbackMessage !== undefined) {
+            updateData.fallbackMessage = fallbackMessage || null;
+        }
+
+        // Handle other toggles dynamically
+        const allowedFields = [
+            'autoHandleFailedOrders', 'failedOrderAction', 'allowForceCompleted',
+            'allowLinkUpdateViaBot', 'allowPaymentVerification', 'allowAccountDetailsViaBot',
+            'allowTicketAutoReply', 'allowRefillCommand', 'allowCancelCommand',
+            'allowSpeedUpCommand', 'allowStatusCommand', 'processingSpeedUpEnabled',
+            'processingCancelEnabled', 'autoForwardProcessingCancel',
+            'providerSpeedUpTemplate', 'providerRefillTemplate', 'providerCancelTemplate',
+            'bulkResponseThreshold', 'maxBulkOrders', 'showProviderInResponse', 'showDetailedStatus'
+        ];
+
+        for (const field of allowedFields) {
+            if (otherToggles[field] !== undefined) {
+                updateData[field] = otherToggles[field];
+            }
+        }
+
+        // Upsert toggles
+        const toggles = await prisma.botFeatureToggles.upsert({
+            where: { userId: req.user.id },
+            update: updateData,
+            create: { userId: req.user.id, ...updateData }
+        });
+
+        successResponse(res, toggles, 'Bot feature toggles updated');
+    } catch (error) {
+        next(error);
+    }
+});
+
+
 module.exports = router;
