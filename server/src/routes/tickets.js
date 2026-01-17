@@ -65,12 +65,13 @@ router.get('/open-count', async (req, res, next) => {
 });
 
 /**
- * GET /api/tickets/:id
- * Get single ticket
+ * GET /api/tickets/number/:ticketNumber
+ * Get ticket by number
+ * NOTE: Must be before /:id route
  */
-router.get('/:id', async (req, res, next) => {
+router.get('/number/:ticketNumber', async (req, res, next) => {
     try {
-        const ticket = await ticketService.getById(req.params.id, req.user.id);
+        const ticket = await ticketService.getByNumber(req.params.ticketNumber, req.user.id);
 
         if (!ticket) {
             throw new AppError('Ticket not found', 404);
@@ -83,12 +84,31 @@ router.get('/:id', async (req, res, next) => {
 });
 
 /**
- * GET /api/tickets/number/:ticketNumber
- * Get ticket by number
+ * GET /api/tickets/customer/:phone
+ * Get tickets by customer phone
+ * NOTE: Must be before /:id route
  */
-router.get('/number/:ticketNumber', async (req, res, next) => {
+router.get('/customer/:phone', async (req, res, next) => {
     try {
-        const ticket = await ticketService.getByNumber(req.params.ticketNumber, req.user.id);
+        const tickets = await ticketService.getByCustomerPhone(
+            req.user.id,
+            req.params.phone
+        );
+
+        successResponse(res, tickets);
+    } catch (error) {
+        next(error);
+    }
+});
+
+/**
+ * GET /api/tickets/:id
+ * Get single ticket
+ * NOTE: This MUST be after all named routes like /stats, /number/:x, /customer/:x
+ */
+router.get('/:id', async (req, res, next) => {
+    try {
+        const ticket = await ticketService.getById(req.params.id, req.user.id);
 
         if (!ticket) {
             throw new AppError('Ticket not found', 404);
@@ -217,23 +237,6 @@ router.post('/:id/reopen', async (req, res, next) => {
         );
 
         successResponse(res, ticketService.parseTicket(ticket), 'Ticket reopened');
-    } catch (error) {
-        next(error);
-    }
-});
-
-/**
- * GET /api/tickets/customer/:phone
- * Get tickets by customer phone
- */
-router.get('/customer/:phone', async (req, res, next) => {
-    try {
-        const tickets = await ticketService.getByCustomerPhone(
-            req.user.id,
-            req.params.phone
-        );
-
-        successResponse(res, tickets);
     } catch (error) {
         next(error);
     }
