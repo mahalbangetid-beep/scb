@@ -18,6 +18,7 @@ import {
     Shield,
     Gift,
     SendHorizontal,
+    Send,
     FileText,
     Zap,
     Radio,
@@ -49,7 +50,8 @@ const smmNavigation = [
 // Automation - Bot behavior & templates
 const automationNavigation = [
     // { name: 'Auto Reply', icon: Bot, path: '/auto-reply' }, // Hidden for now
-    { name: 'Response Templates', icon: FileText, path: '/command-templates' },
+    { name: 'Response Templates', icon: FileText, path: '/response-templates' },
+    { name: 'Provider Forwarding', icon: Send, path: '/provider-forwarding' },
     { name: 'Keyword Responses', icon: MessageCircle, path: '/keyword-responses' },
     { name: 'User Mappings', icon: Users, path: '/user-mappings' },
     { name: 'Bot Settings', icon: Zap, path: '/bot-settings' },

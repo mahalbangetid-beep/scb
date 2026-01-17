@@ -28,6 +28,8 @@ import UserMappings from './pages/UserMappings'
 import Subscriptions from './pages/Subscriptions'
 import Tickets from './pages/Tickets'
 import LandingPage from './pages/LandingPage'
+import ResponseTemplates from './pages/ResponseTemplates'
+import ProviderForwarding from './pages/ProviderForwarding'
 import './styles/landing.css'
 // Admin Pages
 import UserManagement from './pages/admin/UserManagement'
@@ -124,6 +126,8 @@ function AppContent() {
           <Route path="/user-mappings" element={<ProtectedRoute><UserMappings /></ProtectedRoute>} />
           <Route path="/subscriptions" element={<ProtectedRoute><Subscriptions /></ProtectedRoute>} />
           <Route path="/tickets" element={<ProtectedRoute><Tickets /></ProtectedRoute>} />
+          <Route path="/response-templates" element={<ProtectedRoute><ResponseTemplates /></ProtectedRoute>} />
+          <Route path="/provider-forwarding" element={<ProtectedRoute><ProviderForwarding /></ProtectedRoute>} />
 
           {/* Admin Routes */}
           <Route path="/admin/users" element={<AdminRoute><UserManagement /></AdminRoute>} />
