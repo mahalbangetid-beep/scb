@@ -79,7 +79,7 @@ await commandParser.generateResponseAsync(userId, 'refill', orderId, true, detai
 - [x] `server/src/routes/templates.js` - New API routes
 - [x] `server/src/services/commandParser.js` - Added generateResponseAsync()
 - [x] `server/src/index.js` - Registered /api/templates route
-- [ ] `src/pages/Settings.jsx` - UI for managing templates (TODO)
+- [x] `src/pages/ResponseTemplates.jsx` - ✅ NEW: UI for managing templates
 
 ---
 
@@ -177,7 +177,7 @@ Reply to user: "✅ Refill request forwarded to provider"
 - [x] `server/src/routes/providerConfig.js` - New API routes
 - [x] `server/src/index.js` - Registered route
 - [ ] `server/src/services/commandHandler.js` - Integrate forwarding (TODO)
-- [ ] `src/pages/ProviderForwarding.jsx` - UI page (TODO)
+- [x] `src/pages/ProviderForwarding.jsx` - ✅ NEW: UI page for provider config
 
 ---
 
