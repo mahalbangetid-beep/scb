@@ -256,9 +256,9 @@ const KeywordResponses = () => {
                         <div key={item.id} className={`keyword-card ${item.isActive ? 'active' : 'inactive'}`}>
                             <div className="keyword-header">
                                 <div className="keyword-name">
-                                    <code>{item.keyword}</code>
-                                    <span className={`badge badge-${item.matchType.toLowerCase()}`}>
-                                        {getMatchTypeLabel(item.matchType)}
+                                    <code>{item.keyword || 'N/A'}</code>
+                                    <span className={`badge badge-${(item.matchType || 'CONTAINS').toLowerCase()}`}>
+                                        {getMatchTypeLabel(item.matchType || 'CONTAINS')}
                                     </span>
                                 </div>
                                 <button
@@ -270,7 +270,7 @@ const KeywordResponses = () => {
                             </div>
 
                             <div className="keyword-response">
-                                {item.responseText?.substring(0, 120)}...
+                                {(item.responseText || '').substring(0, 120)}{item.responseText?.length > 120 ? '...' : ''}
                             </div>
 
                             <div className="keyword-meta">

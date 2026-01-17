@@ -246,7 +246,7 @@ const UserMappings = () => {
                         <div key={user.id} className={`user-card ${user.isAutoSuspended ? 'suspended' : ''} ${!user.isBotEnabled ? 'bot-disabled' : ''}`}>
                             <div className="user-header">
                                 <div className="user-avatar">
-                                    {user.panelUsername?.charAt(0).toUpperCase()}
+                                    {(user.panelUsername || 'U').charAt(0).toUpperCase()}
                                 </div>
                                 <div className="user-info">
                                     <h4>{user.panelUsername}</h4>
