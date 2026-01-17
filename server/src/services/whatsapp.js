@@ -321,10 +321,10 @@ class WhatsAppService {
                         deviceId: deviceId,
                         from: messageData.from,
                         to: socket.user.id?.split(':')[0] || socket.user.id?.split('@')[0],
-                        content: messageData.content,
-                        type: messageData.type,
+                        message: messageData.content,  // Schema uses 'message' field
+                        mediaType: messageData.type,   // text, image, video, etc.
+                        type: messageData.fromMe ? 'outgoing' : 'incoming',  // incoming/outgoing
                         status: messageData.status,
-                        direction: messageData.fromMe ? 'outgoing' : 'incoming',
                         createdAt: messageData.timestamp
                     }
                 }).catch(err => console.error(`[WA:${deviceId}] Error saving message:`, err));
