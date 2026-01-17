@@ -254,6 +254,72 @@ class CommandHandlerService {
             };
         }
 
+        // ==================== REFRESH STATUS FROM API ====================
+        // Always refresh status from Panel API to ensure we have latest data
+        // This is important because order status can change in panel
+        try {
+            console.log(`[CommandHandler] Refreshing status for order ${orderId} from API...`);
+
+            let latestStatus = null;
+
+            // Try Admin API first if available
+            if (order.panel?.supportsAdminApi && order.panel?.adminApiKey) {
+                const adminResult = await adminApiService.getOrderStatus(order.panel, orderId);
+                if (adminResult.success) {
+                    latestStatus = adminResult;
+                    console.log(`[CommandHandler] Got latest status from Admin API: ${latestStatus.status}`);
+                }
+            }
+
+            // Fallback to User API
+            if (!latestStatus) {
+                const smmPanelService = require('./smmPanel');
+                try {
+                    const userApiResult = await smmPanelService.getOrderStatus(order.panelId, orderId);
+                    if (userApiResult && userApiResult.status) {
+                        latestStatus = {
+                            status: smmPanelService.mapStatus(userApiResult.status),
+                            startCount: userApiResult.startCount,
+                            remains: userApiResult.remains,
+                            charge: userApiResult.charge
+                        };
+                        console.log(`[CommandHandler] Got latest status from User API: ${latestStatus.status}`);
+                    }
+                } catch (e) {
+                    // User API failed, use DB status
+                }
+            }
+
+            // Update order with latest status if we got it
+            if (latestStatus && latestStatus.status && latestStatus.status !== order.status) {
+                console.log(`[CommandHandler] Updating order ${orderId} status: ${order.status} -> ${latestStatus.status}`);
+
+                order = await prisma.order.update({
+                    where: { id: order.id },
+                    data: {
+                        status: latestStatus.status,
+                        startCount: latestStatus.startCount ?? order.startCount,
+                        remains: latestStatus.remains ?? order.remains,
+                        charge: latestStatus.charge ?? order.charge
+                    },
+                    include: {
+                        panel: {
+                            select: {
+                                id: true,
+                                name: true,
+                                alias: true,
+                                supportsAdminApi: true,
+                                adminApiKey: true
+                            }
+                        }
+                    }
+                });
+            }
+        } catch (refreshError) {
+            console.log(`[CommandHandler] Status refresh failed (using cached):`, refreshError.message);
+            // Continue with existing status
+        }
+
 
         // ==================== SECURITY CHECKS ====================
         const securityCheck = await securityService.performSecurityChecks({
