@@ -163,8 +163,14 @@ class CommandHandlerService {
                 ? [await prisma.smmPanel.findUnique({ where: { id: panelId } })]
                 : await prisma.smmPanel.findMany({ where: { userId, isActive: true } });
 
+            console.log(`[CommandHandler] Searching in ${panelsToSearch.filter(p => p).length} panels for order ${orderId}`);
+            if (panelId) {
+                console.log(`[CommandHandler] Using specific panelId: ${panelId}`);
+            }
+
             for (const panel of panelsToSearch) {
                 if (!panel) continue;
+                console.log(`[CommandHandler] Querying panel: ${panel.alias || panel.name} (${panel.id})`);
 
                 try {
                     // Try to get order status from panel API
