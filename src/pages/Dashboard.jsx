@@ -89,32 +89,32 @@ export default function Dashboard() {
         {
             label: 'Total Messages',
             value: statsData?.totalMessages?.toLocaleString() || '0',
-            trend: statsData?.messagesChange > 0 ? `+${statsData.messagesChange}%` : `${statsData.messagesChange}%`,
-            trendUp: statsData?.messagesChange >= 0,
+            trend: (statsData?.messagesChange ?? 0) > 0 ? `+${statsData?.messagesChange ?? 0}%` : `${statsData?.messagesChange ?? 0}%`,
+            trendUp: (statsData?.messagesChange ?? 0) >= 0,
             icon: MessageSquare,
             iconClass: 'primary'
         },
         {
             label: 'Active Devices',
             value: statsData?.activeDevices || '0',
-            trend: statsData?.devicesChange >= 0 ? `+${statsData.devicesChange}` : statsData.devicesChange,
-            trendUp: statsData?.devicesChange >= 0,
+            trend: (statsData?.devicesChange ?? 0) >= 0 ? `+${statsData?.devicesChange ?? 0}` : `${statsData?.devicesChange ?? 0}`,
+            trendUp: (statsData?.devicesChange ?? 0) >= 0,
             icon: Smartphone,
             iconClass: 'success'
         },
         {
             label: 'Success Rate',
             value: `${statsData?.successRate || 0}%`,
-            trend: statsData?.successRateChange >= 0 ? `+${statsData.successRateChange}%` : `${statsData.successRateChange}%`,
-            trendUp: statsData?.successRateChange >= 0,
+            trend: (statsData?.successRateChange ?? 0) >= 0 ? `+${statsData?.successRateChange ?? 0}%` : `${statsData?.successRateChange ?? 0}%`,
+            trendUp: (statsData?.successRateChange ?? 0) >= 0,
             icon: CheckCircle,
             iconClass: 'info'
         },
         {
             label: 'Failed Messages',
             value: statsData?.failedMessages?.toLocaleString() || '0',
-            trend: statsData?.failedChange >= 0 ? `+${statsData.failedChange}%` : `${statsData.failedChange}%`,
-            trendUp: statsData?.failedChange < 0, // Failed going down is good
+            trend: (statsData?.failedChange ?? 0) >= 0 ? `+${statsData?.failedChange ?? 0}%` : `${statsData?.failedChange ?? 0}%`,
+            trendUp: (statsData?.failedChange ?? 0) < 0, // Failed going down is good
             icon: XCircle,
             iconClass: 'error'
         },
