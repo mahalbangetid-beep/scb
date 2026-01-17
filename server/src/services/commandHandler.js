@@ -491,6 +491,8 @@ class CommandHandlerService {
             };
         }
 
+        console.log(`[CommandHandler] Refill check for order ${orderId}: status="${order.status}" (expected: "COMPLETED")`);
+
         // Refill only for completed orders
         if (order.status !== 'COMPLETED') {
             return {
