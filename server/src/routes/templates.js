@@ -25,6 +25,70 @@ router.get('/', authenticate, async (req, res, next) => {
 });
 
 /**
+ * POST /api/templates/reset-all
+ * Reset all templates to default
+ * NOTE: This route MUST be defined before /:command
+ */
+router.post('/reset-all', authenticate, async (req, res, next) => {
+    try {
+        const resetCommands = await responseTemplateService.resetAllTemplates(req.user.id);
+
+        successResponse(res, {
+            resetCommands,
+            count: resetCommands.length
+        }, 'All templates reset to default');
+    } catch (error) {
+        next(error);
+    }
+});
+
+/**
+ * POST /api/templates/preview
+ * Preview a template with sample variables
+ * NOTE: This route MUST be defined before /:command
+ */
+router.post('/preview', authenticate, async (req, res, next) => {
+    try {
+        const { command, template } = req.body;
+
+        if (!template) {
+            return res.status(400).json({
+                success: false,
+                message: 'Template content is required'
+            });
+        }
+
+        // Sample variables for preview
+        const sampleVariables = {
+            order_id: '12345',
+            status: 'Completed',
+            service: 'TikTok Followers | 30 Days ♻️',
+            link: 'https://tiktok.com/@example',
+            remains: '0',
+            start_count: '1000',
+            charge: '2.50',
+            provider: 'smmnepal.com',
+            provider_order_id: '7392622',
+            date: new Date().toLocaleDateString(),
+            guarantee: '30',
+            error: 'Connection timeout',
+            quantity: '500'
+        };
+
+        const preview = responseTemplateService.formatTemplate(template, sampleVariables);
+        const validation = responseTemplateService.validateTemplate(command || 'STATUS_SUCCESS', template);
+
+        successResponse(res, {
+            preview,
+            variables: sampleVariables,
+            validation
+        }, 'Template preview generated');
+    } catch (error) {
+        next(error);
+    }
+});
+
+/**
  * GET /api/templates/:command
  * Get a specific template by command
  */
@@ -97,68 +161,6 @@ router.delete('/:command', authenticate, async (req, res, next) => {
             template: defaultTemplate?.template || null,
             resetToDefault: true
         }, 'Template reset to default');
-    } catch (error) {
-        next(error);
-    }
-});
-
-/**
- * POST /api/templates/reset-all
- * Reset all templates to default
- */
-router.post('/reset-all', authenticate, async (req, res, next) => {
-    try {
-        const resetCommands = await responseTemplateService.resetAllTemplates(req.user.id);
-
-        successResponse(res, {
-            resetCommands,
-            count: resetCommands.length
-        }, 'All templates reset to default');
-    } catch (error) {
-        next(error);
-    }
-});
-
-/**
- * POST /api/templates/preview
- * Preview a template with sample variables
- */
-router.post('/preview', authenticate, async (req, res, next) => {
-    try {
-        const { command, template } = req.body;
-
-        if (!template) {
-            return res.status(400).json({
-                success: false,
-                message: 'Template content is required'
-            });
-        }
-
-        // Sample variables for preview
-        const sampleVariables = {
-            order_id: '12345',
-            status: 'Completed',
-            service: 'TikTok Followers | 30 Days ♻️',
-            link: 'https://tiktok.com/@example',
-            remains: '0',
-            start_count: '1000',
-            charge: '2.50',
-            provider: 'smmnepal.com',
-            provider_order_id: '7392622',
-            date: new Date().toLocaleDateString(),
-            guarantee: '30',
-            error: 'Connection timeout',
-            quantity: '500'
-        };
-
-        const preview = responseTemplateService.formatTemplate(template, sampleVariables);
-        const validation = responseTemplateService.validateTemplate(command || 'STATUS_SUCCESS', template);
-
-        successResponse(res, {
-            preview,
-            variables: sampleVariables,
-            validation
-        }, 'Template preview generated');
     } catch (error) {
         next(error);
     }

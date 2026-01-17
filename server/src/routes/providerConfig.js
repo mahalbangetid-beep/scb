@@ -30,6 +30,35 @@ router.get('/', authenticate, async (req, res, next) => {
 });
 
 /**
+ * GET /api/provider-config/logs
+ * Get forwarding logs
+ * NOTE: This route MUST be defined before /:id to prevent "logs" being matched as an id
+ */
+router.get('/logs', authenticate, async (req, res, next) => {
+    try {
+        const { limit = 50, offset = 0, orderId, requestType } = req.query;
+
+        const where = { userId: req.user.id };
+        if (orderId) where.orderId = orderId;
+        if (requestType) where.requestType = requestType;
+
+        const [logs, total] = await Promise.all([
+            prisma.providerForwardLog.findMany({
+                where,
+                orderBy: { createdAt: 'desc' },
+                take: parseInt(limit),
+                skip: parseInt(offset)
+            }),
+            prisma.providerForwardLog.count({ where })
+        ]);
+
+        successResponse(res, { logs, total, limit: parseInt(limit), offset: parseInt(offset) });
+    } catch (error) {
+        next(error);
+    }
+});
+
+/**
  * GET /api/provider-config/:id
  * Get a specific provider configuration
  */
@@ -261,34 +290,6 @@ router.post('/:id/test', authenticate, async (req, res, next) => {
         });
 
         successResponse(res, result, result.success ? 'Test message sent' : 'Test failed');
-    } catch (error) {
-        next(error);
-    }
-});
-
-/**
- * GET /api/provider-config/logs
- * Get forwarding logs
- */
-router.get('/logs', authenticate, async (req, res, next) => {
-    try {
-        const { limit = 50, offset = 0, orderId, requestType } = req.query;
-
-        const where = { userId: req.user.id };
-        if (orderId) where.orderId = orderId;
-        if (requestType) where.requestType = requestType;
-
-        const [logs, total] = await Promise.all([
-            prisma.providerForwardLog.findMany({
-                where,
-                orderBy: { createdAt: 'desc' },
-                take: parseInt(limit),
-                skip: parseInt(offset)
-            }),
-            prisma.providerForwardLog.count({ where })
-        ]);
-
-        successResponse(res, { logs, total, limit: parseInt(limit), offset: parseInt(offset) });
     } catch (error) {
         next(error);
     }

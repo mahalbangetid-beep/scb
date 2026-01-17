@@ -55,6 +55,16 @@ router.get('/', authenticate, async (req, res, next) => {
     }
 });
 
+// GET /api/webhooks/meta/events - Get available events
+// NOTE: This MUST be before /:id route to prevent "meta" being matched as an ID
+router.get('/meta/events', async (req, res, next) => {
+    try {
+        successResponse(res, validEvents);
+    } catch (error) {
+        next(error);
+    }
+});
+
 // GET /api/webhooks/:id
 router.get('/:id', authenticate, async (req, res, next) => {
     try {
@@ -228,15 +238,6 @@ router.post('/:id/test', authenticate, async (req, res, next) => {
 
             throw new AppError(`Webhook test failed: ${error.message}`, 400);
         }
-    } catch (error) {
-        next(error);
-    }
-});
-
-// GET /api/webhooks/events - Get available events
-router.get('/meta/events', async (req, res, next) => {
-    try {
-        successResponse(res, validEvents);
     } catch (error) {
         next(error);
     }
