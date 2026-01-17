@@ -71,6 +71,12 @@ class SmartPanelScanner {
             { endpoint: '/adminapi/v1?action=getUser&limit=1', method: 'GET', keyParam: 'key', checkType: 'users', name: 'AdminAPI v1 getUser', isV1: true },
             { endpoint: '/adminapi/v1?action=getMassProviderData&limit=1', method: 'GET', keyParam: 'key', checkType: 'provider', name: 'AdminAPI v1 Provider Data', isV1: true },
 
+            // V1 with X-Api-Key header (some panels use header auth for V1 too)
+            { endpoint: '/adminapi/v1/orders?limit=1', method: 'GET', keyHeader: 'X-Api-Key', checkType: 'orders', name: 'AdminAPI v1 Orders (Header)' },
+            { endpoint: '/adminapi/v1/orders', method: 'GET', keyHeader: 'X-Api-Key', checkType: 'orders', name: 'AdminAPI v1 Orders No Limit' },
+            { endpoint: '/adminapi/v1/users?limit=1', method: 'GET', keyHeader: 'X-Api-Key', checkType: 'users', name: 'AdminAPI v1 Users (Header)' },
+            { endpoint: '/adminapi/v1/services?limit=1', method: 'GET', keyHeader: 'X-Api-Key', checkType: 'services', name: 'AdminAPI v1 Services (Header)' },
+
             // V1 endpoints with action parameter (POST)
             { endpoint: '/adminapi/v1', method: 'POST', keyParam: 'key', actionParam: 'action', actions: ['updateOrders', 'setCompleted', 'setPartial', 'setCanceled'], checkType: 'orders', name: 'AdminAPI v1 Update', isV1: true },
             { endpoint: '/adminapi/v1', method: 'POST', keyParam: 'key', actionParam: 'action', actions: ['addPayment', 'deductPayment'], checkType: 'payments', name: 'AdminAPI v1 Payment', isV1: true },
