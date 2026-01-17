@@ -173,12 +173,39 @@ class CommandHandlerService {
                 console.log(`[CommandHandler] Querying panel: ${panel.alias || panel.name} (${panel.id})`);
 
                 try {
-                    // Try to get order status from panel API
-                    const smmPanelService = require('./smmPanel');
-                    const orderData = await smmPanelService.getOrderStatus(panel.id, orderId);
+                    let orderData = null;
+
+                    // Try Admin API first if panel supports it (uses /adminapi/v2/orders/{id})
+                    if (panel.supportsAdminApi && panel.adminApiKey) {
+                        console.log(`[CommandHandler] Trying Admin API for order ${orderId}...`);
+                        const adminResult = await adminApiService.getOrderStatus(panel, orderId);
+                        if (adminResult.success) {
+                            orderData = adminResult;
+                            console.log(`[CommandHandler] Admin API succeeded for order ${orderId}`);
+                        } else {
+                            console.log(`[CommandHandler] Admin API failed: ${adminResult.error}`);
+                        }
+                    }
+
+                    // Fallback to User API if Admin API failed or not supported
+                    if (!orderData) {
+                        console.log(`[CommandHandler] Trying User API for order ${orderId}...`);
+                        const smmPanelService = require('./smmPanel');
+                        const userApiResult = await smmPanelService.getOrderStatus(panel.id, orderId);
+                        if (userApiResult && userApiResult.status) {
+                            orderData = userApiResult;
+                            console.log(`[CommandHandler] User API succeeded for order ${orderId}`);
+                        }
+                    }
 
                     if (orderData && orderData.status) {
                         console.log(`[CommandHandler] Order ${orderId} found in panel ${panel.alias}, creating local record...`);
+
+                        // Normalize status
+                        const smmPanelService = require('./smmPanel');
+                        const normalizedStatus = orderData.success !== undefined
+                            ? orderData.status  // Already normalized from Admin API
+                            : smmPanelService.mapStatus(orderData.status);
 
                         // Create order record in database
                         order = await prisma.order.create({
@@ -186,10 +213,12 @@ class CommandHandlerService {
                                 externalOrderId: orderId,
                                 panelId: panel.id,
                                 userId,
-                                status: smmPanelService.mapStatus(orderData.status),
+                                status: normalizedStatus,
                                 charge: orderData.charge,
                                 startCount: orderData.startCount,
-                                remains: orderData.remains
+                                remains: orderData.remains,
+                                serviceName: orderData.serviceName,
+                                link: orderData.link
                             },
                             include: {
                                 panel: {
