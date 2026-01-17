@@ -122,6 +122,18 @@ class BotMessageHandler {
             // If not a verification response, continue to check if it's a new command
         }
 
+        // Priority 0.5: Handle utility commands (.groupid, .ping, .help)
+        const utilityResult = await this.handleUtilityCommand({
+            message,
+            senderNumber,
+            deviceId,
+            isGroup,
+            groupJid: params.groupJid  // Pass group JID if available
+        });
+        if (utilityResult.handled) {
+            return utilityResult;
+        }
+
         // Priority 1: Check if it's an SMM command
         if (commandParser.isCommandMessage(message)) {
             return await this.handleSmmCommand({
@@ -156,6 +168,94 @@ class BotMessageHandler {
 
         // No handler matched
         return { handled: false, reason: 'no_handler' };
+    }
+
+    /**
+     * Handle utility commands (.groupid, .ping, .deviceid, .help)
+     */
+    async handleUtilityCommand(params) {
+        const { message, senderNumber, deviceId, isGroup, groupJid } = params;
+
+        const cmd = message.toLowerCase().trim();
+
+        // .groupid - Show group ID
+        if (cmd === '.groupid' || cmd === '/groupid') {
+            if (!isGroup) {
+                return {
+                    handled: true,
+                    type: 'utility',
+                    response: '❌ This command only works in groups.'
+                };
+            }
+
+            // Get group JID from device's last message
+            const device = await prisma.device.findUnique({
+                where: { id: deviceId }
+            });
+
+            return {
+                handled: true,
+                type: 'utility',
+                response: `📱 *Group Information*\n\n` +
+                    `🆔 Group JID: \`${groupJid || 'Not available'}\`\n` +
+                    `📍 Device: ${device?.name || deviceId}\n` +
+                    `👤 Your Number: ${senderNumber}`
+            };
+        }
+
+        // .ping - Check if bot is alive
+        if (cmd === '.ping' || cmd === '/ping') {
+            const uptime = process.uptime();
+            const hours = Math.floor(uptime / 3600);
+            const minutes = Math.floor((uptime % 3600) / 60);
+            const seconds = Math.floor(uptime % 60);
+
+            return {
+                handled: true,
+                type: 'utility',
+                response: `🏓 *Pong!*\n\n` +
+                    `⏱️ Uptime: ${hours}h ${minutes}m ${seconds}s\n` +
+                    `📱 Device: ${deviceId.substring(0, 8)}...`
+            };
+        }
+
+        // .deviceid - Show device ID
+        if (cmd === '.deviceid' || cmd === '/deviceid') {
+            const device = await prisma.device.findUnique({
+                where: { id: deviceId },
+                select: { id: true, name: true, phone: true }
+            });
+
+            return {
+                handled: true,
+                type: 'utility',
+                response: `📱 *Device Information*\n\n` +
+                    `🆔 Device ID: \`${deviceId}\`\n` +
+                    `📛 Name: ${device?.name || 'Unknown'}\n` +
+                    `📞 Phone: ${device?.phone || 'Not set'}`
+            };
+        }
+
+        // .help - Show available commands
+        if (cmd === '.help' || cmd === '/help' || cmd === '.commands') {
+            return {
+                handled: true,
+                type: 'utility',
+                response: `📚 *Available Commands*\n\n` +
+                    `*Utility:*\n` +
+                    `• \`.ping\` - Check bot status\n` +
+                    `• \`.groupid\` - Get group ID (groups only)\n` +
+                    `• \`.deviceid\` - Get device info\n` +
+                    `• \`.help\` - Show this help\n\n` +
+                    `*SMM Commands:*\n` +
+                    `• \`[order_id] status\` - Check order status\n` +
+                    `• \`[order_id] refill\` - Request refill\n` +
+                    `• \`[order_id] cancel\` - Request cancel\n` +
+                    `• \`status [order_id]\` - Alternative format`
+            };
+        }
+
+        return { handled: false };
     }
 
 

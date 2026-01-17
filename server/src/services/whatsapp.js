@@ -359,6 +359,7 @@ class WhatsAppService {
                                 senderNumber: messageData.from,
                                 senderName: messageData.pushName,
                                 isGroup,
+                                groupJid: isGroup ? msg.key.remoteJid : null,  // Pass group JID for .groupid command
                                 platform: 'WHATSAPP'
                             });
 
