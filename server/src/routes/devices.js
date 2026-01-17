@@ -170,7 +170,66 @@ router.delete('/:id', authenticate, async (req, res, next) => {
     }
 });
 
-// POST /api/devices/:id/restart - Restart device session
+// PUT /api/devices/:id - Update device (panel binding, name, etc.)
+router.put('/:id', authenticate, async (req, res, next) => {
+    try {
+        const { panelId, name } = req.body;
+
+        // Find device
+        const device = await prisma.device.findFirst({
+            where: {
+                id: req.params.id,
+                userId: req.user.id
+            }
+        });
+
+        if (!device) {
+            throw new AppError('Device not found', 404);
+        }
+
+        // Validate panelId if provided (null means unbind from panel)
+        if (panelId) {
+            const panel = await prisma.smmPanel.findFirst({
+                where: {
+                    id: panelId,
+                    userId: req.user.id
+                }
+            });
+            if (!panel) {
+                throw new AppError('Panel not found or does not belong to you', 400);
+            }
+        }
+
+        // Build update data
+        const updateData = {};
+        if (panelId !== undefined) {
+            updateData.panelId = panelId || null;
+        }
+        if (name) {
+            updateData.name = name;
+        }
+
+        // Update device
+        const updatedDevice = await prisma.device.update({
+            where: { id: device.id },
+            data: updateData,
+            include: {
+                panel: {
+                    select: {
+                        id: true,
+                        name: true,
+                        alias: true
+                    }
+                }
+            }
+        });
+
+        successResponse(res, updatedDevice, 'Device updated successfully');
+    } catch (error) {
+        next(error);
+    }
+});
+
 router.post('/:id/restart', authenticate, async (req, res, next) => {
     try {
         const device = await prisma.device.findFirst({

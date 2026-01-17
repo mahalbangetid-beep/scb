@@ -15,7 +15,8 @@ import {
     Clock,
     X,
     Loader2,
-    Link2
+    Link2,
+    Settings
 } from 'lucide-react'
 import api from '../services/api'
 import { formatDistanceToNow } from 'date-fns'
@@ -34,6 +35,12 @@ export default function Devices() {
     const [qrStatus, setQrStatus] = useState('idle') // idle, loading, ready, scanning, connected, error
     const [connectionMessage, setConnectionMessage] = useState('')
     const qrPollRef = useRef(null)
+
+    // Edit Panel Modal State
+    const [showEditModal, setShowEditModal] = useState(false)
+    const [editDevice, setEditDevice] = useState(null)
+    const [editPanelId, setEditPanelId] = useState('')
+    const [editLoading, setEditLoading] = useState(false)
 
     const fetchDevices = async () => {
         try {
@@ -218,6 +225,51 @@ export default function Devices() {
         resetModal()
     }
 
+    // Edit Panel Handlers
+    const handleOpenEditModal = (device) => {
+        setEditDevice(device)
+        setEditPanelId(device.panelId || '')
+        setShowEditModal(true)
+    }
+
+    const handleCloseEditModal = () => {
+        setShowEditModal(false)
+        setEditDevice(null)
+        setEditPanelId('')
+    }
+
+    const handleUpdatePanel = async () => {
+        if (!editDevice) return
+
+        // Show warning if panel is changing
+        const currentPanel = panels.find(p => p.id === editDevice.panelId)
+        const newPanel = panels.find(p => p.id === editPanelId)
+
+        if (editDevice.panelId && editDevice.panelId !== editPanelId) {
+            const confirmed = confirm(
+                `⚠️ Changing panel will affect order lookups.\n\n` +
+                `Current: ${currentPanel?.alias || 'None'}\n` +
+                `New: ${newPanel?.alias || 'None'}\n\n` +
+                `Commands sent to this device will search orders in the new panel.\n\nContinue?`
+            )
+            if (!confirmed) return
+        }
+
+        setEditLoading(true)
+        try {
+            await api.put(`/devices/${editDevice.id}`, {
+                panelId: editPanelId || null
+            })
+            fetchDevices()
+            handleCloseEditModal()
+        } catch (error) {
+            console.error('Failed to update device:', error)
+            alert('Failed to update device panel')
+        } finally {
+            setEditLoading(false)
+        }
+    }
+
     const filteredDevices = devices.filter(device => {
         if (activeTab === 'all') return true
         return device.status === activeTab
@@ -399,10 +451,19 @@ export default function Devices() {
                                     <button
                                         className="btn btn-secondary btn-sm"
                                         style={{ flex: 1 }}
+                                        onClick={() => handleOpenEditModal(device)}
+                                        title="Edit Panel Binding"
+                                    >
+                                        <Settings size={14} />
+                                        Edit
+                                    </button>
+                                    <button
+                                        className="btn btn-ghost btn-sm"
+                                        style={{ padding: '8px' }}
                                         onClick={() => handleRestartDevice(device.id)}
+                                        title="Restart Device"
                                     >
                                         <RefreshCw size={14} />
-                                        Restart
                                     </button>
                                     <button
                                         className="btn btn-ghost btn-sm"
@@ -632,6 +693,72 @@ export default function Devices() {
                                 Refresh QR
                             </button>
                         )}
+                    </div>
+                </div>
+            </div>
+
+            {/* Edit Panel Modal */}
+            <div className={`modal-overlay ${showEditModal ? 'open' : ''}`} onClick={handleCloseEditModal}>
+                <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '400px' }}>
+                    <div className="modal-header">
+                        <h3 className="modal-title">Edit Device Panel</h3>
+                        <button className="btn btn-ghost btn-icon" onClick={handleCloseEditModal}>
+                            <X size={20} />
+                        </button>
+                    </div>
+                    <div className="modal-body">
+                        {editDevice && (
+                            <>
+                                <div style={{ marginBottom: 'var(--spacing-lg)' }}>
+                                    <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
+                                        Device: <strong style={{ color: 'var(--text-primary)' }}>{editDevice.name}</strong>
+                                    </p>
+                                    {editDevice.phone && (
+                                        <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginTop: '4px' }}>
+                                            {editDevice.phone}
+                                        </p>
+                                    )}
+                                </div>
+
+                                <div className="form-group">
+                                    <label className="form-label">Assigned Panel</label>
+                                    <select
+                                        className="form-input"
+                                        value={editPanelId}
+                                        onChange={(e) => setEditPanelId(e.target.value)}
+                                    >
+                                        <option value="">-- No Panel (Search All) --</option>
+                                        {panels.map(panel => (
+                                            <option key={panel.id} value={panel.id}>
+                                                {panel.alias || panel.name}
+                                            </option>
+                                        ))}
+                                    </select>
+                                    <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '8px' }}>
+                                        Commands sent to this device will search orders in the selected panel.
+                                    </p>
+                                </div>
+                            </>
+                        )}
+                    </div>
+                    <div className="modal-footer">
+                        <button className="btn btn-secondary" onClick={handleCloseEditModal}>
+                            Cancel
+                        </button>
+                        <button
+                            className="btn btn-primary"
+                            onClick={handleUpdatePanel}
+                            disabled={editLoading}
+                        >
+                            {editLoading ? (
+                                <>
+                                    <Loader2 className="animate-spin" size={16} />
+                                    Saving...
+                                </>
+                            ) : (
+                                'Save Changes'
+                            )}
+                        </button>
                     </div>
                 </div>
             </div>
