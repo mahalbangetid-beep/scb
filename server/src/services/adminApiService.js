@@ -583,6 +583,7 @@ class AdminApiService {
             }
 
             const orderData = response.data || response;
+            console.log(`[AdminAPI] Raw order data for ${orderId}:`, JSON.stringify(orderData, null, 2));
 
             return {
                 success: true,
