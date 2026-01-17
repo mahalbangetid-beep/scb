@@ -1202,3 +1202,86 @@ model UserPanelMapping {
   @@index([userId])
   @@index([panelUsername])
 }
+
+// ==================== PROVIDER FORWARDING CONFIG ====================
+// Configuration for forwarding requests to providers
+// Feature 2: Provider Forwarding Configuration
+
+model ProviderConfig {
+  id              String   @id @default(cuid())
+  userId          String
+  
+  // Provider identification
+  providerName    String   // e.g., "smmnepal", "main_provider", "backup_provider"
+  alias           String?  // Display name
+  
+  // Provider domain matching (optional - for auto-detect)
+  providerDomain  String?  // e.g., "smmnepal.com" - matches order.providerName
+  
+  // Which request types to forward to this provider
+  forwardRefill   Boolean  @default(true)
+  forwardCancel   Boolean  @default(true)
+  forwardSpeedup  Boolean  @default(true)
+  forwardStatus   Boolean  @default(false)  // Usually not needed
+  
+  // WhatsApp forwarding destinations
+  whatsappGroupJid String?  // WhatsApp group ID for forwarding (e.g., "120363xxx@g.us")
+  whatsappNumber   String?  // WhatsApp number for forwarding (e.g., "628xxx")
+  
+  // Telegram forwarding destinations
+  telegramChatId   String?  // Telegram chat/group ID (e.g., "-1001234567890")
+  telegramBotToken String?  // Optional: use different bot for this provider
+  
+  // Error handling
+  errorGroupJid    String?  // WhatsApp group for error notifications
+  errorChatId      String?  // Telegram chat for error notifications
+  errorNotifyEnabled Boolean @default(true)
+  
+  // Message templates (with variables support)
+  refillTemplate   String?  @db.Text  // Template for refill messages
+  cancelTemplate   String?  @db.Text  // Template for cancel messages
+  speedupTemplate  String?  @db.Text  // Template for speedup messages
+  errorTemplate    String?  @db.Text  // Template for error messages
+  
+  // Priority (lower = higher priority)
+  priority         Int      @default(0)
+  
+  // Status
+  isActive         Boolean  @default(true)
+  
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  
+  @@unique([userId, providerName])
+  @@index([userId])
+  @@index([providerDomain])
+}
+
+// Provider forwarding logs
+model ProviderForwardLog {
+  id              String   @id @default(cuid())
+  userId          String
+  
+  // References
+  orderId         String?  // Order ID being forwarded
+  providerId      String?  // ProviderConfig ID used
+  
+  // Forwarding details
+  requestType     String   // REFILL, CANCEL, SPEEDUP, ERROR
+  destination     String   // Group JID, number, or chatId
+  platform        String   // WHATSAPP, TELEGRAM
+  
+  // Message content
+  messageContent  String   @db.Text
+  
+  // Status
+  status          String   @default("SENT")  // SENT, FAILED, PENDING
+  errorMessage    String?  @db.Text
+  responseTime    Int?     // Time in ms
+  
+  createdAt       DateTime @default(now())
+  
+  @@index([userId])
+  @@index([orderId])
+  @@index([createdAt])
+}

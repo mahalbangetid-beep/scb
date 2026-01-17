@@ -13,7 +13,7 @@ Client meminta 5 fitur utama:
 
 | # | Feature | Priority | Status | Complexity |
 |---|---------|----------|--------|------------|
-| 1 | Customizable Bot Responses | 🔴 High | ⏳ Planning | Medium |
+| 1 | Customizable Bot Responses | 🔴 High | ✅ **DONE** | Medium |
 | 2 | Provider Forwarding Configuration | 🔴 High | ⏳ Planning | High |
 | 3 | Reply to All Messages Toggle | 🟡 Medium | ✅ **DONE** | Low |
 | 4 | Keyword-Based Auto-Reply | ✅ Done | ✅ Already exists | - |
@@ -26,85 +26,60 @@ Client meminta 5 fitur utama:
 ### 📝 Requirement
 > "Bot responses must be fully customizable, not hardcoded"
 
-### Current State
-- Response templates are in `commandParser.js` → `generateResponse()`
-- Messages are hardcoded in code
+### ✅ Status: IMPLEMENTED (2026-01-17)
 
-### Solution Plan
+### Implementation Details
 
-#### Database Schema
-```prisma
-model ResponseTemplate {
-  id          String   @id @default(cuid())
-  userId      String
-  user        User     @relation(fields: [userId], references: [id])
-  
-  // Response category
-  category    String   // e.g., "status", "refill", "cancel", "error", "general"
-  responseKey String   // e.g., "success", "pending", "not_found", "no_guarantee"
-  
-  // Template content (supports variables)
-  template    String   @db.Text
-  
-  // Language support
-  language    String   @default("en")
-  
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  
-  @@unique([userId, category, responseKey, language])
-}
-```
+#### Service: ResponseTemplateService
+Located at: `server/src/services/responseTemplateService.js`
+
+**18+ Default Templates:**
+- STATUS_SUCCESS, STATUS_NOT_FOUND, STATUS_ERROR
+- REFILL_SUCCESS, REFILL_PENDING, REFILL_STATUS_INVALID, REFILL_NO_GUARANTEE, REFILL_EXPIRED, REFILL_FORWARDED, REFILL_ERROR
+- CANCEL_SUCCESS, CANCEL_STATUS_INVALID, CANCEL_ERROR
+- SPEEDUP_SUCCESS, SPEEDUP_ERROR
+- COOLDOWN, DISABLED, ACCESS_DENIED
 
 #### Variables Support
 ```
-{order_id}     → Order ID
-{status}       → Order status
-{service}      → Service name
-{link}         → Order link
-{remains}      → Remaining count
-{start_count}  → Start count
-{charge}       → Order charge
-{provider}     → Provider name
-{date}         → Order date
-{guarantee}    → Guarantee days
-{error}        → Error message
+{order_id}        → Order ID
+{status}          → Order status
+{service}         → Service name
+{link}            → Order link
+{remains}         → Remaining count
+{start_count}     → Start count
+{charge}          → Order charge
+{provider}        → Provider name
+{provider_order_id} → Provider order ID
+{date}            → Order date
+{guarantee}       → Guarantee days
+{error}           → Error message
+{quantity}        → Order quantity
 ```
 
-#### Default Templates
+#### API Endpoints
+- `GET /api/templates` - Get all templates (custom + defaults)
+- `GET /api/templates/:command` - Get specific template
+- `PUT /api/templates/:command` - Update/create custom template
+- `DELETE /api/templates/:command` - Reset to default
+- `POST /api/templates/reset-all` - Reset all to default
+- `POST /api/templates/preview` - Preview with sample variables
+
+#### Usage in Code
 ```javascript
-// Status Response
-"status.completed": "✅ Order #{order_id}: COMPLETED\n📦 Service: {service}\n📊 Start: {start_count}",
-"status.pending": "⏳ Order #{order_id}: PENDING\n📦 Service: {service}",
-"status.not_found": "❌ Order #{order_id} not found in this panel.",
+// Sync version (uses fallback templates)
+commandParser.generateResponse('refill', orderId, true, details);
 
-// Refill Response
-"refill.success": "✅ Order #{order_id}: Refill request submitted!",
-"refill.no_guarantee": "❌ Order #{order_id}: No refill available. This is a no-refill, no-support service.",
-"refill.expired": "❌ Order #{order_id}: Refill period has expired ({guarantee} days).",
-
-// Cancel Response
-"cancel.success": "✅ Order #{order_id}: Cancel request submitted!",
-"cancel.failed": "❌ Order #{order_id}: Cannot cancel. {error}",
-
-// General
-"error.unknown": "❌ An error occurred. Please try again later.",
-"fallback.message": "I didn't understand your message. Send an Order ID to check status."
+// Async version (uses user's custom templates)
+await commandParser.generateResponseAsync(userId, 'refill', orderId, true, details);
 ```
 
-#### UI: Settings → Response Templates
-- Category tabs: Status | Refill | Cancel | Error | General
-- Edit each template with live preview
-- Reset to default button
-- Test template with sample data
-
-### Files to Modify
-- [ ] `server/prisma/schema.prisma` - Add ResponseTemplate model
-- [ ] `server/src/services/responseTemplateService.js` - New service
-- [ ] `server/src/services/commandParser.js` - Use templates instead of hardcoded
-- [ ] `server/src/routes/settings.js` - API endpoints for templates
-- [ ] `src/pages/Settings.jsx` - UI for managing templates
+### Files Modified
+- [x] `server/src/services/responseTemplateService.js` - New service
+- [x] `server/src/routes/templates.js` - New API routes
+- [x] `server/src/services/commandParser.js` - Added generateResponseAsync()
+- [x] `server/src/index.js` - Registered /api/templates route
+- [ ] `src/pages/Settings.jsx` - UI for managing templates (TODO)
 
 ---
 
