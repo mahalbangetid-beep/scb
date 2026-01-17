@@ -415,7 +415,8 @@ class CommandHandlerService {
                 if (providerResult.success && providerResult.data) {
                     const providerData = providerResult.data;
 
-                    // Update order in database with provider info
+                    // Update order in database with provider info ONLY
+                    // DO NOT overwrite status here - status is already set correctly!
                     order = await prisma.order.update({
                         where: { id: order.id },
                         data: {
@@ -424,13 +425,11 @@ class CommandHandlerService {
                             providerStatus: providerData.providerStatus || order.providerStatus,
                             providerCharge: providerData.providerCharge || order.providerCharge,
                             providerSyncedAt: new Date(),
-                            // Also update other fields if available
-                            serviceName: providerData.serviceName || order.serviceName,
-                            status: providerData.status || order.status,
-                            startCount: providerData.startCount ?? order.startCount,
-                            remains: providerData.remains ?? order.remains,
-                            customerUsername: providerData.customerUsername || order.customerUsername,
-                            customerEmail: providerData.customerEmail || order.customerEmail
+                            // Only update optional fields if missing
+                            serviceName: order.serviceName || providerData.serviceName,
+                            customerUsername: order.customerUsername || providerData.customerUsername,
+                            customerEmail: order.customerEmail || providerData.customerEmail
+                            // NOTE: Do NOT update 'status' here - it causes the PENDING bug!
                         },
                         include: {
                             panel: {
@@ -447,7 +446,7 @@ class CommandHandlerService {
                         }
                     });
 
-                    console.log(`[CommandHandler] Provider info synced: ${order.providerName} - ${order.providerOrderId}`);
+                    console.log(`[CommandHandler] Provider info synced: ${order.providerName} - ${order.providerOrderId} (status preserved: ${order.status})`);
                 }
             } catch (providerError) {
                 // Log but don't fail the command
