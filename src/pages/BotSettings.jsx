@@ -453,7 +453,7 @@ Example: 12345 status`}
                 </Section>
             </div>
 
-            <style jsx>{`
+            <style>{`
         .page-container {
           padding: 1.5rem;
           max-width: 1200px;

@@ -436,7 +436,7 @@ const KeywordResponses = () => {
                 </div>
             )}
 
-            <style jsx>{`
+            <style>{`
                 .keyword-responses-page {
                     padding: 1.5rem;
                 }

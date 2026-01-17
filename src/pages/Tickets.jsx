@@ -508,7 +508,7 @@ const Tickets = () => {
         </div>
       )}
 
-      <style jsx>{`
+      <style>{`
                 .tickets-page {
                     padding: 1.5rem;
                     height: calc(100vh - 80px);

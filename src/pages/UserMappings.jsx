@@ -428,7 +428,7 @@ const UserMappings = () => {
                 </div>
             )}
 
-            <style jsx>{`
+            <style>{`
                 .user-mappings-page {
                     padding: 1.5rem;
                 }

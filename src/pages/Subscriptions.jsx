@@ -256,7 +256,7 @@ const Subscriptions = () => {
                 )}
             </div>
 
-            <style jsx>{`
+            <style>{`
         .summary-grid {
           display: grid;
           grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
