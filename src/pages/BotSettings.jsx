@@ -13,7 +13,8 @@ const BotSettings = () => {
         highRisk: false,
         processing: true,
         templates: false,
-        response: true
+        response: true,
+        fallback: true
     });
 
     useEffect(() => {
@@ -343,6 +344,45 @@ const BotSettings = () => {
                         type="text"
                         placeholder="{cancel}"
                     />
+                </Section>
+
+                {/* Fallback Response Settings */}
+                <Section
+                    id="fallback"
+                    title="Reply to All Messages"
+                    icon={MessageSquare}
+                    description="Configure bot to reply to ALL incoming messages"
+                >
+                    <ToggleRow
+                        label="Reply to All Messages"
+                        description="When enabled, bot will reply to ALL messages, not just commands"
+                        toggleKey="replyToAllMessages"
+                    />
+
+                    <div className="toggle-row" style={{ flexDirection: 'column', alignItems: 'flex-start', gap: '0.5rem' }}>
+                        <div className="toggle-info">
+                            <span className="toggle-label">Fallback Message</span>
+                            <span className="toggle-description">
+                                Default response when no command matches (only used when &quot;Reply to All&quot; is enabled)
+                            </span>
+                        </div>
+                        <textarea
+                            className="form-input"
+                            rows={4}
+                            style={{ width: '100%', fontFamily: 'inherit', resize: 'vertical' }}
+                            value={toggles?.fallbackMessage || ''}
+                            onChange={(e) => handleToggle('fallbackMessage', e.target.value)}
+                            placeholder={`I didn't understand your message.
+
+📋 *Available Commands:*
+• [Order ID] status - Check order status
+• [Order ID] refill - Request refill
+• [Order ID] cancel - Cancel order
+• .help - Show all commands
+
+Example: 12345 status`}
+                        />
+                    </div>
                 </Section>
 
                 {/* High Risk Features */}
