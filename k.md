@@ -244,6 +244,7 @@ Example: 12345 status"
 - [x] `server/prisma/schema.prisma` - Added fields to BotFeatureToggles
 - [x] `server/src/services/botMessageHandler.js` - Added fallback handler
 - [x] `server/src/routes/settings.js` - Added API endpoints
+- [x] `src/pages/BotSettings.jsx` - ✅ NEW: Added Reply to All toggle + fallback textarea
 
 ---
 
