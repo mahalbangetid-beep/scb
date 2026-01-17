@@ -3,6 +3,7 @@
 > **Date:** 2026-01-17
 > **Source:** Client feedback via WhatsApp
 > **Priority:** High
+> **Last Updated:** 2026-01-17 18:10
 
 ---
 
@@ -14,7 +15,7 @@ Client meminta 5 fitur utama:
 |---|---------|----------|--------|------------|
 | 1 | Customizable Bot Responses | 🔴 High | ⏳ Planning | Medium |
 | 2 | Provider Forwarding Configuration | 🔴 High | ⏳ Planning | High |
-| 3 | Reply to All Messages Toggle | 🟡 Medium | ⏳ Planning | Low |
+| 3 | Reply to All Messages Toggle | 🟡 Medium | ✅ **DONE** | Low |
 | 4 | Keyword-Based Auto-Reply | ✅ Done | ✅ Already exists | - |
 | 5 | Testing & Bug Reports | ✅ Noted | Ongoing | - |
 
@@ -221,22 +222,22 @@ Send error notification:
 > - Enabled → Reply to all messages
 > - Disabled → Only reply to valid commands
 
-### Current State
-- Bot only responds to recognized commands
-- Ignores random/irrelevant messages
+### ✅ Status: IMPLEMENTED (2026-01-17)
 
-### Solution Plan
+### Implementation Details
 
-#### Database Schema
+#### Database Schema (BotFeatureToggles)
 ```prisma
-model UserSettings {
-  // Add new field:
-  replyToAllMessages  Boolean  @default(false)
-  fallbackMessage     String?  @db.Text  // Message when nothing matches
-}
+// Added to BotFeatureToggles model:
+replyToAllMessages          Boolean @default(false)  // Toggle
+fallbackMessage             String? @db.Text         // Custom fallback message
 ```
 
-#### Flow Change
+#### API Endpoints
+- `GET /api/settings/bot-toggles` - Get all bot toggles
+- `PUT /api/settings/bot-toggles` - Update toggles
+
+#### Flow
 ```
 Message received
         ↓
@@ -262,24 +263,21 @@ message     (no reply)
 
 #### Default Fallback Message
 ```
-"I didn't understand your message. 
+"I didn't understand your message.
 
-To check order status, send: [Order ID] status
-To request refill, send: [Order ID] refill
-To cancel order, send: [Order ID] cancel
+📋 *Available Commands:*
+• [Order ID] status - Check order status
+• [Order ID] refill - Request refill
+• [Order ID] cancel - Cancel order
+• .help - Show all commands
 
-For help, send: .help"
+Example: 12345 status"
 ```
 
-#### UI: Settings → Bot Settings
-- Toggle: "Reply to all messages"
-- Textarea: "Fallback message" (when toggle is ON)
-
-### Files to Modify
-- [ ] `server/prisma/schema.prisma` - Add field to UserSettings
-- [ ] `server/src/services/botMessageHandler.js` - Add fallback logic
-- [ ] `server/src/routes/settings.js` - API for toggle
-- [ ] `src/pages/Settings.jsx` - UI for toggle and fallback message
+### Files Modified
+- [x] `server/prisma/schema.prisma` - Added fields to BotFeatureToggles
+- [x] `server/src/services/botMessageHandler.js` - Added fallback handler
+- [x] `server/src/routes/settings.js` - Added API endpoints
 
 ---
 

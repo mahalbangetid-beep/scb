@@ -139,6 +139,7 @@ app.use('/api/user-mappings', userMappingsRoutes);
 app.use('/api/provider-domains', providerDomainsRoutes);
 app.use('/api/tickets', ticketsRoutes);
 app.use('/api/high-risk', highRiskRoutes);
+app.use('/api/templates', require('./routes/templates'));
 
 // Socket.IO connection handler
 io.on('connection', (socket) => {

@@ -251,9 +251,12 @@ class CommandParserService {
     }
 
     /**
-     * Generate response message for command result
-     */
+ * Generate response message for command result
+ * Uses ResponseTemplateService for customizable responses
+ * Falls back to hardcoded templates if service unavailable
+ */
     generateResponse(command, orderId, success, details = {}) {
+        // Fallback templates (used if ResponseTemplateService not available)
         const templates = {
             refill: {
                 success: `✅ Order ${orderId} has been added to refill queue.`,
@@ -296,6 +299,60 @@ class CommandParserService {
         }
         return template.error_api || `❌ Order ${orderId}: ${details.error || 'Unknown error'}`;
     }
+
+    /**
+     * Generate response using ResponseTemplateService (async version)
+     * Use this when you have access to userId for customizable responses
+     */
+    async generateResponseAsync(userId, command, orderId, success, details = {}) {
+        try {
+            const responseTemplateService = require('./responseTemplateService');
+
+            // Map command + result to template key
+            let templateKey;
+            if (success) {
+                templateKey = `${command.toUpperCase()}_SUCCESS`;
+            } else if (details.reason === 'status') {
+                templateKey = `${command.toUpperCase()}_STATUS_INVALID`;
+            } else if (details.reason === 'not_found') {
+                templateKey = 'STATUS_NOT_FOUND';
+            } else if (details.reason === 'no_guarantee') {
+                templateKey = 'REFILL_NO_GUARANTEE';
+            } else if (details.reason === 'expired') {
+                templateKey = 'REFILL_EXPIRED';
+            } else {
+                templateKey = `${command.toUpperCase()}_ERROR`;
+            }
+
+            // Prepare variables
+            const variables = {
+                order_id: orderId,
+                status: details.status || 'Unknown',
+                service: details.serviceName || 'N/A',
+                link: details.link || 'N/A',
+                remains: details.remains?.toString() || '0',
+                start_count: details.startCount?.toString() || '0',
+                charge: details.charge?.toString() || '0',
+                provider: details.provider || 'N/A',
+                provider_order_id: details.providerOrderId || 'N/A',
+                date: new Date().toLocaleDateString(),
+                guarantee: details.guaranteeDays?.toString() || '30',
+                error: details.error || 'Unknown error',
+                quantity: details.quantity?.toString() || '0'
+            };
+
+            const response = await responseTemplateService.getResponse(userId, templateKey, variables);
+            if (response) {
+                return response;
+            }
+        } catch (error) {
+            console.log(`[CommandParser] Template service error, using fallback:`, error.message);
+        }
+
+        // Fall back to hardcoded response
+        return this.generateResponse(command, orderId, success, details);
+    }
 }
 
 module.exports = new CommandParserService();
+
