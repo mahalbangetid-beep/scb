@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import {
     Users, Plus, Edit3, Trash2, X, Globe, Smartphone,
     MessageSquare, Loader2, AlertCircle, CheckCircle2,
-    Send, RefreshCw, Filter, Download, Link2
+    Send, RefreshCw, Filter, Download, Link2, Settings, Hash, ArrowRight
 } from 'lucide-react'
 import api from '../services/api'
 
@@ -36,6 +36,15 @@ export default function ProviderGroups() {
     const [loadingProviders, setLoadingProviders] = useState(false)
     const [providerFilter, setProviderFilter] = useState('')
     const [syncingProviders, setSyncingProviders] = useState(false)
+
+    // Service ID Rules state
+    const [showRulesModal, setShowRulesModal] = useState(false)
+    const [rulesGroup, setRulesGroup] = useState(null)
+    const [serviceIdRules, setServiceIdRules] = useState({})
+    const [rulesLoading, setRulesLoading] = useState(false)
+    const [newRule, setNewRule] = useState({ serviceId: '', targetJid: '' })
+    const [rulesSaving, setRulesSaving] = useState(false)
+    const [rulesError, setRulesError] = useState(null)
 
     useEffect(() => {
         fetchGroups()
@@ -198,6 +207,65 @@ export default function ProviderGroups() {
         return devices.filter(d => d.status === 'connected')
     }
 
+    // ==================== SERVICE ID RULES FUNCTIONS ====================
+    const openRulesModal = async (group) => {
+        setRulesGroup(group)
+        setRulesError(null)
+        setNewRule({ serviceId: '', targetJid: '' })
+        setShowRulesModal(true)
+        await fetchServiceIdRules(group.id)
+    }
+
+    const fetchServiceIdRules = async (groupId) => {
+        try {
+            setRulesLoading(true)
+            const res = await api.get(`/provider-groups/${groupId}/service-id-rules`)
+            setServiceIdRules(res.data?.rules || {})
+        } catch (err) {
+            console.error('Failed to fetch service ID rules:', err)
+            setRulesError(err.error?.message || 'Failed to fetch rules')
+            setServiceIdRules({})
+        } finally {
+            setRulesLoading(false)
+        }
+    }
+
+    const handleAddRule = async () => {
+        if (!newRule.serviceId || !newRule.targetJid) {
+            setRulesError('Both Service ID and Target JID are required')
+            return
+        }
+
+        try {
+            setRulesSaving(true)
+            setRulesError(null)
+            await api.post(`/provider-groups/${rulesGroup.id}/service-id-rules/add`, {
+                serviceId: newRule.serviceId,
+                targetJid: newRule.targetJid
+            })
+            setNewRule({ serviceId: '', targetJid: '' })
+            await fetchServiceIdRules(rulesGroup.id)
+        } catch (err) {
+            setRulesError(err.error?.message || 'Failed to add rule')
+        } finally {
+            setRulesSaving(false)
+        }
+    }
+
+    const handleDeleteRule = async (serviceId) => {
+        if (!confirm(`Delete routing rule for Service ID ${serviceId}?`)) return
+
+        try {
+            setRulesSaving(true)
+            await api.delete(`/provider-groups/${rulesGroup.id}/service-id-rules/${serviceId}`)
+            await fetchServiceIdRules(rulesGroup.id)
+        } catch (err) {
+            setRulesError(err.error?.message || 'Failed to delete rule')
+        } finally {
+            setRulesSaving(false)
+        }
+    }
+
     return (
         <div className="page-container">
             <div className="page-header">
@@ -334,18 +402,28 @@ export default function ProviderGroups() {
                                 </div>
 
                                 <div className="group-card-footer">
-                                    <button
-                                        className="btn btn-secondary btn-sm"
-                                        onClick={() => handleTest(group.id)}
-                                        disabled={testLoading === group.id || group.device?.status !== 'connected'}
-                                    >
-                                        {testLoading === group.id ? (
-                                            <Loader2 className="animate-spin" size={14} />
-                                        ) : (
-                                            <Send size={14} />
-                                        )}
-                                        Test Message
-                                    </button>
+                                    <div className="footer-buttons">
+                                        <button
+                                            className="btn btn-outline btn-sm"
+                                            onClick={() => openRulesModal(group)}
+                                            title="Configure Service ID Routing Rules"
+                                        >
+                                            <Hash size={14} />
+                                            Service Rules
+                                        </button>
+                                        <button
+                                            className="btn btn-secondary btn-sm"
+                                            onClick={() => handleTest(group.id)}
+                                            disabled={testLoading === group.id || group.device?.status !== 'connected'}
+                                        >
+                                            {testLoading === group.id ? (
+                                                <Loader2 className="animate-spin" size={14} />
+                                            ) : (
+                                                <Send size={14} />
+                                            )}
+                                            Test
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
                         ))}
@@ -574,6 +652,148 @@ export default function ProviderGroups() {
                 </div>
             )}
 
+            {/* Service ID Rules Modal */}
+            {showRulesModal && rulesGroup && (
+                <div className="modal-overlay open" onClick={() => setShowRulesModal(false)}>
+                    <div className="modal modal-lg" onClick={(e) => e.stopPropagation()}>
+                        <div className="modal-header">
+                            <div className="modal-title-section">
+                                <h2>
+                                    <Hash size={20} />
+                                    Service ID Routing Rules
+                                </h2>
+                                <p className="modal-subtitle">
+                                    {rulesGroup.name} • Route specific services to different destinations
+                                </p>
+                            </div>
+                            <button className="modal-close" onClick={() => setShowRulesModal(false)}>
+                                <X size={20} />
+                            </button>
+                        </div>
+
+                        <div className="modal-body">
+                            {rulesError && (
+                                <div className="alert alert-error" style={{ marginBottom: 'var(--spacing-md)' }}>
+                                    <AlertCircle size={16} />
+                                    <span>{rulesError}</span>
+                                    <button onClick={() => setRulesError(null)}><X size={14} /></button>
+                                </div>
+                            )}
+
+                            {/* Add New Rule Form */}
+                            <div className="add-rule-section">
+                                <h4>
+                                    <Plus size={16} />
+                                    Add Routing Rule
+                                </h4>
+                                <div className="add-rule-form">
+                                    <div className="form-group">
+                                        <label className="form-label">Service ID</label>
+                                        <input
+                                            type="text"
+                                            className="form-input"
+                                            placeholder="e.g., 1234"
+                                            value={newRule.serviceId}
+                                            onChange={(e) => setNewRule({ ...newRule, serviceId: e.target.value })}
+                                        />
+                                    </div>
+                                    <div className="rule-arrow">
+                                        <ArrowRight size={20} />
+                                    </div>
+                                    <div className="form-group" style={{ flex: 2 }}>
+                                        <label className="form-label">Target JID / Phone</label>
+                                        <input
+                                            type="text"
+                                            className="form-input"
+                                            placeholder="e.g., 120363xxx@g.us or 6281xxx"
+                                            value={newRule.targetJid}
+                                            onChange={(e) => setNewRule({ ...newRule, targetJid: e.target.value })}
+                                        />
+                                    </div>
+                                    <button
+                                        className="btn btn-primary"
+                                        onClick={handleAddRule}
+                                        disabled={rulesSaving || !newRule.serviceId || !newRule.targetJid}
+                                    >
+                                        {rulesSaving ? <Loader2 className="animate-spin" size={16} /> : <Plus size={16} />}
+                                        Add
+                                    </button>
+                                </div>
+                                <p className="form-hint">
+                                    When an order with this Service ID is processed, it will be forwarded to the specified destination instead of the default group.
+                                </p>
+                            </div>
+
+                            {/* Existing Rules Table */}
+                            <div className="rules-section">
+                                <h4>
+                                    <Settings size={16} />
+                                    Current Rules ({Object.keys(serviceIdRules).length})
+                                </h4>
+
+                                {rulesLoading ? (
+                                    <div className="rules-loading">
+                                        <Loader2 className="animate-spin" size={24} />
+                                        <span>Loading rules...</span>
+                                    </div>
+                                ) : Object.keys(serviceIdRules).length === 0 ? (
+                                    <div className="rules-empty">
+                                        <Hash size={32} />
+                                        <p>No routing rules configured</p>
+                                        <span>Add a rule above to route specific services to different destinations</span>
+                                    </div>
+                                ) : (
+                                    <div className="rules-table">
+                                        <div className="rules-header">
+                                            <div className="rules-col service-col">Service ID</div>
+                                            <div className="rules-col arrow-col"></div>
+                                            <div className="rules-col target-col">Target Destination</div>
+                                            <div className="rules-col action-col">Action</div>
+                                        </div>
+                                        {Object.entries(serviceIdRules).map(([serviceId, targetJid]) => (
+                                            <div key={serviceId} className="rules-row">
+                                                <div className="rules-col service-col">
+                                                    <span className="service-id-badge">
+                                                        <Hash size={12} />
+                                                        {serviceId}
+                                                    </span>
+                                                </div>
+                                                <div className="rules-col arrow-col">
+                                                    <ArrowRight size={16} className="arrow-icon" />
+                                                </div>
+                                                <div className="rules-col target-col">
+                                                    <span className="target-jid" title={targetJid}>
+                                                        {targetJid.includes('@g.us') ? (
+                                                            <><Users size={12} /> {targetJid}</>
+                                                        ) : (
+                                                            <><Smartphone size={12} /> {targetJid}</>
+                                                        )}
+                                                    </span>
+                                                </div>
+                                                <div className="rules-col action-col">
+                                                    <button
+                                                        className="btn btn-ghost btn-sm btn-danger"
+                                                        onClick={() => handleDeleteRule(serviceId)}
+                                                        disabled={rulesSaving}
+                                                    >
+                                                        <Trash2 size={14} />
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+
+                        <div className="modal-footer">
+                            <button className="btn btn-secondary" onClick={() => setShowRulesModal(false)}>
+                                Close
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
             <style>{`
                 .groups-grid {
                     display: grid;
@@ -905,6 +1125,253 @@ export default function ProviderGroups() {
 
                 .provider-input-group .btn {
                     white-space: nowrap;
+                }
+
+                /* Footer Buttons */
+                .footer-buttons {
+                    display: flex;
+                    gap: var(--spacing-sm);
+                    width: 100%;
+                }
+
+                .footer-buttons .btn {
+                    flex: 1;
+                }
+
+                .btn-outline {
+                    background: transparent;
+                    border: 1px solid var(--border-color);
+                    color: var(--text-primary);
+                }
+
+                .btn-outline:hover {
+                    background: var(--bg-tertiary);
+                    border-color: var(--primary-500);
+                    color: var(--primary-500);
+                }
+
+                /* Service ID Rules Modal Styles */
+                .modal-title-section {
+                    flex: 1;
+                }
+
+                .modal-title-section h2 {
+                    display: flex;
+                    align-items: center;
+                    gap: var(--spacing-sm);
+                    margin: 0;
+                }
+
+                .modal-subtitle {
+                    color: var(--text-secondary);
+                    font-size: 0.875rem;
+                    margin: var(--spacing-xs) 0 0 0;
+                }
+
+                .add-rule-section {
+                    background: linear-gradient(135deg, rgba(59, 130, 246, 0.05), transparent);
+                    border: 1px solid rgba(59, 130, 246, 0.2);
+                    border-radius: var(--radius-lg);
+                    padding: var(--spacing-lg);
+                    margin-bottom: var(--spacing-lg);
+                }
+
+                .add-rule-section h4 {
+                    display: flex;
+                    align-items: center;
+                    gap: var(--spacing-sm);
+                    margin: 0 0 var(--spacing-md) 0;
+                    color: #3b82f6;
+                    font-size: 0.9rem;
+                }
+
+                .add-rule-form {
+                    display: flex;
+                    align-items: flex-end;
+                    gap: var(--spacing-md);
+                }
+
+                .add-rule-form .form-group {
+                    flex: 1;
+                    margin: 0;
+                }
+
+                .add-rule-form .form-label {
+                    font-size: 0.75rem;
+                    margin-bottom: var(--spacing-xs);
+                }
+
+                .rule-arrow {
+                    padding-bottom: 10px;
+                    color: var(--text-secondary);
+                }
+
+                .rules-section {
+                    margin-top: var(--spacing-lg);
+                }
+
+                .rules-section h4 {
+                    display: flex;
+                    align-items: center;
+                    gap: var(--spacing-sm);
+                    margin: 0 0 var(--spacing-md) 0;
+                    color: var(--text-secondary);
+                    font-size: 0.9rem;
+                }
+
+                .rules-loading,
+                .rules-empty {
+                    display: flex;
+                    flex-direction: column;
+                    align-items: center;
+                    justify-content: center;
+                    padding: var(--spacing-xl);
+                    color: var(--text-secondary);
+                    text-align: center;
+                    background: var(--bg-tertiary);
+                    border-radius: var(--radius-md);
+                }
+
+                .rules-loading span,
+                .rules-empty p {
+                    margin-top: var(--spacing-sm);
+                    font-weight: 500;
+                }
+
+                .rules-empty span {
+                    font-size: 0.875rem;
+                    opacity: 0.7;
+                }
+
+                .rules-table {
+                    border: 1px solid var(--border-color);
+                    border-radius: var(--radius-md);
+                    overflow: hidden;
+                }
+
+                .rules-header {
+                    display: flex;
+                    background: var(--bg-tertiary);
+                    padding: var(--spacing-sm) var(--spacing-md);
+                    font-size: 0.75rem;
+                    font-weight: 600;
+                    color: var(--text-secondary);
+                    text-transform: uppercase;
+                    letter-spacing: 0.5px;
+                }
+
+                .rules-row {
+                    display: flex;
+                    padding: var(--spacing-md);
+                    border-bottom: 1px solid var(--border-color);
+                    align-items: center;
+                    transition: background 0.15s;
+                }
+
+                .rules-row:last-child {
+                    border-bottom: none;
+                }
+
+                .rules-row:hover {
+                    background: rgba(37, 211, 102, 0.03);
+                }
+
+                .rules-col {
+                    display: flex;
+                    align-items: center;
+                }
+
+                .service-col {
+                    width: 120px;
+                }
+
+                .arrow-col {
+                    width: 40px;
+                    justify-content: center;
+                }
+
+                .target-col {
+                    flex: 1;
+                }
+
+                .action-col {
+                    width: 60px;
+                    justify-content: flex-end;
+                }
+
+                .service-id-badge {
+                    display: inline-flex;
+                    align-items: center;
+                    gap: 4px;
+                    background: linear-gradient(135deg, rgba(139, 92, 246, 0.15), rgba(139, 92, 246, 0.05));
+                    border: 1px solid rgba(139, 92, 246, 0.3);
+                    color: #8b5cf6;
+                    padding: 4px 10px;
+                    border-radius: var(--radius-sm);
+                    font-size: 0.875rem;
+                    font-weight: 600;
+                    font-family: 'Monaco', 'Consolas', monospace;
+                }
+
+                .arrow-icon {
+                    color: var(--text-secondary);
+                    opacity: 0.5;
+                }
+
+                .target-jid {
+                    display: inline-flex;
+                    align-items: center;
+                    gap: 6px;
+                    font-size: 0.875rem;
+                    color: var(--text-primary);
+                    font-family: 'Monaco', 'Consolas', monospace;
+                    max-width: 100%;
+                    overflow: hidden;
+                    text-overflow: ellipsis;
+                    white-space: nowrap;
+                }
+
+                .btn-danger {
+                    color: #ef4444 !important;
+                }
+
+                .btn-danger:hover {
+                    background: rgba(239, 68, 68, 0.1) !important;
+                }
+
+                @media (max-width: 768px) {
+                    .add-rule-form {
+                        flex-direction: column;
+                        align-items: stretch;
+                    }
+
+                    .add-rule-form .form-group {
+                        flex: none !important;
+                    }
+
+                    .rule-arrow {
+                        display: none;
+                    }
+
+                    .rules-header {
+                        display: none;
+                    }
+
+                    .rules-row {
+                        flex-wrap: wrap;
+                        gap: var(--spacing-sm);
+                    }
+
+                    .service-col,
+                    .arrow-col,
+                    .target-col,
+                    .action-col {
+                        width: auto;
+                    }
+
+                    .arrow-col {
+                        display: none;
+                    }
                 }
             `}</style>
         </div>

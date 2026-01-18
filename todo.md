@@ -123,11 +123,12 @@
     3. Else → use default provider group
   - Implemented with `targetJidOverride` variable that takes precedence over default routing
 
-- [ ] **3.3 Update UI for Service ID Rules** (UI ONLY - Backend Done)
+- [x] **3.3 Update UI for Service ID Rules** ✅
   - File: `src/pages/ProviderGroups.jsx`
-  - Add section: "Service ID Routing Rules"
-  - UI: Table to add/edit/delete service ID → group mappings
-  - Fields: Service ID, Target JID (dropdown), Description
+  - Added: "Service Rules" button on each group card
+  - UI: Modal with table to add/edit/delete service ID → group mappings
+  - Fields: Service ID, Target JID, Delete action
+  - Premium design with icons and visual feedback
 
 - [x] **3.4 API Endpoints for Rules**
   - File: `server/src/routes/providerGroups.js`
@@ -218,7 +219,7 @@
 |---------|--------|----------|
 | Provider Auto-Detection | ✅ Done | 100% |
 | Master Admin Backup | ✅ Done | 100% |
-| Service ID Routing | ✅ Done | 90% (UI pending) |
+| Service ID Routing | ✅ Done | 100% |
 | Manual Services | ⬜ Not Started | 0% |
 | UI/UX Improvements | ⬜ Not Started | 0% |
 | Code Quality | 🟡 In Progress | 40% |
