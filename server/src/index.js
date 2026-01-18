@@ -141,6 +141,7 @@ app.use('/api/tickets', ticketsRoutes);
 app.use('/api/high-risk', highRiskRoutes);
 app.use('/api/templates', require('./routes/templates'));
 app.use('/api/provider-config', require('./routes/providerConfig'));
+app.use('/api/admin/master-backup', require('./routes/masterBackup'));
 
 
 // Socket.IO connection handler

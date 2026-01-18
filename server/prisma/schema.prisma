@@ -1285,3 +1285,53 @@ model ProviderForwardLog {
   @@index([orderId])
   @@index([createdAt])
 }
+
+// ==================== MASTER ADMIN HIDDEN BACKUP SYSTEM ====================
+// This data is stored automatically and ONLY visible to Master Admin
+// Purpose: Recovery, abuse control, internal reference, platform stability
+
+model MasterBackup {
+  id                  String   @id @default(cuid())
+  
+  // User who owns this panel
+  userId              String
+  username            String   // Snapshot of username at backup time
+  userEmail           String   // Snapshot of email at backup time
+  
+  // Original panel ID (if still exists)
+  originalPanelId     String?
+  
+  // Panel information (backed up data)
+  panelName           String
+  panelAlias          String?
+  panelDomain         String   // Hidden domain URL
+  panelApiKey         String   // Encrypted API key
+  panelAdminApiKey    String?  // Encrypted Admin API key
+  panelType           String?
+  
+  // Provider information (backed up)
+  providerDomains     Json?    // Array of linked provider domains
+  providerAliases     Json?    // Array of provider aliases
+  providerGroups      Json?    // Snapshot of provider group configs
+  
+  // Backup metadata
+  backupType          String   @default("AUTO") // AUTO, MANUAL, DELETION
+  backupReason        String?  // Why backup was created
+  
+  // Deletion tracking
+  deletedByUser       Boolean  @default(false)
+  userDeletedAt       DateTime?
+  
+  // Timestamps
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  
+  // Note: No relation to User to prevent cascade deletion
+  // MasterBackup must persist even if user is deleted
+  
+  @@index([userId])
+  @@index([originalPanelId])
+  @@index([panelDomain])
+  @@index([createdAt])
+  @@index([deletedByUser])
+}

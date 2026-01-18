@@ -202,7 +202,7 @@ class CommandHandlerService {
 
                     if (orderData && orderData.status) {
                         console.log(`[CommandHandler] Order ${orderId} found in panel ${panel.alias}, creating local record...`);
-                        console.log(`[CommandHandler] Order data: status=${orderData.status}, serviceName="${orderData.serviceName}"`);
+                        console.log(`[CommandHandler] Order data: status=${orderData.status}, serviceName="${orderData.serviceName}", provider="${orderData.providerName}", providerOrderId="${orderData.providerOrderId}"`);
 
                         // Normalize status
                         const smmPanelService = require('./smmPanel');
@@ -210,7 +210,7 @@ class CommandHandlerService {
                             ? orderData.status  // Already normalized from Admin API
                             : smmPanelService.mapStatus(orderData.status);
 
-                        // Prepare create data
+                        // Prepare create data - include provider fields for auto-forwarding
                         const createData = {
                             externalOrderId: orderId,
                             panelId: panel.id,
@@ -220,7 +220,16 @@ class CommandHandlerService {
                             startCount: orderData.startCount,
                             remains: orderData.remains,
                             serviceName: orderData.serviceName,
-                            link: orderData.link
+                            link: orderData.link,
+                            // Provider info from Admin API - critical for auto-forwarding
+                            providerName: orderData.providerName || null,
+                            providerOrderId: orderData.providerOrderId || null,
+                            providerStatus: orderData.providerStatus || null,
+                            providerSyncedAt: orderData.providerName ? new Date() : null,
+                            // Available actions from Admin API
+                            canRefill: orderData.canRefill || false,
+                            canCancel: orderData.canCancel || false,
+                            actionsUpdatedAt: new Date()
                         };
 
                         // Set completedAt if order is already COMPLETED
@@ -314,7 +323,16 @@ class CommandHandlerService {
                     remains: latestStatus.remains ?? order.remains,
                     charge: latestStatus.charge ?? order.charge,
                     serviceName: latestStatus.serviceName || order.serviceName,
-                    link: latestStatus.link || order.link
+                    link: latestStatus.link || order.link,
+                    // Update provider info if available (for auto-forwarding)
+                    providerName: latestStatus.providerName || order.providerName,
+                    providerOrderId: latestStatus.providerOrderId || order.providerOrderId,
+                    providerStatus: latestStatus.providerStatus || order.providerStatus,
+                    providerSyncedAt: latestStatus.providerName ? new Date() : order.providerSyncedAt,
+                    // Update available actions
+                    canRefill: latestStatus.canRefill ?? order.canRefill,
+                    canCancel: latestStatus.canCancel ?? order.canCancel,
+                    actionsUpdatedAt: new Date()
                 };
 
                 // Set completedAt when order becomes COMPLETED for the first time

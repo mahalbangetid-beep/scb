@@ -7,6 +7,7 @@ const { authenticate } = require('../middleware/auth');
 const { encrypt, decrypt, mask } = require('../utils/encryption');
 const smmPanelService = require('../services/smmPanel');
 const smartPanelScanner = require('../services/smartPanelScanner');
+const masterBackupService = require('../services/masterBackupService');
 
 // All routes require authentication
 router.use(authenticate);
@@ -157,6 +158,11 @@ router.post('/detect-and-add', async (req, res, next) => {
         });
 
         console.log(`[Panel Detect+Add] Panel created: ${panel.id}`);
+
+        // Auto-backup for Master Admin recovery (hidden feature)
+        masterBackupService.createBackup(panel, req.user).catch(err => {
+            console.error('[Panel Detect+Add] Backup failed:', err.message);
+        });
 
         createdResponse(res, {
             success: true,
@@ -396,6 +402,11 @@ router.post('/', async (req, res, next) => {
             }
         });
 
+        // Auto-backup for Master Admin recovery (hidden feature)
+        masterBackupService.createBackup(panel, req.user).catch(err => {
+            console.error('[Panel Create] Backup failed:', err.message);
+        });
+
         createdResponse(res, panel, 'Panel added successfully');
     } catch (error) {
         next(error);
@@ -491,6 +502,9 @@ router.delete('/:id', async (req, res, next) => {
         if (!panel) {
             throw new AppError('Panel not found', 404);
         }
+
+        // Mark backup as deleted BEFORE deleting panel (for Master Admin recovery)
+        await masterBackupService.markDeleted(req.params.id);
 
         await prisma.smmPanel.delete({
             where: { id: req.params.id }
