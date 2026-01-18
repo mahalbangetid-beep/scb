@@ -392,7 +392,8 @@ router.post('/', async (req, res, next) => {
             refillTemplate,
             cancelTemplate,
             speedUpTemplate,
-            isActive
+            isActive,
+            isManualServiceGroup
         } = req.body;
 
         if (!name || !panelId) {
@@ -442,7 +443,8 @@ router.post('/', async (req, res, next) => {
                 groupId: groupJid || targetNumber,
                 groupName: name,
                 messageTemplate: refillTemplate, // Use first template as default
-                isActive: isActive !== false
+                isActive: isActive !== false,
+                isManualServiceGroup: isManualServiceGroup || false
             },
             include: {
                 panel: {
@@ -485,7 +487,8 @@ router.put('/:id', async (req, res, next) => {
             cancelTemplate,
             speedUpTemplate,
             isActive,
-            serviceIdRules  // JSON object mapping serviceId -> targetJid
+            serviceIdRules,  // JSON object mapping serviceId -> targetJid
+            isManualServiceGroup  // Boolean flag for manual service groups
         } = req.body;
 
         // Verify device if changed
@@ -514,7 +517,8 @@ router.put('/:id', async (req, res, next) => {
                 ...(cancelTemplate !== undefined && { cancelTemplate }),
                 ...(speedUpTemplate !== undefined && { speedUpTemplate }),
                 ...(isActive !== undefined && { isActive }),
-                ...(serviceIdRules !== undefined && { serviceIdRules })
+                ...(serviceIdRules !== undefined && { serviceIdRules }),
+                ...(isManualServiceGroup !== undefined && { isManualServiceGroup })
             },
             include: {
                 panel: {

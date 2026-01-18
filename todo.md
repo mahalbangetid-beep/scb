@@ -140,30 +140,30 @@
 
 ---
 
-### 4. Manual Services Handling
+### 4. Manual Services Handling ✅
 **Ref: kl.md Section 7**
 
-- [ ] **4.1 Add Manual Service Detection**
+- [x] **4.1 Add Manual Service Detection**
   - File: `server/src/services/groupForwarding.js`
-  - Task: Detect if service mode = 'manual'
-  - Check: `order.service?.mode === 'manual'` or similar
+  - Task: Detect orders without provider info (providerName = null)
+  - Logic: If no providerName, route to isManualServiceGroup group
 
-- [ ] **4.2 Separate Manual Service Group Config**
+- [x] **4.2 Separate Manual Service Group Config**
   - File: `server/prisma/schema.prisma`
-  - Add to UserBotSettings or create new model:
+  - Added to ProviderGroup:
     ```prisma
-    manualServiceGroupId  String?
-    manualServiceNumber   String?
+    isManualServiceGroup Boolean @default(false)
     ```
 
-- [ ] **4.3 UI for Manual Service Destination**
-  - File: `src/pages/ProviderGroups.jsx` or `src/pages/BotSettings.jsx`
-  - Add section: "Manual Services Forwarding"
-  - Config: WhatsApp Group / Number for manual services
+- [x] **4.3 UI for Manual Service Destination**
+  - File: `src/pages/ProviderGroups.jsx`
+  - Added: "Manual Services Group" toggle in form
+  - Visual: Orange badge on cards for manual service groups
 
-- [ ] **4.4 Routing Logic**
-  - If service is manual && no provider detected:
-    - Forward to manual service group (not fallback)
+- [x] **4.4 Routing Logic**
+  - Implemented in groupForwarding.js (step 3):
+    - If no providerName → find group with isManualServiceGroup = true
+    - Separate from fallback logic
 
 ---
 
@@ -220,7 +220,7 @@
 | Provider Auto-Detection | ✅ Done | 100% |
 | Master Admin Backup | ✅ Done | 100% |
 | Service ID Routing | ✅ Done | 100% |
-| Manual Services | ⬜ Not Started | 0% |
+| Manual Services | ✅ Done | 100% |
 | UI/UX Improvements | ⬜ Not Started | 0% |
 | Code Quality | 🟡 In Progress | 40% |
 

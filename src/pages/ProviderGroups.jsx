@@ -24,7 +24,8 @@ export default function ProviderGroups() {
         refillTemplate: '',
         cancelTemplate: '',
         speedUpTemplate: '',
-        isActive: true
+        isActive: true,
+        isManualServiceGroup: false  // For manual services (no provider)
     })
     const [formLoading, setFormLoading] = useState(false)
     const [error, setError] = useState(null)
@@ -151,7 +152,8 @@ export default function ProviderGroups() {
             refillTemplate: group.refillTemplate || '',
             cancelTemplate: group.cancelTemplate || '',
             speedUpTemplate: group.speedUpTemplate || '',
-            isActive: group.isActive
+            isActive: group.isActive,
+            isManualServiceGroup: group.isManualServiceGroup || false
         })
         // Fetch providers for the panel
         if (group.panelId) {
@@ -197,7 +199,8 @@ export default function ProviderGroups() {
             refillTemplate: '',
             cancelTemplate: '',
             speedUpTemplate: '',
-            isActive: true
+            isActive: true,
+            isManualServiceGroup: false
         })
         setProviders([])
         setTestResult(null)
@@ -349,6 +352,12 @@ export default function ProviderGroups() {
                                             <span className="provider-badge">
                                                 <Link2 size={12} />
                                                 {group.providerName}
+                                            </span>
+                                        )}
+                                        {group.isManualServiceGroup && (
+                                            <span className="manual-badge">
+                                                <Settings size={12} />
+                                                Manual Services
                                             </span>
                                         )}
                                     </div>
@@ -525,6 +534,29 @@ export default function ProviderGroups() {
                                     </div>
                                 )}
 
+                                {/* Manual Service Group Toggle */}
+                                <div className={`manual-service-section ${formData.isManualServiceGroup ? 'active' : ''}`}>
+                                    <label className="checkbox-label manual-service-toggle">
+                                        <input
+                                            type="checkbox"
+                                            checked={formData.isManualServiceGroup}
+                                            onChange={(e) => setFormData({
+                                                ...formData,
+                                                isManualServiceGroup: e.target.checked,
+                                                providerName: e.target.checked ? '' : formData.providerName  // Clear provider if manual
+                                            })}
+                                        />
+                                        <div className="toggle-content">
+                                            <span className="toggle-title">
+                                                <Settings size={14} />
+                                                Manual Services Group
+                                            </span>
+                                            <span className="toggle-hint">
+                                                Enable this for orders without provider info (custom/manual services)
+                                            </span>
+                                        </div>
+                                    </label>
+                                </div>
                                 <div className="form-row">
                                     <div className="form-group">
                                         <label className="form-label">WhatsApp Device</label>
@@ -1372,6 +1404,70 @@ export default function ProviderGroups() {
                     .arrow-col {
                         display: none;
                     }
+                }
+
+                /* Manual Service Badge */
+                .manual-badge {
+                    display: inline-flex;
+                    align-items: center;
+                    gap: 4px;
+                    background: linear-gradient(135deg, rgba(245, 158, 11, 0.15), rgba(245, 158, 11, 0.05));
+                    border: 1px solid rgba(245, 158, 11, 0.3);
+                    color: #f59e0b;
+                    padding: 2px 8px;
+                    border-radius: var(--radius-sm);
+                    font-size: 0.7rem;
+                    font-weight: 500;
+                    margin-top: 4px;
+                    margin-left: 4px;
+                }
+
+                /* Manual Service Section in Form */
+                .manual-service-section {
+                    padding: var(--spacing-md);
+                    background: var(--bg-tertiary);
+                    border: 1px dashed var(--border-color);
+                    border-radius: var(--radius-md);
+                    margin-bottom: var(--spacing-md);
+                    transition: all 0.2s ease;
+                }
+
+                .manual-service-section.active {
+                    background: linear-gradient(135deg, rgba(245, 158, 11, 0.08), transparent);
+                    border: 1px solid rgba(245, 158, 11, 0.4);
+                }
+
+                .manual-service-toggle {
+                    display: flex;
+                    align-items: flex-start;
+                    gap: var(--spacing-md);
+                }
+
+                .manual-service-toggle input[type="checkbox"] {
+                    margin-top: 4px;
+                }
+
+                .toggle-content {
+                    display: flex;
+                    flex-direction: column;
+                    gap: 2px;
+                }
+
+                .toggle-title {
+                    display: flex;
+                    align-items: center;
+                    gap: var(--spacing-xs);
+                    font-weight: 500;
+                    color: var(--text-primary);
+                }
+
+                .manual-service-section.active .toggle-title {
+                    color: #f59e0b;
+                }
+
+                .toggle-hint {
+                    font-size: 0.75rem;
+                    color: var(--text-secondary);
                 }
             `}</style>
         </div>
