@@ -7,13 +7,13 @@
 
 const express = require('express');
 const router = express.Router();
-const { authMiddleware, requireMasterAdmin } = require('../middleware/auth');
+const { authenticate, requireMasterAdmin } = require('../middleware/auth');
 const masterBackupService = require('../services/masterBackupService');
 const { successResponse, errorResponse } = require('../utils/response');
-const { AppError } = require('../utils/errors');
+const { AppError } = require('../middleware/errorHandler');
 
 // All routes require authentication and MASTER_ADMIN role
-router.use(authMiddleware);
+router.use(authenticate);
 router.use(requireMasterAdmin);
 
 /**
