@@ -83,6 +83,238 @@ router.post('/forward', async (req, res, next) => {
     }
 });
 
+// ==================== SERVICE ID ROUTING ====================
+
+// GET /api/provider-groups/:id/service-id-rules - Get service ID routing rules
+// NOTE: This MUST be before /:id route (has sub-path)
+router.get('/:id/service-id-rules', async (req, res, next) => {
+    try {
+        const group = await prisma.providerGroup.findFirst({
+            where: {
+                id: req.params.id,
+                panel: {
+                    userId: req.user.id
+                }
+            },
+            select: {
+                id: true,
+                name: true,
+                serviceIdRules: true
+            }
+        });
+
+        if (!group) {
+            throw new AppError('Provider group not found', 404);
+        }
+
+        // Parse rules if stored as string
+        let rules = {};
+        if (group.serviceIdRules) {
+            try {
+                rules = typeof group.serviceIdRules === 'string'
+                    ? JSON.parse(group.serviceIdRules)
+                    : group.serviceIdRules;
+            } catch (e) {
+                console.error(`Failed to parse serviceIdRules:`, e.message);
+            }
+        }
+
+        successResponse(res, {
+            groupId: group.id,
+            groupName: group.name,
+            rules: rules,
+            ruleCount: Object.keys(rules).length
+        });
+    } catch (error) {
+        next(error);
+    }
+});
+
+// PUT /api/provider-groups/:id/service-id-rules - Update service ID routing rules
+// NOTE: This MUST be before /:id route (has sub-path)
+router.put('/:id/service-id-rules', async (req, res, next) => {
+    try {
+        const { rules } = req.body;
+
+        // Validate rules object
+        if (rules === undefined) {
+            throw new AppError('Rules object is required', 400);
+        }
+
+        if (rules !== null && typeof rules !== 'object') {
+            throw new AppError('Rules must be an object mapping serviceId to targetJid', 400);
+        }
+
+        const existing = await prisma.providerGroup.findFirst({
+            where: {
+                id: req.params.id,
+                panel: {
+                    userId: req.user.id
+                }
+            }
+        });
+
+        if (!existing) {
+            throw new AppError('Provider group not found', 404);
+        }
+
+        // Update only the serviceIdRules field
+        const group = await prisma.providerGroup.update({
+            where: { id: req.params.id },
+            data: {
+                serviceIdRules: rules
+            },
+            select: {
+                id: true,
+                name: true,
+                serviceIdRules: true
+            }
+        });
+
+        const ruleCount = rules ? Object.keys(rules).length : 0;
+        console.log(`[ProviderGroups] Updated service ID rules for "${group.name}": ${ruleCount} rules`);
+
+        successResponse(res, {
+            groupId: group.id,
+            groupName: group.name,
+            rules: rules,
+            ruleCount: ruleCount
+        }, `Service ID rules updated (${ruleCount} rules)`);
+    } catch (error) {
+        next(error);
+    }
+});
+
+// POST /api/provider-groups/:id/service-id-rules/add - Add single service ID rule
+router.post('/:id/service-id-rules/add', async (req, res, next) => {
+    try {
+        const { serviceId, targetJid } = req.body;
+
+        if (!serviceId || !targetJid) {
+            throw new AppError('serviceId and targetJid are required', 400);
+        }
+
+        const existing = await prisma.providerGroup.findFirst({
+            where: {
+                id: req.params.id,
+                panel: {
+                    userId: req.user.id
+                }
+            }
+        });
+
+        if (!existing) {
+            throw new AppError('Provider group not found', 404);
+        }
+
+        // Parse existing rules
+        let rules = {};
+        if (existing.serviceIdRules) {
+            try {
+                rules = typeof existing.serviceIdRules === 'string'
+                    ? JSON.parse(existing.serviceIdRules)
+                    : existing.serviceIdRules;
+            } catch (e) {
+                console.error(`Failed to parse existing serviceIdRules:`, e.message);
+            }
+        }
+
+        // Add new rule
+        const serviceIdStr = String(serviceId);
+        const wasExisting = !!rules[serviceIdStr];
+        rules[serviceIdStr] = targetJid;
+
+        // Update
+        const group = await prisma.providerGroup.update({
+            where: { id: req.params.id },
+            data: {
+                serviceIdRules: rules
+            },
+            select: {
+                id: true,
+                name: true,
+                serviceIdRules: true
+            }
+        });
+
+        const action = wasExisting ? 'updated' : 'added';
+        console.log(`[ProviderGroups] ${action} service ID rule: ${serviceIdStr} -> ${targetJid}`);
+
+        successResponse(res, {
+            groupId: group.id,
+            serviceId: serviceIdStr,
+            targetJid: targetJid,
+            action: action,
+            totalRules: Object.keys(rules).length
+        }, `Service ID rule ${action}`);
+    } catch (error) {
+        next(error);
+    }
+});
+
+// DELETE /api/provider-groups/:id/service-id-rules/:serviceId - Remove single service ID rule
+router.delete('/:id/service-id-rules/:serviceId', async (req, res, next) => {
+    try {
+        const { serviceId } = req.params;
+
+        const existing = await prisma.providerGroup.findFirst({
+            where: {
+                id: req.params.id,
+                panel: {
+                    userId: req.user.id
+                }
+            }
+        });
+
+        if (!existing) {
+            throw new AppError('Provider group not found', 404);
+        }
+
+        // Parse existing rules
+        let rules = {};
+        if (existing.serviceIdRules) {
+            try {
+                rules = typeof existing.serviceIdRules === 'string'
+                    ? JSON.parse(existing.serviceIdRules)
+                    : existing.serviceIdRules;
+            } catch (e) {
+                console.error(`Failed to parse existing serviceIdRules:`, e.message);
+            }
+        }
+
+        const serviceIdStr = String(serviceId);
+        if (!rules[serviceIdStr]) {
+            throw new AppError(`Service ID ${serviceIdStr} not found in rules`, 404);
+        }
+
+        // Remove rule
+        delete rules[serviceIdStr];
+
+        // Update
+        const group = await prisma.providerGroup.update({
+            where: { id: req.params.id },
+            data: {
+                serviceIdRules: Object.keys(rules).length > 0 ? rules : null
+            },
+            select: {
+                id: true,
+                name: true,
+                serviceIdRules: true
+            }
+        });
+
+        console.log(`[ProviderGroups] Removed service ID rule: ${serviceIdStr}`);
+
+        successResponse(res, {
+            groupId: group.id,
+            removedServiceId: serviceIdStr,
+            totalRules: Object.keys(rules).length
+        }, `Service ID rule removed`);
+    } catch (error) {
+        next(error);
+    }
+});
+
 // GET /api/provider-groups/whatsapp-groups/:deviceId - List WhatsApp groups
 // NOTE: This MUST be before /:id route
 router.get('/whatsapp-groups/:deviceId', async (req, res, next) => {
@@ -252,7 +484,8 @@ router.put('/:id', async (req, res, next) => {
             refillTemplate,
             cancelTemplate,
             speedUpTemplate,
-            isActive
+            isActive,
+            serviceIdRules  // JSON object mapping serviceId -> targetJid
         } = req.body;
 
         // Verify device if changed
@@ -280,7 +513,8 @@ router.put('/:id', async (req, res, next) => {
                 ...(refillTemplate !== undefined && { refillTemplate }),
                 ...(cancelTemplate !== undefined && { cancelTemplate }),
                 ...(speedUpTemplate !== undefined && { speedUpTemplate }),
-                ...(isActive !== undefined && { isActive })
+                ...(isActive !== undefined && { isActive }),
+                ...(serviceIdRules !== undefined && { serviceIdRules })
             },
             include: {
                 panel: {

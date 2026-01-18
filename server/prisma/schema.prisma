@@ -293,6 +293,14 @@ model ProviderGroup {
   // Variables: {PROVIDER_ORDER_ID}, {PANEL_ORDER_ID}, {COMMAND}, {SERVICE_NAME}, {LINK}, {PANEL_ALIAS}
   messageTemplate String?  // Custom message template for this provider
   
+  // ==================== SERVICE ID ROUTING ====================
+  // Route specific service IDs to specific groups (override default routing)
+  // Format: { "serviceId": "targetGroupId", "1234": "group123@g.us", "5678": "6281xxx@s.whatsapp.net" }
+  serviceIdRules  Json?    // Service ID to target JID mapping
+  
+  // For manual services (services without provider)
+  isManualServiceGroup Boolean @default(false)  // Set true for manual services group
+  
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

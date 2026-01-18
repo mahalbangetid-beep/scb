@@ -105,43 +105,37 @@
 
 ## 🟡 PRIORITY MEDIUM - Important
 
-### 3. Service ID Based Routing
+### 3. Service ID Based Routing ✅
 **Ref: kl.md Section 7 - Advanced Rule**
 
-- [ ] **3.1 Update ProviderGroup Model**
+- [x] **3.1 Update ProviderGroup Model**
   - File: `server/prisma/schema.prisma`
-  - Add to ProviderGroup:
+  - Added to ProviderGroup:
     ```prisma
     serviceIdRules  Json?  // {"serviceId": "groupId"} mapping
     ```
 
-- [ ] **3.2 Update Forwarding Logic**
+- [x] **3.2 Update Forwarding Logic**
   - File: `server/src/services/groupForwarding.js`
   - Task: In `forwardToProvider()`:
     1. Check if serviceIdRules exist for provider
-    2. If current service ID matches rule → use specific group
+    2. If current service ID matches rule → use specific group (targetJidOverride)
     3. Else → use default provider group
-  - Code:
-    ```javascript
-    const serviceRule = providerGroup.serviceIdRules?.[serviceId];
-    if (serviceRule) {
-      // Forward to specific group for this service
-      targetGroup = serviceRule;
-    }
-    ```
+  - Implemented with `targetJidOverride` variable that takes precedence over default routing
 
-- [ ] **3.3 Update UI for Service ID Rules**
+- [ ] **3.3 Update UI for Service ID Rules** (UI ONLY - Backend Done)
   - File: `src/pages/ProviderGroups.jsx`
   - Add section: "Service ID Routing Rules"
   - UI: Table to add/edit/delete service ID → group mappings
-  - Fields: Service ID, Target Group (dropdown), Description
+  - Fields: Service ID, Target JID (dropdown), Description
 
-- [ ] **3.4 API Endpoints for Rules**
+- [x] **3.4 API Endpoints for Rules**
   - File: `server/src/routes/providerGroups.js`
-  - Add:
-    - `POST /api/provider-groups/:id/service-rules` - Add rule
-    - `DELETE /api/provider-groups/:id/service-rules/:serviceId` - Remove rule
-    - `GET /api/provider-groups/:id/service-rules` - List rules
+  - Added:
+    - `GET /api/provider-groups/:id/service-id-rules` - List rules
+    - `PUT /api/provider-groups/:id/service-id-rules` - Update all rules
+    - `POST /api/provider-groups/:id/service-id-rules/add` - Add single rule
+    - `DELETE /api/provider-groups/:id/service-id-rules/:serviceId` - Remove rule
 
 ---
 
@@ -224,7 +218,7 @@
 |---------|--------|----------|
 | Provider Auto-Detection | ✅ Done | 100% |
 | Master Admin Backup | ✅ Done | 100% |
-| Service ID Routing | ⬜ Not Started | 0% |
+| Service ID Routing | ✅ Done | 90% (UI pending) |
 | Manual Services | ⬜ Not Started | 0% |
 | UI/UX Improvements | ⬜ Not Started | 0% |
 | Code Quality | 🟡 In Progress | 40% |

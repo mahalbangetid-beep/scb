@@ -63,6 +63,14 @@ class GroupForwardingService {
     /**
      * Forward command to provider-specific group using Provider Order ID
      * This is the primary method that uses Admin API data
+     * 
+     * Routing Priority:
+     * 1. Service ID specific routing (if serviceIdRules match)
+     * 2. Provider-specific group
+     * 3. Manual service group (if no provider)
+     * 4. Default group (providerName = null)
+     * 5. Any active group (fallback)
+     * 
      * @param {Object} params - { order, command, userId, providerOrderId, providerName, deviceId }
      */
     async forwardToProvider(params) {
@@ -72,11 +80,42 @@ class GroupForwardingService {
             throw new Error('Order object is required');
         }
 
-        // Find provider group - first try to match by provider name
         let providerGroup = null;
+        let targetJidOverride = null;  // For service ID specific routing
 
-        if (providerName) {
-            // Try to find group specific to this provider
+        // ==================== 1. CHECK SERVICE ID ROUTING ====================
+        // Check if any provider group has a serviceIdRules that matches this order's serviceId
+        if (order.serviceId) {
+            const groupsWithRules = await prisma.providerGroup.findMany({
+                where: {
+                    panelId: order.panelId,
+                    isActive: true,
+                    NOT: { serviceIdRules: null }
+                }
+            });
+
+            for (const group of groupsWithRules) {
+                try {
+                    const rules = typeof group.serviceIdRules === 'string'
+                        ? JSON.parse(group.serviceIdRules)
+                        : group.serviceIdRules;
+
+                    // Check if serviceId matches any rule
+                    const serviceIdStr = String(order.serviceId);
+                    if (rules && rules[serviceIdStr]) {
+                        targetJidOverride = rules[serviceIdStr];
+                        providerGroup = group;  // Use this group's template
+                        console.log(`[GroupForward] 🎯 Service ID ${serviceIdStr} matched rule → ${targetJidOverride}`);
+                        break;
+                    }
+                } catch (e) {
+                    console.error(`[GroupForward] Failed to parse serviceIdRules for group ${group.id}:`, e.message);
+                }
+            }
+        }
+
+        // ==================== 2. FIND PROVIDER-SPECIFIC GROUP ====================
+        if (!providerGroup && providerName) {
             providerGroup = await prisma.providerGroup.findFirst({
                 where: {
                     panelId: order.panelId,
@@ -90,12 +129,29 @@ class GroupForwardingService {
             }
         }
 
-        // Fallback to default group (no provider name = default)
+        // ==================== 3. CHECK FOR MANUAL SERVICE GROUP ====================
+        // If no provider name, this might be a manual service
+        if (!providerGroup && !providerName) {
+            providerGroup = await prisma.providerGroup.findFirst({
+                where: {
+                    panelId: order.panelId,
+                    isManualServiceGroup: true,
+                    isActive: true
+                }
+            });
+
+            if (providerGroup) {
+                console.log(`[GroupForward] Using manual service group (no provider detected)`);
+            }
+        }
+
+        // ==================== 4. DEFAULT GROUP ====================
         if (!providerGroup) {
             providerGroup = await prisma.providerGroup.findFirst({
                 where: {
                     panelId: order.panelId,
-                    providerName: null, // Default group
+                    providerName: null,
+                    isManualServiceGroup: false,
                     isActive: true
                 }
             });
@@ -105,7 +161,7 @@ class GroupForwardingService {
             }
         }
 
-        // Last fallback - any active group for this panel
+        // ==================== 5. ANY ACTIVE GROUP (FALLBACK) ====================
         if (!providerGroup) {
             providerGroup = await prisma.providerGroup.findFirst({
                 where: {
@@ -115,7 +171,7 @@ class GroupForwardingService {
             });
 
             if (providerGroup) {
-                console.log(`[GroupForward] ⚠️ Using fallback group "${providerGroup.name}" - consider setting up provider-specific groups`);
+                console.log(`[GroupForward] ⚠️ Using fallback group "${providerGroup.groupName}" - consider setting up provider-specific groups`);
             }
         }
 
@@ -156,10 +212,11 @@ class GroupForwardingService {
                 };
             }
 
-            // Get target JID from groupId field (schema uses groupId for both group and direct)
-            const targetJid = providerGroup.groupId;
+            // Get target JID - use Service ID override if matched, otherwise use group's default
+            // targetJidOverride is set when serviceIdRules match the order's serviceId
+            const targetJid = targetJidOverride || providerGroup.groupId;
 
-            // If groupId looks like a phone number (no @g.us), format as direct
+            // If JID looks like a phone number (no @g.us or @s.whatsapp.net), format as direct
             const isDirectNumber = targetJid && !targetJid.includes('@');
             const formattedJid = isDirectNumber
                 ? `${targetJid.replace(/\D/g, '')}@s.whatsapp.net`
@@ -171,6 +228,11 @@ class GroupForwardingService {
                     reason: 'no_target',
                     message: 'No target configured for provider group'
                 };
+            }
+
+            // Log if using override
+            if (targetJidOverride) {
+                console.log(`[GroupForward] 🎯 Using Service ID override: ${targetJidOverride}`);
             }
 
             await this.whatsappService.sendMessage(sendDeviceId, formattedJid, message);
@@ -190,20 +252,28 @@ class GroupForwardingService {
                         groupName: providerGroup.groupName,
                         providerName: providerName,
                         providerOrderId: providerOrderId,
+                        usedServiceIdRouting: !!targetJidOverride,
+                        serviceId: order.serviceId || null,
+                        targetJid: formattedJid,
                         timestamp: new Date().toISOString()
                     })
                 }
             });
 
             const displayOrderId = providerOrderId || order.externalOrderId;
-            console.log(`[GroupForward] Forwarded ${command} for order ${displayOrderId} to ${providerGroup.groupName}`);
+            const routingInfo = targetJidOverride
+                ? ` (via Service ID ${order.serviceId} routing)`
+                : '';
+            console.log(`[GroupForward] ✅ Forwarded ${command} for order ${displayOrderId} to ${providerGroup.groupName}${routingInfo}`);
 
             return {
                 success: true,
                 message: `Forwarded to ${providerGroup.groupName}`,
                 groupId: providerGroup.id,
                 groupName: providerGroup.groupName,
-                usedProviderOrderId: !!providerOrderId
+                usedProviderOrderId: !!providerOrderId,
+                usedServiceIdRouting: !!targetJidOverride,
+                serviceId: order.serviceId || null
             };
         } catch (error) {
             console.error(`[GroupForward] Failed to forward:`, error);
