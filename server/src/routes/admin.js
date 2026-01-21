@@ -815,6 +815,39 @@ router.put('/config', requireMasterAdmin, async (req, res, next) => {
     }
 });
 
+// PUT /api/admin/config/bulk - Bulk update system configuration (much faster)
+router.put('/config/bulk', requireMasterAdmin, async (req, res, next) => {
+    try {
+        const { items } = req.body;
+
+        if (!items || !Array.isArray(items) || items.length === 0) {
+            throw new AppError('Items array is required', 400);
+        }
+
+        // Use a single transaction for all updates
+        const results = await prisma.$transaction(
+            items.map(item =>
+                prisma.systemConfig.upsert({
+                    where: { key: item.key },
+                    update: {
+                        value: typeof item.value === 'string' ? item.value : JSON.stringify(item.value),
+                        category: item.category || 'general'
+                    },
+                    create: {
+                        key: item.key,
+                        value: typeof item.value === 'string' ? item.value : JSON.stringify(item.value),
+                        category: item.category || 'general'
+                    }
+                })
+            )
+        );
+
+        successResponse(res, { updated: results.length }, `Updated ${results.length} configuration items`);
+    } catch (error) {
+        next(error);
+    }
+});
+
 // ==================== USER DEVICES MANAGEMENT ====================
 
 // GET /api/admin/users/:id/devices - Get user's devices

@@ -24,8 +24,9 @@ class PaymentGatewayService {
      * Get all available payment gateways
      * @returns {Array} Gateway info list
      */
-    getAvailableGateways() {
-        return Object.values(this.gateways).map(gateway => gateway.getGatewayInfo());
+    async getAvailableGateways() {
+        const gatewayPromises = Object.values(this.gateways).map(gateway => gateway.getGatewayInfo());
+        return Promise.all(gatewayPromises);
     }
 
     /**
@@ -90,9 +91,9 @@ class PaymentGatewayService {
      * @param {string} gatewayId - Gateway identifier
      * @returns {Object|null} Gateway info
      */
-    getGatewayInfo(gatewayId) {
+    async getGatewayInfo(gatewayId) {
         const gateway = this.getGateway(gatewayId);
-        return gateway ? gateway.getGatewayInfo() : null;
+        return gateway ? await gateway.getGatewayInfo() : null;
     }
 
     /**
@@ -100,8 +101,8 @@ class PaymentGatewayService {
      * @param {string} gatewayId - Gateway identifier
      * @returns {boolean} Is available
      */
-    isGatewayAvailable(gatewayId) {
-        const info = this.getGatewayInfo(gatewayId);
+    async isGatewayAvailable(gatewayId) {
+        const info = await this.getGatewayInfo(gatewayId);
         return info ? info.isAvailable : false;
     }
 }

@@ -5,6 +5,8 @@ const { successResponse, createdResponse, paginatedResponse, parsePagination } =
 const { AppError } = require('../middleware/errorHandler');
 const { authenticate } = require('../middleware/auth');
 const groupForwardingService = require('../services/groupForwarding');
+const { safeParseObject } = require('../utils/safeJson');
+const logger = require('../utils/logger').service('ProviderGroups');
 
 // All routes require authentication
 router.use(authenticate);
@@ -110,13 +112,9 @@ router.get('/:id/service-id-rules', async (req, res, next) => {
         // Parse rules if stored as string
         let rules = {};
         if (group.serviceIdRules) {
-            try {
-                rules = typeof group.serviceIdRules === 'string'
-                    ? JSON.parse(group.serviceIdRules)
-                    : group.serviceIdRules;
-            } catch (e) {
-                console.error(`Failed to parse serviceIdRules:`, e.message);
-            }
+            rules = typeof group.serviceIdRules === 'string'
+                ? safeParseObject(group.serviceIdRules)
+                : group.serviceIdRules;
         }
 
         successResponse(res, {
@@ -172,7 +170,7 @@ router.put('/:id/service-id-rules', async (req, res, next) => {
         });
 
         const ruleCount = rules ? Object.keys(rules).length : 0;
-        console.log(`[ProviderGroups] Updated service ID rules for "${group.name}": ${ruleCount} rules`);
+        logger.info(`Updated service ID rules for "${group.name}": ${ruleCount} rules`);
 
         successResponse(res, {
             groupId: group.id,
@@ -210,13 +208,9 @@ router.post('/:id/service-id-rules/add', async (req, res, next) => {
         // Parse existing rules
         let rules = {};
         if (existing.serviceIdRules) {
-            try {
-                rules = typeof existing.serviceIdRules === 'string'
-                    ? JSON.parse(existing.serviceIdRules)
-                    : existing.serviceIdRules;
-            } catch (e) {
-                console.error(`Failed to parse existing serviceIdRules:`, e.message);
-            }
+            rules = typeof existing.serviceIdRules === 'string'
+                ? safeParseObject(existing.serviceIdRules)
+                : existing.serviceIdRules;
         }
 
         // Add new rule
@@ -238,7 +232,7 @@ router.post('/:id/service-id-rules/add', async (req, res, next) => {
         });
 
         const action = wasExisting ? 'updated' : 'added';
-        console.log(`[ProviderGroups] ${action} service ID rule: ${serviceIdStr} -> ${targetJid}`);
+        logger.info(`${action} service ID rule: ${serviceIdStr} -> ${targetJid}`);
 
         successResponse(res, {
             groupId: group.id,
@@ -273,13 +267,9 @@ router.delete('/:id/service-id-rules/:serviceId', async (req, res, next) => {
         // Parse existing rules
         let rules = {};
         if (existing.serviceIdRules) {
-            try {
-                rules = typeof existing.serviceIdRules === 'string'
-                    ? JSON.parse(existing.serviceIdRules)
-                    : existing.serviceIdRules;
-            } catch (e) {
-                console.error(`Failed to parse existing serviceIdRules:`, e.message);
-            }
+            rules = typeof existing.serviceIdRules === 'string'
+                ? safeParseObject(existing.serviceIdRules)
+                : existing.serviceIdRules;
         }
 
         const serviceIdStr = String(serviceId);
@@ -303,7 +293,7 @@ router.delete('/:id/service-id-rules/:serviceId', async (req, res, next) => {
             }
         });
 
-        console.log(`[ProviderGroups] Removed service ID rule: ${serviceIdStr}`);
+        logger.info(`Removed service ID rule: ${serviceIdStr}`);
 
         successResponse(res, {
             groupId: group.id,

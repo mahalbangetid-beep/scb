@@ -11,6 +11,7 @@ const guaranteeService = require('../services/guaranteeService');
 const { authenticate } = require('../middleware/auth');
 const { successResponse } = require('../utils/response');
 const { AppError } = require('../middleware/errorHandler');
+const { safeParseArray } = require('../utils/safeJson');
 
 // All routes require authentication
 router.use(authenticate);
@@ -26,7 +27,7 @@ router.get('/config', async (req, res, next) => {
         // Parse patterns for frontend
         const parsedConfig = {
             ...config,
-            patterns: JSON.parse(config.patterns || '[]')
+            patterns: safeParseArray(config.patterns)
         };
 
         successResponse(res, parsedConfig);
@@ -94,7 +95,7 @@ router.put('/config', async (req, res, next) => {
         // Parse for response
         const parsedConfig = {
             ...config,
-            patterns: JSON.parse(config.patterns || '[]')
+            patterns: safeParseArray(config.patterns)
         };
 
         successResponse(res, parsedConfig, 'Guarantee configuration updated');

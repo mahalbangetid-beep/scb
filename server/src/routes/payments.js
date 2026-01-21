@@ -9,9 +9,9 @@ const { authenticate, requireAdmin } = require('../middleware/auth');
 const paymentGatewayService = require('../services/paymentGateway');
 
 // Get all available payment gateways
-router.get('/gateways', authenticate, (req, res) => {
+router.get('/gateways', authenticate, async (req, res) => {
     try {
-        const gateways = paymentGatewayService.getAvailableGateways();
+        const gateways = await paymentGatewayService.getAvailableGateways();
         res.json({
             success: true,
             gateways
@@ -51,10 +51,10 @@ router.post('/create/:gatewayId', authenticate, async (req, res) => {
 });
 
 // Get gateway info
-router.get('/gateway/:gatewayId', authenticate, (req, res) => {
+router.get('/gateway/:gatewayId', authenticate, async (req, res) => {
     try {
         const { gatewayId } = req.params;
-        const info = paymentGatewayService.getGatewayInfo(gatewayId);
+        const info = await paymentGatewayService.getGatewayInfo(gatewayId);
 
         if (!info) {
             return res.status(404).json({
@@ -70,7 +70,98 @@ router.get('/gateway/:gatewayId', authenticate, (req, res) => {
     }
 });
 
+// ============ CRYPTOMUS SPECIFIC ROUTES ============
+
+// Create Cryptomus payment
+router.post('/cryptomus/create', authenticate, async (req, res) => {
+    try {
+        const { amount } = req.body;
+
+        if (!amount || amount <= 0) {
+            return res.status(400).json({
+                success: false,
+                error: 'Valid amount is required'
+            });
+        }
+
+        const cryptomusService = paymentGatewayService.getGateway('cryptomus');
+
+        // Check if Cryptomus is enabled
+        const config = await cryptomusService.getConfig();
+        if (!config.enabled) {
+            return res.status(400).json({
+                success: false,
+                error: 'Cryptomus payment is not enabled'
+            });
+        }
+
+        if (!config.isConfigured) {
+            return res.status(400).json({
+                success: false,
+                error: 'Cryptomus is not configured. Please add API credentials in Payment Settings.'
+            });
+        }
+
+        const result = await cryptomusService.createPayment({
+            userId: req.user.id,
+            amount,
+            description: 'Wallet Top-up'
+        });
+
+        if (!result.success) {
+            return res.status(400).json(result);
+        }
+
+        res.json({
+            success: true,
+            data: result
+        });
+    } catch (error) {
+        console.error('[Cryptomus] Create payment error:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
 // ============ ESEWA SPECIFIC ROUTES ============
+
+// Create eSewa payment
+router.post('/esewa/create', authenticate, async (req, res) => {
+    try {
+        const { amount } = req.body;
+
+        if (!amount || amount <= 0) {
+            return res.status(400).json({
+                success: false,
+                error: 'Valid amount is required'
+            });
+        }
+
+        const esewaService = paymentGatewayService.getGateway('esewa');
+
+        // Check if eSewa is enabled
+        const config = await esewaService.getConfig();
+        if (!config.enabled) {
+            return res.status(400).json({
+                success: false,
+                error: 'eSewa payment is not enabled'
+            });
+        }
+
+        const result = await esewaService.createPayment({
+            userId: req.user.id,
+            amount,
+            description: 'Wallet Top-up'
+        });
+
+        res.json({
+            success: true,
+            data: result
+        });
+    } catch (error) {
+        console.error('[Esewa] Create payment error:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
 
 // Esewa payment return (user redirected back)
 router.get('/esewa/return', async (req, res) => {

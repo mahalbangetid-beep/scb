@@ -23,7 +23,8 @@ import {
     Zap,
     Radio,
     Plug,
-    Ticket
+    Ticket,
+    Database
 } from 'lucide-react'
 import api from '../services/api'
 
@@ -77,6 +78,7 @@ const adminNavigation = [
     { name: 'Payment Settings', icon: Settings, path: '/admin/payment-settings' },
     { name: 'Credit Packages', icon: Package, path: '/admin/credit-packages' },
     { name: 'Vouchers', icon: Gift, path: '/admin/vouchers' },
+    { name: 'Contact Backups', icon: Database, path: '/admin/contact-backups' },
     { name: 'System Settings', icon: Settings, path: '/admin/settings' },
 ]
 

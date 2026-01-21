@@ -10,6 +10,7 @@
 class CommandParserService {
     constructor() {
         // Supported commands with aliases
+        // Order-related commands (require order IDs)
         this.commands = {
             refill: ['refill', 'rf', 'isi', 'reff', 'refil'],
             cancel: ['cancel', 'batal', 'cn', 'batalkan', 'refund'],
@@ -17,11 +18,25 @@ class CommandParserService {
             status: ['status', 'cek', 'check', 'st', 'info']
         };
 
-        // Build reverse lookup
+        // User commands (no order ID required, just the command keyword)
+        this.userCommands = {
+            verify: ['verify', 'payment', 'txn', 'transaction', 'bayar', 'pembayaran'],
+            account: ['account', 'balance', 'saldo', 'me', 'myinfo', 'akun', 'profile']
+        };
+
+        // Build reverse lookup for order commands
         this.commandLookup = {};
         for (const [command, aliases] of Object.entries(this.commands)) {
             for (const alias of aliases) {
                 this.commandLookup[alias.toLowerCase()] = command;
+            }
+        }
+
+        // Build reverse lookup for user commands
+        this.userCommandLookup = {};
+        for (const [command, aliases] of Object.entries(this.userCommands)) {
+            for (const alias of aliases) {
+                this.userCommandLookup[alias.toLowerCase()] = command;
             }
         }
 
@@ -30,9 +45,9 @@ class CommandParserService {
     }
 
     /**
-     * Parse a message and extract command + order IDs
+     * Parse a message and extract command + order IDs or user command + argument
      * @param {string} message - The incoming message
-     * @returns {Object} - { command, orderIds, isValid, error }
+     * @returns {Object} - { command, orderIds, isValid, error, isUserCommand, argument }
      */
     parse(message) {
         if (!message || typeof message !== 'string') {
@@ -41,8 +56,14 @@ class CommandParserService {
 
         const normalizedMessage = message.trim().toLowerCase();
 
-        // Try different parsing strategies
-        let result = this.parseOrderIdFirst(message);
+        // First, check if it's a user command (verify, account)
+        let result = this.parseUserCommand(message);
+        if (result.isValid) {
+            return result;
+        }
+
+        // Try different parsing strategies for order commands
+        result = this.parseOrderIdFirst(message);
         if (!result.isValid) {
             result = this.parseCommandFirst(message);
         }
@@ -71,6 +92,52 @@ class CommandParserService {
         }
 
         return result;
+    }
+
+    /**
+     * Parse user commands (verify, account) that don't require order IDs
+     * Format: "verify TXN123" or "account" or "balance"
+     */
+    parseUserCommand(message) {
+        const parts = message.trim().split(/\s+/);
+        if (parts.length === 0) {
+            return { isValid: false };
+        }
+
+        // First word should be a user command
+        const potentialCommand = parts[0].toLowerCase();
+        const command = this.userCommandLookup[potentialCommand];
+
+        if (!command) {
+            return { isValid: false };
+        }
+
+        // For 'verify' command, we need an argument (transaction ID)
+        // For 'account' command, no argument needed
+        let argument = null;
+        if (parts.length > 1) {
+            argument = parts.slice(1).join(' ').trim();
+        }
+
+        // Verify command requires a transaction ID
+        if (command === 'verify' && !argument) {
+            return {
+                isValid: true,
+                command,
+                isUserCommand: true,
+                argument: null,
+                needsArgument: true,
+                originalMessage: message
+            };
+        }
+
+        return {
+            isValid: true,
+            command,
+            isUserCommand: true,
+            argument,
+            originalMessage: message
+        };
     }
 
     /**
@@ -221,8 +288,14 @@ class CommandParserService {
         }
 
         const normalized = message.trim().toLowerCase();
+        const firstWord = normalized.split(/\s+/)[0];
 
-        // Check if any command keyword exists in the message
+        // Check if it's a user command (verify, account)
+        if (this.userCommandLookup[firstWord]) {
+            return true;
+        }
+
+        // Check if any order command keyword exists in the message
         for (const aliases of Object.values(this.commands)) {
             for (const alias of aliases) {
                 if (normalized.includes(alias)) {
@@ -245,7 +318,9 @@ class CommandParserService {
             refill: 'Refill',
             cancel: 'Cancel',
             speedup: 'Speed-up',
-            status: 'Status'
+            status: 'Status',
+            verify: 'Payment Verification',
+            account: 'Account Details'
         };
         return displayNames[command] || command;
     }

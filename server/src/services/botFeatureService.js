@@ -129,6 +129,24 @@ class BotFeatureService {
     }
 
     /**
+     * Check if a user command (verify, account) is allowed
+     * @param {string} userId - User ID
+     * @param {string} command - Command type (verify, account)
+     * @returns {boolean} Whether command is allowed
+     */
+    async isUserCommandAllowed(userId, command) {
+        const toggles = await this.getToggles(userId);
+
+        const commandMap = {
+            'verify': toggles.allowPaymentVerification,
+            'account': toggles.allowAccountDetailsViaBot
+        };
+
+        const commandLower = command.toLowerCase();
+        return commandMap[commandLower] ?? false; // Default to NOT allowed for user commands
+    }
+
+    /**
      * Check if a feature is enabled
      * @param {string} userId - User ID
      * @param {string} feature - Feature name

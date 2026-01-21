@@ -52,7 +52,22 @@ class CommandHandlerService {
             };
         }
 
-        const { command, orderIds } = parsed;
+        const { command, isUserCommand, argument, needsArgument } = parsed;
+
+        // ==================== HANDLE USER COMMANDS (verify, account) ====================
+        if (isUserCommand) {
+            return await this.processUserCommand({
+                userId,
+                command,
+                argument,
+                needsArgument,
+                senderNumber,
+                platform
+            });
+        }
+
+        // ==================== HANDLE ORDER COMMANDS ====================
+        const { orderIds } = parsed;
         const responses = [];
         const summary = {
             total: orderIds.length,
@@ -1052,6 +1067,261 @@ class CommandHandlerService {
             found: foundIds,
             notFound
         };
+    }
+
+    // ==================== USER COMMANDS (verify, account) ====================
+
+    /**
+     * Process user commands that don't require order IDs
+     * @param {Object} params - { userId, command, argument, needsArgument, senderNumber, platform }
+     */
+    async processUserCommand(params) {
+        const { userId, command, argument, needsArgument, senderNumber, platform } = params;
+
+        // Check if command is allowed
+        const isAllowed = await botFeatureService.isUserCommandAllowed(userId, command);
+        if (!isAllowed) {
+            const commandName = command === 'verify' ? 'Payment Verification' : 'Account Details';
+            return {
+                success: false,
+                error: `❌ ${commandName} is currently disabled. Please enable it in Bot Settings.`,
+                responses: []
+            };
+        }
+
+        // Route to appropriate handler
+        switch (command) {
+            case 'verify':
+                return await this.handleVerifyPayment(userId, argument, needsArgument, senderNumber);
+            case 'account':
+                return await this.handleAccountDetails(userId, senderNumber);
+            default:
+                return {
+                    success: false,
+                    error: `Unknown user command: ${command}`,
+                    responses: []
+                };
+        }
+    }
+
+    /**
+     * Handle payment verification command
+     * Usage: verify [transactionId]
+     */
+    async handleVerifyPayment(userId, transactionId, needsArgument, senderNumber) {
+        // If no transaction ID provided, ask for it
+        if (needsArgument || !transactionId) {
+            return {
+                success: true,
+                formattedResponse: `💳 *Payment Verification*\n\nPlease provide your Transaction ID:\n\`verify YOUR_TRANSACTION_ID\`\n\nExample: \`verify TXN123456789\``,
+                responses: []
+            };
+        }
+
+        try {
+            // Search for payment by various identifiers
+            const payment = await prisma.payment.findFirst({
+                where: {
+                    userId,
+                    OR: [
+                        { id: transactionId },
+                        { transactionId: transactionId },
+                        { reference: transactionId }
+                    ]
+                },
+                orderBy: { createdAt: 'desc' }
+            });
+
+            // Also search in WalletTransaction
+            let walletTxn = null;
+            if (!payment) {
+                walletTxn = await prisma.walletTransaction.findFirst({
+                    where: {
+                        userId,
+                        OR: [
+                            { id: transactionId },
+                            { gatewayRef: transactionId }
+                        ]
+                    },
+                    orderBy: { createdAt: 'desc' }
+                });
+            }
+
+            if (!payment && !walletTxn) {
+                // No exact match, show recent payments
+                const recentPayments = await prisma.payment.findMany({
+                    where: { userId },
+                    orderBy: { createdAt: 'desc' },
+                    take: 3
+                });
+
+                if (recentPayments.length === 0) {
+                    return {
+                        success: false,
+                        formattedResponse: `❌ *Payment Not Found*\n\nNo payment found with ID: \`${transactionId}\`\n\nYou don't have any recent payments on record.`,
+                        responses: []
+                    };
+                }
+
+                let message = `❌ *Payment Not Found*\n\nNo payment found with ID: \`${transactionId}\`\n\n📋 *Your Recent Payments:*\n`;
+                recentPayments.forEach((p, i) => {
+                    const statusEmoji = p.status === 'COMPLETED' ? '✅' : p.status === 'PENDING' ? '⏳' : '❌';
+                    message += `\n${i + 1}. ${statusEmoji} $${p.amount.toFixed(2)} - ${p.method}\n   ID: \`${p.reference || p.id}\`\n   Status: ${p.status}`;
+                });
+
+                return {
+                    success: false,
+                    formattedResponse: message,
+                    responses: []
+                };
+            }
+
+            // Format response based on payment type
+            if (payment) {
+                const statusEmoji = payment.status === 'COMPLETED' ? '✅' :
+                    payment.status === 'PENDING' ? '⏳' :
+                        payment.status === 'FAILED' ? '❌' : '⚠️';
+
+                const message = `💳 *Payment Details*\n\n` +
+                    `${statusEmoji} *Status:* ${payment.status}\n` +
+                    `💰 *Amount:* $${payment.amount.toFixed(2)} ${payment.currency}\n` +
+                    `🏦 *Method:* ${payment.method}\n` +
+                    `🔖 *Reference:* \`${payment.reference || payment.id}\`\n` +
+                    `📅 *Created:* ${payment.createdAt.toLocaleString()}\n` +
+                    (payment.completedAt ? `✅ *Completed:* ${payment.completedAt.toLocaleString()}\n` : '') +
+                    (payment.notes ? `📝 *Notes:* ${payment.notes}\n` : '');
+
+                return {
+                    success: true,
+                    formattedResponse: message,
+                    responses: [{ success: true, payment }]
+                };
+            }
+
+            if (walletTxn) {
+                const statusEmoji = walletTxn.status === 'COMPLETED' ? '✅' :
+                    walletTxn.status === 'PENDING' ? '⏳' : '❌';
+
+                const message = `💳 *Transaction Details*\n\n` +
+                    `${statusEmoji} *Status:* ${walletTxn.status}\n` +
+                    `💰 *Amount:* $${walletTxn.amount.toFixed(2)}\n` +
+                    `🏦 *Gateway:* ${walletTxn.gateway || 'N/A'}\n` +
+                    `🔖 *Reference:* \`${walletTxn.gatewayRef || walletTxn.id}\`\n` +
+                    `📅 *Created:* ${walletTxn.createdAt.toLocaleString()}`;
+
+                return {
+                    success: true,
+                    formattedResponse: message,
+                    responses: [{ success: true, transaction: walletTxn }]
+                };
+            }
+
+        } catch (error) {
+            console.error('[CommandHandler] handleVerifyPayment error:', error);
+            return {
+                success: false,
+                formattedResponse: `❌ Error checking payment: ${error.message}`,
+                responses: []
+            };
+        }
+    }
+
+    /**
+     * Handle account details command
+     * Usage: account / balance / me
+     */
+    async handleAccountDetails(userId, senderNumber) {
+        try {
+            // Get user details
+            const user = await prisma.user.findUnique({
+                where: { id: userId },
+                select: {
+                    id: true,
+                    username: true,
+                    email: true,
+                    name: true,
+                    creditBalance: true,
+                    role: true,
+                    createdAt: true,
+                    _count: {
+                        select: {
+                            orders: true,
+                            payments: true
+                        }
+                    }
+                }
+            });
+
+            if (!user) {
+                return {
+                    success: false,
+                    formattedResponse: `❌ User not found`,
+                    responses: []
+                };
+            }
+
+            // Get total spent from completed payments
+            const totalSpent = await prisma.payment.aggregate({
+                where: {
+                    userId,
+                    status: 'COMPLETED'
+                },
+                _sum: {
+                    amount: true
+                }
+            });
+
+            // Get recent transactions summary
+            const recentOrders = await prisma.order.findMany({
+                where: { userId },
+                orderBy: { createdAt: 'desc' },
+                take: 3,
+                select: {
+                    externalOrderId: true,
+                    status: true,
+                    serviceName: true,
+                    createdAt: true
+                }
+            });
+
+            // Format message
+            let message = `👤 *Account Details*\n\n`;
+            message += `📛 *Name:* ${user.name}\n`;
+            message += `👤 *Username:* ${user.username}\n`;
+            message += `📧 *Email:* ${user.email}\n`;
+            message += `💰 *Balance:* $${user.creditBalance.toFixed(2)}\n`;
+            message += `📊 *Total Orders:* ${user._count.orders}\n`;
+            message += `💳 *Total Payments:* ${user._count.payments}\n`;
+            message += `💸 *Total Spent:* $${(totalSpent._sum.amount || 0).toFixed(2)}\n`;
+            message += `📅 *Member Since:* ${user.createdAt.toLocaleDateString()}\n`;
+
+            if (recentOrders.length > 0) {
+                message += `\n📋 *Recent Orders:*\n`;
+                recentOrders.forEach((order, i) => {
+                    const statusEmoji = order.status === 'COMPLETED' ? '✅' :
+                        order.status === 'PROCESSING' ? '🔄' :
+                            order.status === 'PENDING' ? '⏳' : '⚠️';
+                    const serviceName = order.serviceName ?
+                        (order.serviceName.length > 30 ? order.serviceName.substring(0, 30) + '...' : order.serviceName) :
+                        'Unknown Service';
+                    message += `${statusEmoji} #${order.externalOrderId} - ${serviceName}\n`;
+                });
+            }
+
+            return {
+                success: true,
+                formattedResponse: message,
+                responses: [{ success: true, user }]
+            };
+
+        } catch (error) {
+            console.error('[CommandHandler] handleAccountDetails error:', error);
+            return {
+                success: false,
+                formattedResponse: `❌ Error fetching account details: ${error.message}`,
+                responses: []
+            };
+        }
     }
 }
 

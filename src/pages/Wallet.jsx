@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import {
     Wallet, CreditCard, ArrowUpRight, ArrowDownLeft,
     Gift, Clock, CheckCircle2, XCircle, AlertCircle,
-    Plus, Loader2, X, RefreshCw, DollarSign, TrendingUp, Package, Star
+    Plus, Loader2, X, RefreshCw, DollarSign, TrendingUp, Package, Star, QrCode, Copy
 } from 'lucide-react'
 import api from '../services/api'
 
@@ -17,12 +17,20 @@ export default function WalletPage() {
     const [showTopUpModal, setShowTopUpModal] = useState(false)
     const [showVoucherModal, setShowVoucherModal] = useState(false)
     const [showPackagesModal, setShowPackagesModal] = useState(false)
-    const [topUpForm, setTopUpForm] = useState({ amount: '', method: 'BANK_TRANSFER' })
+    const [topUpForm, setTopUpForm] = useState({ amount: '', method: 'ESEWA' })
     const [voucherCode, setVoucherCode] = useState('')
     const [formLoading, setFormLoading] = useState(false)
     const [purchaseLoading, setPurchaseLoading] = useState(null)
     const [error, setError] = useState(null)
     const [success, setSuccess] = useState(null)
+
+    // Binance payment state
+    const [showBinanceModal, setShowBinanceModal] = useState(false)
+    const [binanceStep, setBinanceStep] = useState('amount') // 'amount', 'pay', 'verify'
+    const [binanceInfo, setBinanceInfo] = useState(null)
+    const [binancePayment, setBinancePayment] = useState(null)
+    const [binanceAmount, setBinanceAmount] = useState('')
+    const [binanceTxnId, setBinanceTxnId] = useState('')
 
     useEffect(() => {
         fetchData()
@@ -58,6 +66,69 @@ export default function WalletPage() {
             return
         }
 
+        // If Binance selected, redirect to Binance flow
+        if (topUpForm.method === 'BINANCE') {
+            setBinanceAmount(topUpForm.amount)
+            setShowTopUpModal(false)
+            openBinanceModal()
+            return
+        }
+
+        // If Cryptomus selected, create payment and redirect
+        if (topUpForm.method === 'CRYPTOMUS') {
+            setFormLoading(true)
+            setError(null)
+            try {
+                const res = await api.post('/payments/cryptomus/create', {
+                    amount: parseFloat(topUpForm.amount)
+                })
+                if (res.data?.data?.paymentUrl) {
+                    // Redirect to Cryptomus payment page
+                    window.location.href = res.data.data.paymentUrl
+                } else {
+                    setError('Failed to initialize Cryptomus payment')
+                }
+            } catch (err) {
+                setError(err.error?.message || err.message || 'Failed to create Cryptomus payment')
+            } finally {
+                setFormLoading(false)
+            }
+            return
+        }
+
+        // If eSewa selected, create payment and redirect
+        if (topUpForm.method === 'ESEWA') {
+            setFormLoading(true)
+            setError(null)
+            try {
+                const res = await api.post('/payments/esewa/create', {
+                    amount: parseFloat(topUpForm.amount)
+                })
+                if (res.data?.data?.gatewayUrl && res.data?.data?.formData) {
+                    // Create form and submit to eSewa
+                    const form = document.createElement('form')
+                    form.method = 'POST'
+                    form.action = res.data.data.gatewayUrl
+                    Object.entries(res.data.data.formData).forEach(([key, value]) => {
+                        const input = document.createElement('input')
+                        input.type = 'hidden'
+                        input.name = key
+                        input.value = value
+                        form.appendChild(input)
+                    })
+                    document.body.appendChild(form)
+                    form.submit()
+                } else {
+                    setError('Failed to initialize eSewa payment')
+                }
+            } catch (err) {
+                setError(err.error?.message || err.message || 'Failed to create eSewa payment')
+            } finally {
+                setFormLoading(false)
+            }
+            return
+        }
+
         setFormLoading(true)
         setError(null)
 
@@ -68,7 +139,7 @@ export default function WalletPage() {
             })
             setSuccess('Payment request created! Please complete the payment.')
             setShowTopUpModal(false)
-            setTopUpForm({ amount: '', method: 'BANK_TRANSFER' })
+            setTopUpForm({ amount: '', method: 'ESEWA' })
             fetchData()
             // Dispatch event to refresh sidebar
             window.dispatchEvent(new CustomEvent('user-data-updated'))
@@ -77,6 +148,91 @@ export default function WalletPage() {
         } finally {
             setFormLoading(false)
         }
+    }
+
+    // Binance Payment Handlers
+    const openBinanceModal = async () => {
+        setFormLoading(true)
+        setError(null)
+        try {
+            const res = await api.get('/wallet/binance/info')
+            if (!res.data?.available) {
+                setError(res.data?.message || 'Binance payment is not available')
+                return
+            }
+            setBinanceInfo(res.data)
+            setBinanceStep('amount')
+            setShowBinanceModal(true)
+        } catch (err) {
+            setError(err.error?.message || err.message || 'Failed to load Binance info')
+        } finally {
+            setFormLoading(false)
+        }
+    }
+
+    const handleBinanceCreatePayment = async () => {
+        if (!binanceAmount || parseFloat(binanceAmount) <= 0) {
+            setError('Please enter a valid amount')
+            return
+        }
+
+        setFormLoading(true)
+        setError(null)
+        try {
+            const res = await api.post('/wallet/binance/create', {
+                amount: parseFloat(binanceAmount)
+            })
+            setBinancePayment(res.data)
+            setBinanceStep('pay')
+        } catch (err) {
+            setError(err.error?.message || err.message || 'Failed to create payment')
+        } finally {
+            setFormLoading(false)
+        }
+    }
+
+    const handleBinanceVerify = async () => {
+        if (!binanceTxnId.trim()) {
+            setError('Please enter the Transaction ID')
+            return
+        }
+
+        setFormLoading(true)
+        setError(null)
+        try {
+            const res = await api.post('/wallet/binance/verify', {
+                paymentId: binancePayment.paymentId,
+                transactionId: binanceTxnId.trim()
+            })
+            if (res.data?.success) {
+                const bonusText = res.data.bonus > 0 ? ` (+$${res.data.bonus.toFixed(2)} bonus!)` : ''
+                setSuccess(`Payment verified! +$${res.data.credited.toFixed(2)}${bonusText}`)
+                setShowBinanceModal(false)
+                resetBinanceState()
+                fetchData()
+                window.dispatchEvent(new CustomEvent('user-data-updated'))
+            } else {
+                setError(res.data?.message || 'Verification failed')
+            }
+        } catch (err) {
+            setError(err.response?.data?.message || err.error?.message || err.message || 'Verification failed')
+        } finally {
+            setFormLoading(false)
+        }
+    }
+
+    const resetBinanceState = () => {
+        setBinanceStep('amount')
+        setBinanceInfo(null)
+        setBinancePayment(null)
+        setBinanceAmount('')
+        setBinanceTxnId('')
+    }
+
+    const copyToClipboard = (text) => {
+        navigator.clipboard.writeText(text)
+        setSuccess('Copied to clipboard!')
+        setTimeout(() => setSuccess(null), 2000)
     }
 
     const handleRedeemVoucher = async (e) => {
@@ -381,10 +537,10 @@ export default function WalletPage() {
                                         value={topUpForm.method}
                                         onChange={(e) => setTopUpForm({ ...topUpForm, method: e.target.value })}
                                     >
+                                        <option value="ESEWA">eSewa (Nepal)</option>
+                                        <option value="BINANCE">Binance (Crypto)</option>
+                                        <option value="CRYPTOMUS">Cryptomus (Crypto)</option>
                                         <option value="BANK_TRANSFER">Bank Transfer</option>
-                                        <option value="CRYPTO">Cryptocurrency</option>
-                                        <option value="BINANCE">Binance Pay</option>
-                                        <option value="CRYPTOMUS">Cryptomus</option>
                                         <option value="MANUAL">Manual Payment</option>
                                     </select>
                                 </div>
@@ -504,6 +660,131 @@ export default function WalletPage() {
                                     ))
                                 )}
                             </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Binance Payment Modal */}
+            {showBinanceModal && binanceInfo && (
+                <div className="modal-overlay open" onClick={() => { setShowBinanceModal(false); resetBinanceState(); }}>
+                    <div className="modal binance-modal" onClick={(e) => e.stopPropagation()}>
+                        <div className="modal-header binance-header">
+                            <div className="binance-title">
+                                <span className="binance-icon">💎</span>
+                                <h2>{binanceInfo.name || 'Binance Payment'}</h2>
+                            </div>
+                            <button className="modal-close" onClick={() => { setShowBinanceModal(false); resetBinanceState(); }}>
+                                <X size={20} />
+                            </button>
+                        </div>
+                        <div className="modal-body">
+                            {binanceStep === 'amount' && (
+                                <div className="binance-step">
+                                    <div className="form-group">
+                                        <label className="form-label">Amount ({binanceInfo.currency})</label>
+                                        <input
+                                            type="number"
+                                            className="form-input"
+                                            placeholder={`Min: $${binanceInfo.minAmount}`}
+                                            value={binanceAmount}
+                                            onChange={(e) => setBinanceAmount(e.target.value)}
+                                            min={binanceInfo.minAmount}
+                                            step="0.01"
+                                        />
+                                    </div>
+                                    {binanceInfo.bonus > 0 && (
+                                        <div className="binance-bonus-badge">
+                                            🎁 {binanceInfo.bonus}% Bonus on this payment!
+                                        </div>
+                                    )}
+                                    <div className="quick-amounts">
+                                        {[10, 25, 50, 100, 250, 500].map(amt => (
+                                            <button
+                                                key={amt}
+                                                type="button"
+                                                className="quick-amount-btn"
+                                                onClick={() => setBinanceAmount(amt.toString())}
+                                            >
+                                                ${amt}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            {binanceStep === 'pay' && binancePayment && (
+                                <div className="binance-step binance-pay-step">
+                                    <div className="binance-qr-section">
+                                        {binanceInfo.qrUrl ? (
+                                            <img src={binanceInfo.qrUrl} alt="Binance QR" className="binance-qr-image" />
+                                        ) : (
+                                            <div className="binance-qr-placeholder">
+                                                <QrCode size={80} />
+                                                <p>QR Code not configured</p>
+                                            </div>
+                                        )}
+                                    </div>
+                                    <div className="binance-pay-info">
+                                        <div className="binance-amount-display">
+                                            <span>Send exactly:</span>
+                                            <strong>{binancePayment.amount} {binancePayment.currency}</strong>
+                                        </div>
+                                        <div className="binance-instructions">
+                                            {binanceInfo.instructions?.map((inst, i) => (
+                                                <p key={i}>{inst}</p>
+                                            ))}
+                                        </div>
+                                        <div className="binance-ref">
+                                            <span>Reference: </span>
+                                            <code>{binancePayment.reference}</code>
+                                            <button type="button" className="copy-btn" onClick={() => copyToClipboard(binancePayment.reference)}>
+                                                <Copy size={14} />
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div className="form-group" style={{ marginTop: '1rem' }}>
+                                        <label className="form-label">Transaction ID / Order ID</label>
+                                        <input
+                                            type="text"
+                                            className="form-input"
+                                            placeholder="Paste your Binance Transaction ID here"
+                                            value={binanceTxnId}
+                                            onChange={(e) => setBinanceTxnId(e.target.value)}
+                                        />
+                                        <small className="form-hint">Find this in your Binance transaction history after payment</small>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                        <div className="modal-footer">
+                            <button
+                                type="button"
+                                className="btn btn-secondary"
+                                onClick={() => { setShowBinanceModal(false); resetBinanceState(); }}
+                            >
+                                Cancel
+                            </button>
+                            {binanceStep === 'amount' && (
+                                <button
+                                    type="button"
+                                    className="btn btn-primary"
+                                    onClick={handleBinanceCreatePayment}
+                                    disabled={formLoading || !binanceAmount || parseFloat(binanceAmount) < binanceInfo.minAmount}
+                                >
+                                    {formLoading ? <Loader2 className="animate-spin" size={18} /> : 'Continue to Payment'}
+                                </button>
+                            )}
+                            {binanceStep === 'pay' && (
+                                <button
+                                    type="button"
+                                    className="btn btn-primary"
+                                    onClick={handleBinanceVerify}
+                                    disabled={formLoading || !binanceTxnId.trim()}
+                                >
+                                    {formLoading ? <Loader2 className="animate-spin" size={18} /> : 'Verify Payment'}
+                                </button>
+                            )}
                         </div>
                     </div>
                 </div>
@@ -918,6 +1199,142 @@ export default function WalletPage() {
 
                 .btn-block {
                     width: 100%;
+                }
+
+                /* Binance Modal Styles */
+                .binance-modal {
+                    max-width: 480px;
+                }
+
+                .binance-header {
+                    background: linear-gradient(135deg, #F0B90B, #d4a00a);
+                    color: #1E2026;
+                }
+
+                .binance-title {
+                    display: flex;
+                    align-items: center;
+                    gap: var(--spacing-sm);
+                }
+
+                .binance-icon {
+                    font-size: 1.5rem;
+                }
+
+                .binance-title h2 {
+                    margin: 0;
+                    color: #1E2026;
+                }
+
+                .binance-step {
+                    text-align: center;
+                }
+
+                .binance-bonus-badge {
+                    background: linear-gradient(135deg, rgba(34, 197, 94, 0.1), rgba(34, 197, 94, 0.05));
+                    border: 1px solid rgba(34, 197, 94, 0.3);
+                    color: #22c55e;
+                    padding: var(--spacing-sm) var(--spacing-md);
+                    border-radius: var(--radius-md);
+                    margin: var(--spacing-md) 0;
+                    font-weight: 500;
+                }
+
+                .binance-pay-step {
+                    text-align: left;
+                }
+
+                .binance-qr-section {
+                    display: flex;
+                    justify-content: center;
+                    margin-bottom: var(--spacing-lg);
+                }
+
+                .binance-qr-image {
+                    max-width: 200px;
+                    border-radius: var(--radius-md);
+                    border: 3px solid #F0B90B;
+                }
+
+                .binance-qr-placeholder {
+                    width: 200px;
+                    height: 200px;
+                    display: flex;
+                    flex-direction: column;
+                    align-items: center;
+                    justify-content: center;
+                    background: var(--bg-tertiary);
+                    border: 2px dashed var(--border-color);
+                    border-radius: var(--radius-md);
+                    color: var(--text-secondary);
+                }
+
+                .binance-pay-info {
+                    background: var(--bg-tertiary);
+                    border-radius: var(--radius-md);
+                    padding: var(--spacing-md);
+                    margin-bottom: var(--spacing-md);
+                }
+
+                .binance-amount-display {
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                    padding: var(--spacing-sm) 0;
+                    border-bottom: 1px solid var(--border-color);
+                    margin-bottom: var(--spacing-sm);
+                }
+
+                .binance-amount-display strong {
+                    font-size: 1.25rem;
+                    color: #F0B90B;
+                }
+
+                .binance-instructions {
+                    font-size: 0.875rem;
+                    color: var(--text-secondary);
+                }
+
+                .binance-instructions p {
+                    margin: var(--spacing-xs) 0;
+                }
+
+                .binance-ref {
+                    display: flex;
+                    align-items: center;
+                    gap: var(--spacing-sm);
+                    margin-top: var(--spacing-sm);
+                    padding-top: var(--spacing-sm);
+                    border-top: 1px solid var(--border-color);
+                    font-size: 0.875rem;
+                }
+
+                .binance-ref code {
+                    background: var(--bg-secondary);
+                    padding: 2px 8px;
+                    border-radius: var(--radius-sm);
+                    font-family: monospace;
+                    flex: 1;
+                }
+
+                .copy-btn {
+                    background: none;
+                    border: none;
+                    color: var(--primary-500);
+                    cursor: pointer;
+                    padding: 4px;
+                    transition: transform 0.2s;
+                }
+
+                .copy-btn:hover {
+                    transform: scale(1.1);
+                }
+
+                .form-hint {
+                    display: block;
+                    margin-top: var(--spacing-xs);
+                    font-size: 0.75rem;
+                    color: var(--text-secondary);
                 }
             `}</style>
         </div>

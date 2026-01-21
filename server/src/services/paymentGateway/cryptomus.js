@@ -5,6 +5,8 @@
  * Testing:
  * - Test Webhook: https://api.cryptomus.com/v1/test-webhook/payment
  * - Recommended: Create trial invoice, pay with LTC for faster confirmation
+ * 
+ * API Docs: https://doc.cryptomus.com/
  */
 
 const crypto = require('crypto');
@@ -14,30 +16,65 @@ const prisma = require('../../utils/prisma');
 class CryptomusService {
     constructor() {
         this.baseUrl = 'https://api.cryptomus.com/v1';
+        console.log('[Cryptomus] Service initialized');
+    }
 
-        // Credentials from environment
-        this.merchantId = process.env.CRYPTOMUS_MERCHANT_ID || '';
-        this.apiKey = process.env.CRYPTOMUS_API_KEY || '';
+    /**
+     * Get Cryptomus configuration from admin settings
+     * @returns {Object} Cryptomus configuration
+     */
+    async getConfig() {
+        try {
+            // Fetch config from admin settings (SystemConfig table)
+            const configs = await prisma.systemConfig.findMany({
+                where: {
+                    key: {
+                        in: ['cryptomus_enabled', 'cryptomus_merchant_id', 'cryptomus_api_key']
+                    }
+                }
+            });
 
-        this.isConfigured = !!(this.merchantId && this.apiKey);
+            // Convert to object
+            const configMap = {};
+            configs.forEach(c => {
+                configMap[c.key] = c.value;
+            });
 
-        if (!this.isConfigured) {
-            console.warn('[Cryptomus] Not configured - CRYPTOMUS_MERCHANT_ID and CRYPTOMUS_API_KEY required');
-        } else {
-            console.log('[Cryptomus] Initialized successfully');
+            const isEnabled = configMap.cryptomus_enabled === 'true' || configMap.cryptomus_enabled === true;
+            const merchantId = configMap.cryptomus_merchant_id || process.env.CRYPTOMUS_MERCHANT_ID || '';
+            const apiKey = configMap.cryptomus_api_key || process.env.CRYPTOMUS_API_KEY || '';
+
+            return {
+                enabled: isEnabled,
+                merchantId,
+                apiKey,
+                isConfigured: !!(merchantId && apiKey)
+            };
+        } catch (error) {
+            console.error('[Cryptomus] Failed to get config:', error.message);
+            // Fallback to environment variables
+            const merchantId = process.env.CRYPTOMUS_MERCHANT_ID || '';
+            const apiKey = process.env.CRYPTOMUS_API_KEY || '';
+            return {
+                enabled: false,
+                merchantId,
+                apiKey,
+                isConfigured: !!(merchantId && apiKey)
+            };
         }
     }
 
     /**
      * Generate MD5 signature for Cryptomus API
      * @param {Object} payload - Request payload
+     * @param {string} apiKey - API Key
      * @returns {string} MD5 signature
      */
-    generateSignature(payload) {
+    generateSignature(payload, apiKey) {
         const base64Data = Buffer.from(JSON.stringify(payload)).toString('base64');
         return crypto
             .createHash('md5')
-            .update(base64Data + this.apiKey)
+            .update(base64Data + apiKey)
             .digest('hex');
     }
 
@@ -45,12 +82,13 @@ class CryptomusService {
      * Verify webhook signature
      * @param {Object} data - Webhook data
      * @param {string} receivedSign - Signature from webhook
+     * @param {string} apiKey - API Key
      * @returns {boolean} Is valid
      */
-    verifyWebhookSignature(data, receivedSign) {
+    verifyWebhookSignature(data, receivedSign, apiKey) {
         // Remove sign from data for verification
         const { sign, ...dataWithoutSign } = data;
-        const expectedSign = this.generateSignature(dataWithoutSign);
+        const expectedSign = this.generateSignature(dataWithoutSign, apiKey);
         return expectedSign === receivedSign;
     }
 
@@ -62,7 +100,17 @@ class CryptomusService {
     async createPayment(params) {
         const { userId, amount, currency = 'USD', orderId, description } = params;
 
-        if (!this.isConfigured) {
+        // Get current config from database
+        const config = await this.getConfig();
+
+        if (!config.enabled) {
+            return {
+                success: false,
+                error: 'Cryptomus payment is not enabled'
+            };
+        }
+
+        if (!config.isConfigured) {
             return {
                 success: false,
                 error: 'Cryptomus gateway not configured'
@@ -79,7 +127,7 @@ class CryptomusService {
                 order_id: orderUuid,
                 url_return: `${process.env.FRONTEND_URL || 'http://localhost:5173'}/wallet?payment=processing`,
                 url_success: `${process.env.FRONTEND_URL || 'http://localhost:5173'}/wallet?payment=success`,
-                url_callback: `${process.env.BACKEND_URL || 'http://localhost:3000'}/api/webhooks/cryptomus`,
+                url_callback: `${process.env.BACKEND_URL || 'http://localhost:3000'}/api/payment-webhooks/cryptomus`,
                 is_payment_multiple: false,
                 lifetime: 3600, // 1 hour
                 to_currency: 'USDT' // Accept as USDT by default
@@ -88,9 +136,10 @@ class CryptomusService {
             const response = await axios.post(`${this.baseUrl}/payment`, payload, {
                 headers: {
                     'Content-Type': 'application/json',
-                    'merchant': this.merchantId,
-                    'sign': this.generateSignature(payload)
-                }
+                    'merchant': config.merchantId,
+                    'sign': this.generateSignature(payload, config.apiKey)
+                },
+                timeout: 15000
             });
 
             if (response.data.state !== 0) {
@@ -140,7 +189,9 @@ class CryptomusService {
      * @returns {Object} Payment status
      */
     async checkPaymentStatus(uuid) {
-        if (!this.isConfigured) {
+        const config = await this.getConfig();
+
+        if (!config.isConfigured) {
             return { success: false, error: 'Gateway not configured' };
         }
 
@@ -150,9 +201,10 @@ class CryptomusService {
             const response = await axios.post(`${this.baseUrl}/payment/info`, payload, {
                 headers: {
                     'Content-Type': 'application/json',
-                    'merchant': this.merchantId,
-                    'sign': this.generateSignature(payload)
-                }
+                    'merchant': config.merchantId,
+                    'sign': this.generateSignature(payload, config.apiKey)
+                },
+                timeout: 10000
             });
 
             return {
@@ -176,10 +228,13 @@ class CryptomusService {
     async processWebhook(data) {
         const { uuid, order_id, status, amount, currency, sign } = data;
 
-        console.log('[Cryptomus] Processing webhook for:', uuid);
+        console.log('[Cryptomus] Processing webhook for:', uuid, 'status:', status);
+
+        // Get config for signature verification
+        const config = await this.getConfig();
 
         // Verify signature
-        if (!this.verifyWebhookSignature(data, sign)) {
+        if (!this.verifyWebhookSignature(data, sign, config.apiKey)) {
             console.error('[Cryptomus] Invalid webhook signature');
             return { success: false, error: 'Invalid signature' };
         }
@@ -257,6 +312,20 @@ class CryptomusService {
                         }
                     }
                 });
+
+                // Create credit transaction record
+                await tx.creditTransaction.create({
+                    data: {
+                        userId: transaction.userId,
+                        type: 'CREDIT',
+                        amount: transaction.amount,
+                        balanceBefore: transaction.user.creditBalance,
+                        balanceAfter: transaction.user.creditBalance + transaction.amount,
+                        description: `Cryptomus payment +$${transaction.amount.toFixed(2)}`,
+                        reference: transaction.gatewayRef
+                    }
+                });
+
                 console.log(`[Cryptomus] Credited ${transaction.amount} to user ${transaction.userId}`);
                 return { credited: true };
             }
@@ -276,15 +345,22 @@ class CryptomusService {
      * Test webhook endpoint (for development)
      */
     async testWebhook(paymentUuid) {
+        const config = await this.getConfig();
+
+        if (!config.isConfigured) {
+            return { success: false, error: 'Gateway not configured' };
+        }
+
         try {
             const payload = { uuid: paymentUuid };
 
             const response = await axios.post(`${this.baseUrl}/test-webhook/payment`, payload, {
                 headers: {
                     'Content-Type': 'application/json',
-                    'merchant': this.merchantId,
-                    'sign': this.generateSignature(payload)
-                }
+                    'merchant': config.merchantId,
+                    'sign': this.generateSignature(payload, config.apiKey)
+                },
+                timeout: 10000
             });
 
             return {
@@ -303,7 +379,9 @@ class CryptomusService {
     /**
      * Get gateway info
      */
-    getGatewayInfo() {
+    async getGatewayInfo() {
+        const config = await this.getConfig();
+
         return {
             id: 'cryptomus',
             name: 'Cryptomus',
@@ -312,9 +390,9 @@ class CryptomusService {
             currency: 'USD',
             minAmount: 1,
             maxAmount: 100000,
-            isAvailable: this.isConfigured,
+            isAvailable: config.enabled && config.isConfigured,
             isSandbox: false,
-            supportedCrypto: ['BTC', 'ETH', 'USDT', 'LTC', 'TRX', 'BNB']
+            supportedCrypto: ['BTC', 'ETH', 'USDT', 'LTC', 'TRX', 'BNB', 'DOGE', 'SOL']
         };
     }
 }

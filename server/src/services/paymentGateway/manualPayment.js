@@ -312,7 +312,7 @@ class ManualPaymentService {
     /**
      * Get gateway info
      */
-    getGatewayInfo() {
+    async getGatewayInfo() {
         return {
             id: 'manual',
             name: 'Manual Payment',

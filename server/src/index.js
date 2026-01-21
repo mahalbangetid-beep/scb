@@ -36,6 +36,7 @@ const userMappingsRoutes = require('./routes/userMappings');
 const providerDomainsRoutes = require('./routes/providerDomains');
 const ticketsRoutes = require('./routes/tickets');
 const highRiskRoutes = require('./routes/highRisk');
+const contactBackupRoutes = require('./routes/contactBackup');
 
 // Import middleware
 const { errorHandler, notFound } = require('./middleware/errorHandler');
@@ -50,6 +51,7 @@ const botMessageHandler = require('./services/botMessageHandler');
 const commandHandler = require('./services/commandHandler');
 const groupForwardingService = require('./services/groupForwarding');
 const telegramService = require('./services/telegram');
+const contactBackupService = require('./services/contactBackupService');
 
 const app = express();
 const httpServer = createServer(app);
@@ -142,6 +144,7 @@ app.use('/api/high-risk', highRiskRoutes);
 app.use('/api/templates', require('./routes/templates'));
 app.use('/api/provider-config', require('./routes/providerConfig'));
 app.use('/api/admin/master-backup', require('./routes/masterBackup'));
+app.use('/api/contact-backup', contactBackupRoutes);
 
 
 // Socket.IO connection handler
@@ -195,7 +198,12 @@ httpServer.listen(PORT, async () => {
     console.log('[Server] Initializing Telegram bots...');
     await telegramService.initialize();
     console.log('[Server] Telegram bot initialization complete');
+
+    // Initialize Contact Backup Service
+    console.log('[Server] Initializing Contact Backup Service...');
+    contactBackupService.setWhatsAppService(whatsappService);
+    contactBackupService.startAutoBackup();
+    console.log('[Server] Contact Backup Service initialized');
 });
 
 module.exports = { app, io, whatsappService, telegramService };
-

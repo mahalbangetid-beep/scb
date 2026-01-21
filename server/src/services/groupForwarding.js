@@ -6,6 +6,8 @@
  */
 
 const prisma = require('../utils/prisma');
+const { safeParseObject } = require('../utils/safeJson');
+const logger = require('../utils/logger').service('GroupForward');
 
 class GroupForwardingService {
     constructor() {
@@ -95,21 +97,17 @@ class GroupForwardingService {
             });
 
             for (const group of groupsWithRules) {
-                try {
-                    const rules = typeof group.serviceIdRules === 'string'
-                        ? JSON.parse(group.serviceIdRules)
-                        : group.serviceIdRules;
+                const rules = typeof group.serviceIdRules === 'string'
+                    ? safeParseObject(group.serviceIdRules)
+                    : group.serviceIdRules;
 
-                    // Check if serviceId matches any rule
-                    const serviceIdStr = String(order.serviceId);
-                    if (rules && rules[serviceIdStr]) {
-                        targetJidOverride = rules[serviceIdStr];
-                        providerGroup = group;  // Use this group's template
-                        console.log(`[GroupForward] 🎯 Service ID ${serviceIdStr} matched rule → ${targetJidOverride}`);
-                        break;
-                    }
-                } catch (e) {
-                    console.error(`[GroupForward] Failed to parse serviceIdRules for group ${group.id}:`, e.message);
+                // Check if serviceId matches any rule
+                const serviceIdStr = String(order.serviceId);
+                if (rules && rules[serviceIdStr]) {
+                    targetJidOverride = rules[serviceIdStr];
+                    providerGroup = group;  // Use this group's template
+                    logger.info(`🎯 Service ID ${serviceIdStr} matched rule → ${targetJidOverride}`);
+                    break;
                 }
             }
         }
@@ -125,7 +123,7 @@ class GroupForwardingService {
             });
 
             if (providerGroup) {
-                console.log(`[GroupForward] Found provider-specific group for ${providerName}`);
+                logger.info(`Found provider-specific group for ${providerName}`);
             }
         }
 
@@ -141,7 +139,7 @@ class GroupForwardingService {
             });
 
             if (providerGroup) {
-                console.log(`[GroupForward] Using manual service group (no provider detected)`);
+                logger.info(`Using manual service group (no provider detected)`);
             }
         }
 
@@ -157,7 +155,7 @@ class GroupForwardingService {
             });
 
             if (providerGroup) {
-                console.log(`[GroupForward] Using default group (no provider-specific group for "${providerName}")`);
+                logger.info(`Using default group (no provider-specific group for "${providerName}")`);
             }
         }
 
@@ -171,13 +169,13 @@ class GroupForwardingService {
             });
 
             if (providerGroup) {
-                console.log(`[GroupForward] ⚠️ Using fallback group "${providerGroup.groupName}" - consider setting up provider-specific groups`);
+                logger.warn(`⚠️ Using fallback group "${providerGroup.groupName}" - consider setting up provider-specific groups`);
             }
         }
 
         if (!providerGroup) {
             const panelName = order.panel?.alias || order.panel?.name || 'Unknown';
-            console.log(`[GroupForward] ❌ No provider group found for panel "${panelName}"`);
+            logger.warn(`❌ No provider group found for panel "${panelName}"`);
             return {
                 success: false,
                 reason: 'no_group',
@@ -191,7 +189,7 @@ class GroupForwardingService {
 
         // Send via WhatsApp
         if (!this.whatsappService) {
-            console.error('[GroupForward] WhatsApp service not available');
+            logger.error('WhatsApp service not available');
             return {
                 success: false,
                 reason: 'service_unavailable',
@@ -232,7 +230,7 @@ class GroupForwardingService {
 
             // Log if using override
             if (targetJidOverride) {
-                console.log(`[GroupForward] 🎯 Using Service ID override: ${targetJidOverride}`);
+                logger.info(`🎯 Using Service ID override: ${targetJidOverride}`);
             }
 
             await this.whatsappService.sendMessage(sendDeviceId, formattedJid, message);
@@ -264,7 +262,7 @@ class GroupForwardingService {
             const routingInfo = targetJidOverride
                 ? ` (via Service ID ${order.serviceId} routing)`
                 : '';
-            console.log(`[GroupForward] ✅ Forwarded ${command} for order ${displayOrderId} to ${providerGroup.groupName}${routingInfo}`);
+            logger.info(`✅ Forwarded ${command} for order ${displayOrderId} to ${providerGroup.groupName}${routingInfo}`);
 
             return {
                 success: true,
@@ -276,7 +274,7 @@ class GroupForwardingService {
                 serviceId: order.serviceId || null
             };
         } catch (error) {
-            console.error(`[GroupForward] Failed to forward:`, error);
+            logger.error(`Failed to forward:`, error);
             return {
                 success: false,
                 reason: 'send_failed',

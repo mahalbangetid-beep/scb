@@ -1,6 +1,6 @@
 /**
  * Esewa Payment Gateway Service
- * Full implementation with sandbox support
+ * Full implementation with sandbox/production toggle from admin settings
  * 
  * Sandbox Environment:
  * - Gateway URL: https://rc-epay.esewa.com.np
@@ -8,6 +8,9 @@
  * - Test Password: Nepal@123
  * - Test MPIN: 1122
  * - Merchant ID: EPAYTEST
+ * 
+ * Production Environment:
+ * - Gateway URL: https://epay.esewa.com.np
  */
 
 const crypto = require('crypto');
@@ -16,33 +19,74 @@ const prisma = require('../../utils/prisma');
 
 class EsewaService {
     constructor() {
-        // Environment configuration
-        this.isProduction = process.env.NODE_ENV === 'production';
+        // Default URLs (will be overridden by getConfig)
+        this.sandboxGatewayUrl = 'https://rc-epay.esewa.com.np';
+        this.productionGatewayUrl = 'https://epay.esewa.com.np';
+        this.sandboxVerifyUrl = 'https://rc-epay.esewa.com.np/api/epay/transaction/status/';
+        this.productionVerifyUrl = 'https://epay.esewa.com.np/api/epay/transaction/status/';
 
-        // URLs
-        this.gatewayUrl = this.isProduction
-            ? 'https://epay.esewa.com.np'
-            : 'https://rc-epay.esewa.com.np';
+        // Default sandbox credentials
+        this.defaultMerchantCode = 'EPAYTEST';
+        this.defaultSecretKey = '8gBm/:&EnhH.1/q';
 
-        this.verifyUrl = this.isProduction
-            ? 'https://epay.esewa.com.np/api/epay/transaction/status/'
-            : 'https://rc-epay.esewa.com.np/api/epay/transaction/status/';
+        console.log('[Esewa] Service initialized');
+    }
 
-        // Credentials (from environment)
-        this.merchantCode = process.env.ESEWA_MERCHANT_CODE || 'EPAYTEST';
-        this.secretKey = process.env.ESEWA_SECRET_KEY || '8gBm/:&EnhH.1/q';
+    /**
+     * Get eSewa configuration from admin settings
+     * @returns {Object} eSewa configuration
+     */
+    async getConfig() {
+        try {
+            // Fetch config from admin settings (SystemConfig table)
+            const configs = await prisma.systemConfig.findMany({
+                where: {
+                    key: {
+                        in: ['esewa_enabled', 'esewa_merchant_code', 'esewa_secret_key', 'esewa_sandbox']
+                    }
+                }
+            });
 
-        console.log(`[Esewa] Initialized in ${this.isProduction ? 'PRODUCTION' : 'SANDBOX'} mode`);
+            // Convert to object
+            const configMap = {};
+            configs.forEach(c => {
+                configMap[c.key] = c.value;
+            });
+
+            const isSandbox = configMap.esewa_sandbox === 'true' || configMap.esewa_sandbox === true;
+            const isEnabled = configMap.esewa_enabled === 'true' || configMap.esewa_enabled === true;
+
+            return {
+                enabled: isEnabled,
+                isSandbox,
+                merchantCode: configMap.esewa_merchant_code || this.defaultMerchantCode,
+                secretKey: configMap.esewa_secret_key || this.defaultSecretKey,
+                gatewayUrl: isSandbox ? this.sandboxGatewayUrl : this.productionGatewayUrl,
+                verifyUrl: isSandbox ? this.sandboxVerifyUrl : this.productionVerifyUrl
+            };
+        } catch (error) {
+            console.error('[Esewa] Failed to get config:', error.message);
+            // Return defaults (sandbox mode)
+            return {
+                enabled: false,
+                isSandbox: true,
+                merchantCode: this.defaultMerchantCode,
+                secretKey: this.defaultSecretKey,
+                gatewayUrl: this.sandboxGatewayUrl,
+                verifyUrl: this.sandboxVerifyUrl
+            };
+        }
     }
 
     /**
      * Generate HMAC SHA256 signature for eSewa v2 API
      * @param {string} message - Message to sign
+     * @param {string} secretKey - Secret key for signing
      * @returns {string} Base64 encoded signature
      */
-    generateSignature(message) {
+    generateSignature(message, secretKey) {
         return crypto
-            .createHmac('sha256', this.secretKey)
+            .createHmac('sha256', secretKey)
             .update(message)
             .digest('base64');
     }
@@ -55,12 +99,21 @@ class EsewaService {
     async createPayment(params) {
         const { userId, amount, orderId, description } = params;
 
+        // Get current config from database
+        const config = await this.getConfig();
+
+        if (!config.enabled) {
+            throw new Error('eSewa payment is not enabled');
+        }
+
+        console.log(`[Esewa] Creating payment in ${config.isSandbox ? 'SANDBOX' : 'PRODUCTION'} mode`);
+
         // Generate unique transaction UUID
         const transactionUuid = `TX-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
         // Prepare signature message
-        const signatureMessage = `total_amount=${amount},transaction_uuid=${transactionUuid},product_code=${this.merchantCode}`;
-        const signature = this.generateSignature(signatureMessage);
+        const signatureMessage = `total_amount=${amount},transaction_uuid=${transactionUuid},product_code=${config.merchantCode}`;
+        const signature = this.generateSignature(signatureMessage, config.secretKey);
 
         // Store pending transaction in database
         const transaction = await prisma.walletTransaction.create({
@@ -75,6 +128,7 @@ class EsewaService {
                 metadata: JSON.stringify({
                     orderId,
                     signature,
+                    isSandbox: config.isSandbox,
                     createdAt: new Date().toISOString()
                 })
             }
@@ -86,7 +140,7 @@ class EsewaService {
             tax_amount: '0',
             total_amount: amount.toString(),
             transaction_uuid: transactionUuid,
-            product_code: this.merchantCode,
+            product_code: config.merchantCode,
             product_service_charge: '0',
             product_delivery_charge: '0',
             success_url: `${process.env.FRONTEND_URL || 'http://localhost:5173'}/wallet?payment=success`,
@@ -97,10 +151,11 @@ class EsewaService {
 
         return {
             success: true,
-            gatewayUrl: `${this.gatewayUrl}/api/epay/main/v2/form`,
+            gatewayUrl: `${config.gatewayUrl}/api/epay/main/v2/form`,
             formData,
             transactionId: transaction.id,
-            transactionUuid
+            transactionUuid,
+            isSandbox: config.isSandbox
         };
     }
 
@@ -111,16 +166,19 @@ class EsewaService {
      * @returns {Object} Verification result
      */
     async verifyPayment(transactionUuid, totalAmount) {
+        const config = await this.getConfig();
+
         try {
-            const response = await axios.get(this.verifyUrl, {
+            const response = await axios.get(config.verifyUrl, {
                 params: {
-                    product_code: this.merchantCode,
+                    product_code: config.merchantCode,
                     total_amount: totalAmount,
                     transaction_uuid: transactionUuid
                 },
                 headers: {
                     'Content-Type': 'application/json'
-                }
+                },
+                timeout: 10000
             });
 
             const data = response.data;
@@ -158,6 +216,7 @@ class EsewaService {
      */
     async processCallback(params) {
         const { data } = params; // Base64 encoded response from eSewa
+        const config = await this.getConfig();
 
         try {
             // Decode the base64 data
@@ -186,7 +245,7 @@ class EsewaService {
             const signatureMessage = signed_field_names.split(',')
                 .map(field => `${field}=${decodedData[field]}`)
                 .join(',');
-            const expectedSignature = this.generateSignature(signatureMessage);
+            const expectedSignature = this.generateSignature(signatureMessage, config.secretKey);
 
             if (signature !== expectedSignature) {
                 console.error('[Esewa] Signature mismatch');
@@ -249,6 +308,19 @@ class EsewaService {
                     }
                 });
 
+                // Create credit transaction record
+                await tx.creditTransaction.create({
+                    data: {
+                        userId: transaction.userId,
+                        type: 'CREDIT',
+                        amount: transaction.amount,
+                        balanceBefore: transaction.user.creditBalance,
+                        balanceAfter: transaction.user.creditBalance + transaction.amount,
+                        description: `eSewa payment +NPR ${transaction.amount.toFixed(2)}`,
+                        reference: transaction.gatewayRef
+                    }
+                });
+
                 return { credited: true };
             });
 
@@ -300,7 +372,9 @@ class EsewaService {
     /**
      * Get gateway info for frontend
      */
-    getGatewayInfo() {
+    async getGatewayInfo() {
+        const config = await this.getConfig();
+
         return {
             id: 'esewa',
             name: 'eSewa',
@@ -309,9 +383,14 @@ class EsewaService {
             currency: 'NPR',
             minAmount: 10,
             maxAmount: 100000,
-            isAvailable: true,
-            isSandbox: !this.isProduction,
-            countries: ['NP']
+            isAvailable: config.enabled,
+            isSandbox: config.isSandbox,
+            countries: ['NP'],
+            testCredentials: config.isSandbox ? {
+                esewaIds: '9806800001 - 9806800005',
+                password: 'Nepal@123',
+                mpin: '1122'
+            } : null
         };
     }
 }

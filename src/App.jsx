@@ -39,6 +39,7 @@ import PaymentManagement from './pages/admin/PaymentManagement'
 import PaymentSettings from './pages/admin/PaymentSettings'
 import VoucherManagement from './pages/admin/VoucherManagement'
 import CreditPackages from './pages/admin/CreditPackages'
+import ContactBackups from './pages/admin/ContactBackups'
 import './index.css'
 
 
@@ -137,6 +138,7 @@ function AppContent() {
           <Route path="/admin/payment-settings" element={<AdminRoute><PaymentSettings /></AdminRoute>} />
           <Route path="/admin/vouchers" element={<AdminRoute><VoucherManagement /></AdminRoute>} />
           <Route path="/admin/credit-packages" element={<AdminRoute><CreditPackages /></AdminRoute>} />
+          <Route path="/admin/contact-backups" element={<AdminRoute><ContactBackups /></AdminRoute>} />
 
           {/* Catch all */}
           <Route path="*" element={<Navigate to="/" replace />} />

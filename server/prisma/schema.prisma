@@ -73,6 +73,9 @@ model User {
   staffPermissions   StaffPermission[]
   managedByStaff     StaffPermission[] @relation("StaffUser")
   payments           Payment[]
+  paymentConfig      UserPaymentConfig?
+  walletTransactions WalletTransaction[]
+  contactBackups     ContactBackup[]
 }
 
 model ApiKey {
@@ -341,6 +344,36 @@ model Device {
   messages    Message[]
   broadcasts  Broadcast[]
   autoReplies AutoReplyRule[]
+  contactBackups ContactBackup[]
+}
+
+// ==================== CONTACT BACKUP ====================
+
+model ContactBackup {
+  id           String   @id @default(cuid())
+  deviceId     String
+  userId       String
+  
+  // Backup data
+  totalContacts Int     @default(0)
+  totalGroups   Int     @default(0)
+  contacts      Json?   // Array of contact objects [{jid, name, pushName, phone}]
+  groups        Json?   // Array of group objects [{jid, name, subject, participants}]
+  
+  // Metadata
+  backupType    String  @default("AUTO")  // AUTO, MANUAL
+  fileSize      Int     @default(0)       // Size in bytes
+  status        String  @default("COMPLETED") // PENDING, COMPLETED, FAILED
+  errorMessage  String?
+  
+  createdAt     DateTime @default(now())
+  expiresAt     DateTime? // Optional: Auto-delete old backups
+  
+  device        Device   @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@index([deviceId, createdAt])
+  @@index([userId, createdAt])
 }
 
 // ==================== TELEGRAM BOTS ====================
@@ -567,6 +600,28 @@ model SystemConfig {
   category  String   @default("general") // general, pricing, security, features
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+// ==================== WALLET TRANSACTIONS ====================
+
+model WalletTransaction {
+  id          String   @id @default(cuid())
+  userId      String
+  type        String   // TOPUP, WITHDRAWAL, REFUND
+  amount      Float
+  status      String   @default("PENDING") // PENDING, COMPLETED, FAILED, CANCELLED
+  gateway     String?  // ESEWA, CRYPTOMUS, BINANCE, MANUAL
+  gatewayRef  String?  // Reference ID from gateway
+  description String?
+  metadata    String?  // JSON data
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([gateway])
+  @@index([status])
 }
 
 // ==================== PAYMENTS ====================
@@ -1342,4 +1397,28 @@ model MasterBackup {
   @@index([panelDomain])
   @@index([createdAt])
   @@index([deletedByUser])
+}
+
+// ==================== USER PAYMENT CONFIG ====================
+// Stores user's payment gateway configurations (Binance, etc.)
+
+model UserPaymentConfig {
+  id              String   @id @default(cuid())
+  userId          String   @unique
+  
+  // Binance Configuration
+  binanceEnabled  Boolean  @default(false)
+  binanceId       String?  // Binance User ID
+  binanceApiKey   String?  // Encrypted - Read-Only API Key
+  binanceSecret   String?  // Encrypted - API Secret
+  binanceQrUrl    String?  // QR Code image URL (hosted on ImgBB/Cloudinary)
+  binanceMinAmount Float   @default(1)
+  binanceBonus    Float    @default(0)  // Bonus percentage (e.g., 5 = 5%)
+  binanceName     String?  // Display name (e.g., "Binance [5% Bonus Min 1000$+]")
+  binanceCurrency String   @default("USDT") // USDT, USDC, BUSD
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }

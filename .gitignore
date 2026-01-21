@@ -63,6 +63,9 @@ coverage/
 *.zip
 wa-main.zip
 backup1.zip
+wabar.zip
+penting.zip
+afterkeywordsresponses.zip
 
 # Development/Internal docs (not for repo)
 VPS-SETUP-GUIDE.md
@@ -70,3 +73,12 @@ updatebug.md
 docs/
 smmapiprov/
 install-vps.sh
+kl.md
+notimplemented.md
+fulltodo.md
+todo.md
+this.md
+projectplan.md
+
+# Other
+a.png 

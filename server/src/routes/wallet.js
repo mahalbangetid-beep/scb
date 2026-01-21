@@ -250,6 +250,133 @@ router.get('/payments/:id', async (req, res, next) => {
     }
 });
 
+// ==================== BINANCE PAYMENT ====================
+
+const binancePayService = require('../services/paymentGateway/binancePay');
+
+// GET /api/wallet/binance/info - Get Binance payment info for customer
+router.get('/binance/info', async (req, res, next) => {
+    try {
+        const config = await binancePayService.getUserConfig(req.user.id);
+
+        if (!config.binanceEnabled) {
+            return successResponse(res, {
+                available: false,
+                message: 'Binance payment is not enabled'
+            });
+        }
+
+        successResponse(res, {
+            available: true,
+            name: config.binanceName || 'Binance',
+            qrUrl: config.binanceQrUrl,
+            minAmount: config.binanceMinAmount,
+            bonus: config.binanceBonus,
+            currency: config.binanceCurrency,
+            instructions: [
+                '1. Scan the QR code with your Binance app',
+                '2. Transfer the exact amount in ' + config.binanceCurrency,
+                '3. Copy the Transaction ID after payment',
+                '4. Paste the Transaction ID below and click Verify'
+            ]
+        });
+    } catch (error) {
+        next(error);
+    }
+});
+
+// POST /api/wallet/binance/create - Create pending Binance payment
+router.post('/binance/create', async (req, res, next) => {
+    try {
+        const { amount } = req.body;
+
+        if (!amount || amount <= 0) {
+            throw new AppError('Invalid amount', 400);
+        }
+
+        const config = await binancePayService.getUserConfig(req.user.id);
+
+        if (!config.binanceEnabled) {
+            throw new AppError('Binance payment is not enabled', 400);
+        }
+
+        if (amount < config.binanceMinAmount) {
+            throw new AppError(`Minimum amount is $${config.binanceMinAmount}`, 400);
+        }
+
+        const result = await binancePayService.createPendingPayment(
+            req.user.id,
+            amount,
+            config.binanceCurrency
+        );
+
+        successResponse(res, {
+            ...result,
+            qrUrl: config.binanceQrUrl,
+            bonus: config.binanceBonus,
+            instructions: 'Scan QR code, transfer ' + amount + ' ' + config.binanceCurrency + ', then verify with Transaction ID'
+        });
+    } catch (error) {
+        next(error);
+    }
+});
+
+// POST /api/wallet/binance/verify - Verify Binance transaction
+router.post('/binance/verify', async (req, res, next) => {
+    try {
+        const { paymentId, transactionId } = req.body;
+
+        if (!transactionId) {
+            throw new AppError('Transaction ID is required', 400);
+        }
+
+        // Get payment record
+        const payment = await prisma.payment.findFirst({
+            where: {
+                id: paymentId,
+                userId: req.user.id,
+                method: 'BINANCE',
+                status: 'PENDING'
+            }
+        });
+
+        if (!payment) {
+            throw new AppError('Payment not found or already processed', 404);
+        }
+
+        // Verify transaction via Binance API
+        const verifyResult = await binancePayService.verifyTransaction(
+            req.user.id,
+            transactionId,
+            payment.amount
+        );
+
+        if (!verifyResult.success) {
+            return res.status(400).json({
+                success: false,
+                message: verifyResult.error,
+                notFound: verifyResult.notFound
+            });
+        }
+
+        // Complete payment and credit balance
+        const completeResult = await binancePayService.completePayment(
+            paymentId,
+            verifyResult
+        );
+
+        successResponse(res, {
+            success: true,
+            message: completeResult.message,
+            credited: completeResult.credited,
+            bonus: completeResult.bonus,
+            transactionId: verifyResult.transactionId
+        });
+    } catch (error) {
+        next(error);
+    }
+});
+
 // ==================== VOUCHERS ====================
 
 // POST /api/wallet/vouchers/redeem - Redeem voucher

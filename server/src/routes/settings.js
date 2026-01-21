@@ -290,6 +290,30 @@ router.post('/cleanup-cooldowns', authenticate, async (req, res, next) => {
 });
 
 
+// ==================== BINANCE PAYMENT CONFIG ====================
+
+const binancePayService = require('../services/paymentGateway/binancePay');
+
+// GET /api/settings/binance - Get Binance payment config
+router.get('/binance', authenticate, async (req, res, next) => {
+    try {
+        const config = await binancePayService.getUserConfig(req.user.id);
+        successResponse(res, config, 'Binance configuration retrieved');
+    } catch (error) {
+        next(error);
+    }
+});
+
+// PUT /api/settings/binance - Update Binance payment config
+router.put('/binance', authenticate, async (req, res, next) => {
+    try {
+        const result = await binancePayService.saveUserConfig(req.user.id, req.body);
+        successResponse(res, result.config, result.message);
+    } catch (error) {
+        next(error);
+    }
+});
+
 // ==================== BOT FEATURE TOGGLES ====================
 
 // GET /api/settings/bot-toggles - Get bot feature toggles
