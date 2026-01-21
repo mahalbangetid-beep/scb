@@ -208,7 +208,7 @@ export default function Dashboard() {
                             <h3 className="card-title">Device Status</h3>
                             <p className="card-subtitle">Active WhatsApp sessions</p>
                         </div>
-                        <button className="btn btn-ghost btn-sm">Manage</button>
+                        <button className="btn btn-ghost btn-sm" onClick={() => window.location.href = '/devices'}>Manage</button>
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-md)' }}>
                         {deviceList.length > 0 ? deviceList.map((device) => (
