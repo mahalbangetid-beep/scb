@@ -31,6 +31,13 @@ class SmartPanelScanner {
             // Orders endpoints (most common for detection)
             { endpoint: '/adminapi/v2/orders?limit=1', method: 'GET', keyHeader: 'X-Api-Key', checkType: 'orders', name: 'AdminAPI v2 Orders' },
             { endpoint: '/adminapi/v2/orders/pull', method: 'POST', keyHeader: 'X-Api-Key', checkType: 'orders', name: 'AdminAPI v2 Pull Orders' },
+
+            // PRIORITY: V1 action-based patterns (for panels like bam1.net)
+            { endpoint: '/adminapi/v1?action=verify-spam-check&link=test', method: 'GET', keyParam: 'key', checkType: 'orders', name: 'AdminAPI v1 verify-spam-check', isV1: true },
+            { endpoint: '/adminapi/v1?action=getOrders&limit=1', method: 'GET', keyParam: 'key', checkType: 'orders', name: 'AdminAPI v1 getOrders', isV1: true },
+            { endpoint: '/adminapi/v1?action=getOrders', method: 'GET', keyParam: 'key', checkType: 'orders', name: 'AdminAPI v1 getOrders NoLimit', isV1: true },
+            { endpoint: '/adminapi/v1?action=getOrders-by-id&orders=1', method: 'GET', keyParam: 'key', checkType: 'orders', name: 'AdminAPI v1 getOrders-by-id', isV1: true },
+
             { endpoint: '/adminapi/v2/orders/update', method: 'POST', keyHeader: 'X-Api-Key', checkType: 'orders', name: 'AdminAPI v2 Update Orders' },
             { endpoint: '/adminapi/v2/orders/resend', method: 'POST', keyHeader: 'X-Api-Key', checkType: 'orders', name: 'AdminAPI v2 Resend' },
             { endpoint: '/adminapi/v2/orders/change-status', method: 'POST', keyHeader: 'X-Api-Key', checkType: 'orders', name: 'AdminAPI v2 Change Status' },
@@ -67,6 +74,9 @@ class SmartPanelScanner {
 
             // V1 endpoints with action parameter (GET)
             { endpoint: '/adminapi/v1?action=getOrders&limit=1', method: 'GET', keyParam: 'key', checkType: 'orders', name: 'AdminAPI v1 getOrders', isV1: true },
+            { endpoint: '/adminapi/v1?action=getOrders', method: 'GET', keyParam: 'key', checkType: 'orders', name: 'AdminAPI v1 getOrders NoLimit', isV1: true },
+            { endpoint: '/adminapi/v1?action=getOrders-by-id&orders=1', method: 'GET', keyParam: 'key', checkType: 'orders', name: 'AdminAPI v1 getOrders-by-id', isV1: true },
+            { endpoint: '/adminapi/v1?action=verify-spam-check&link=test', method: 'GET', keyParam: 'key', checkType: 'orders', name: 'AdminAPI v1 verify-spam-check', isV1: true },
             { endpoint: '/adminapi/v1?action=getorder&limit=1', method: 'GET', keyParam: 'key', checkType: 'orders', name: 'AdminAPI v1 getorder', isV1: true },
             { endpoint: '/adminapi/v1?action=getUser&limit=1', method: 'GET', keyParam: 'key', checkType: 'users', name: 'AdminAPI v1 getUser', isV1: true },
             { endpoint: '/adminapi/v1?action=getMassProviderData&limit=1', method: 'GET', keyParam: 'key', checkType: 'provider', name: 'AdminAPI v1 Provider Data', isV1: true },
@@ -366,10 +376,28 @@ class SmartPanelScanner {
             return this.buildSuccessResponse(pattern);
         }
 
+        // Check for success: 1 response (some panels use number instead of boolean)
+        if (data.success === 1) {
+            console.log(`[SmartScanner] Admin API detected via success: 1`);
+            return this.buildSuccessResponse(pattern);
+        }
+
         // Check for status: "ok" or similar
         if (data.status === 'ok' || data.status === 200) {
             console.log(`[SmartScanner] Admin API detected via status field`);
             return this.buildSuccessResponse(pattern);
+        }
+
+        // Check for status: "fail" with specific errors that indicate valid API
+        // (e.g., "order_not_found" means API is working, just no data)
+        if (data.status === 'fail' && data.error) {
+            const errorLower = (typeof data.error === 'string' ? data.error : '').toLowerCase();
+            // These errors mean the API is valid, just no data found
+            const validEmptyErrors = ['order_not_found', 'no_orders', 'not_found', 'empty', 'no_data'];
+            if (validEmptyErrors.some(e => errorLower.includes(e))) {
+                console.log(`[SmartScanner] Admin API detected via valid empty response: ${data.error}`);
+                return this.buildSuccessResponse(pattern);
+            }
         }
 
         // Check for ticket_id response (Admin API v1 addTicket)
