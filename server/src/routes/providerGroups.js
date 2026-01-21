@@ -377,6 +377,7 @@ router.post('/', async (req, res, next) => {
             panelId,
             deviceId,
             groupType,
+            type, // WHATSAPP or TELEGRAM
             groupJid,
             targetNumber,
             refillTemplate,
@@ -429,6 +430,7 @@ router.post('/', async (req, res, next) => {
             data: {
                 name,
                 panelId,
+                type: type || 'WHATSAPP', // Default to WHATSAPP if not provided
                 groupType: groupType || 'GROUP',
                 groupId: groupJid || targetNumber,
                 groupName: name,
