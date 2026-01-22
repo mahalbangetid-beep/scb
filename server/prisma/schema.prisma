@@ -313,6 +313,7 @@ model ProviderGroup {
   id           String  @id @default(cuid())
   userId       String? // TEMP: Optional to allow migration, will be required after fix
   panelId      String? // Optional - can work without linked panel for manual services
+  deviceId     String? // WhatsApp device ID for sending messages
   providerName String? // Provider name to match with Order.providerName (null = default group)
   type         String // WHATSAPP, TELEGRAM
   groupId      String // WhatsApp group JID or Telegram chat ID
@@ -335,8 +336,9 @@ model ProviderGroup {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  user  User?     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  panel SmmPanel? @relation(fields: [panelId], references: [id], onDelete: Cascade)
+  user   User?     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  panel  SmmPanel? @relation(fields: [panelId], references: [id], onDelete: Cascade)
+  device Device?   @relation(fields: [deviceId], references: [id], onDelete: SetNull)
 
   @@unique([panelId, providerName, type]) // One group per panel+provider+type
   @@index([userId])
@@ -374,6 +376,7 @@ model Device {
   broadcasts     Broadcast[]
   autoReplies    AutoReplyRule[]
   contactBackups ContactBackup[]
+  providerGroups ProviderGroup[]
 }
 
 // ==================== CONTACT BACKUP ====================

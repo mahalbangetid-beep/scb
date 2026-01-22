@@ -38,6 +38,13 @@ router.get('/', async (req, res, next) => {
                             name: true,
                             alias: true
                         }
+                    },
+                    device: {
+                        select: {
+                            id: true,
+                            name: true,
+                            status: true
+                        }
                     }
                 },
                 orderBy: { createdAt: 'desc' },
@@ -449,6 +456,7 @@ router.post('/', async (req, res, next) => {
             data: {
                 userId: req.user.id,
                 panelId: panelId || null,
+                deviceId: deviceId || null,
                 providerName: provName,
                 type: platformType,
                 groupId: groupJid || targetNumber,
@@ -461,6 +469,13 @@ router.post('/', async (req, res, next) => {
                 panel: {
                     select: {
                         alias: true
+                    }
+                },
+                device: {
+                    select: {
+                        id: true,
+                        name: true,
+                        status: true
                     }
                 }
             }
@@ -501,7 +516,8 @@ router.put('/:id', async (req, res, next) => {
             speedUpTemplate,
             isActive,
             serviceIdRules,
-            isManualServiceGroup
+            isManualServiceGroup,
+            deviceId  // NEW: device for sending messages
         } = req.body;
 
         // Build update data with correct field names from schema
@@ -510,6 +526,7 @@ router.put('/:id', async (req, res, next) => {
         if (name) updateData.groupName = name;
         if (panelId !== undefined) updateData.panelId = panelId || null;
         if (providerName !== undefined) updateData.providerName = providerName || null;
+        if (deviceId !== undefined) updateData.deviceId = deviceId || null;
         if (type) updateData.type = type;
         if (groupJid || targetNumber) updateData.groupId = groupJid || targetNumber;
         if (messageTemplate !== undefined) updateData.messageTemplate = messageTemplate;
@@ -526,6 +543,13 @@ router.put('/:id', async (req, res, next) => {
                     select: {
                         alias: true,
                         name: true
+                    }
+                },
+                device: {
+                    select: {
+                        id: true,
+                        name: true,
+                        status: true
                     }
                 }
             }
