@@ -22,9 +22,8 @@ class ProviderForwardingService {
             cancel: '❌ *Cancel Request*\n\nOrder: #{orderId}\nProvider Order: {providerOrderId}\nService: {serviceName}\nStatus: {status}\n\nUsername: {username}',
             speedup: '⚡ *Speed Up Request*\n\nOrder: #{orderId}\nProvider Order: {providerOrderId}\nService: {serviceName}\nStart Count: {startCount}\nRemains: {remains}\n\nUsername: {username}'
         };
-    }
         this.whatsappService = null;
-
+    }
 
     /**
      * Set WhatsApp service reference
