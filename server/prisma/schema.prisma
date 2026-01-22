@@ -310,14 +310,15 @@ model MessageCreditTransaction {
 
 model ProviderGroup {
   id           String  @id @default(cuid())
-  panelId      String
+  panelId      String? // Optional - can work without linked panel for manual services
   providerName String? // Provider name to match with Order.providerName (null = default group)
   type         String // WHATSAPP, TELEGRAM
   groupId      String // WhatsApp group JID or Telegram chat ID
   groupName    String
 
   // Message template for forwarding commands
-  // Variables: {PROVIDER_ORDER_ID}, {PANEL_ORDER_ID}, {COMMAND}, {SERVICE_NAME}, {LINK}, {PANEL_ALIAS}
+  // Variables: {orderid1},{orderid2},...,{orderid100} for batch processing
+  // Default templates: "{orderid1},{orderid2},... refill", "{orderid1},{orderid2},... cancel"
   messageTemplate String? // Custom message template for this provider
 
   // ==================== SERVICE ID ROUTING ====================
@@ -332,7 +333,7 @@ model ProviderGroup {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  panel SmmPanel @relation(fields: [panelId], references: [id], onDelete: Cascade)
+  panel SmmPanel? @relation(fields: [panelId], references: [id], onDelete: Cascade)
 
   @@unique([panelId, providerName, type]) // One group per panel+provider+type
   @@index([providerName])

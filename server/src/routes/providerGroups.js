@@ -389,20 +389,23 @@ router.post('/', async (req, res, next) => {
             isManualServiceGroup
         } = req.body;
 
-        if (!name || !panelId) {
-            throw new AppError('Name and panel ID are required', 400);
+        if (!name) {
+            throw new AppError('Group/Support name is required', 400);
         }
 
-        // Verify panel belongs to user
-        const panel = await prisma.smmPanel.findFirst({
-            where: {
-                id: panelId,
-                userId: req.user.id
-            }
-        });
+        // Verify panel belongs to user (if provided)
+        let panel = null;
+        if (panelId) {
+            panel = await prisma.smmPanel.findFirst({
+                where: {
+                    id: panelId,
+                    userId: req.user.id
+                }
+            });
 
-        if (!panel) {
-            throw new AppError('Panel not found', 404);
+            if (!panel) {
+                throw new AppError('Panel not found', 404);
+            }
         }
 
         // Verify device if provided
@@ -441,19 +444,19 @@ router.post('/', async (req, res, next) => {
         });
 
         if (existing) {
-            throw new AppError(`A provider group for "${provName || 'default'}" already exists for this panel.`, 400);
+            throw new AppError(`A provider support for "${provName || 'default'}" already exists${panelId ? ' for this panel' : ''}.`, 400);
         }
 
         const group = await prisma.providerGroup.create({
             data: {
-                panelId,
+                panelId: panelId || null,
                 providerName: provName,
                 type: platformType,
                 groupId: groupJid || targetNumber,
                 groupName: name,
                 messageTemplate: newOrderTemplate || refillTemplate || null,
                 isActive: isActive !== false,
-                isManualServiceGroup: isManualServiceGroup || false
+                isManualServiceGroup: isManualServiceGroup || !panelId // Auto-set if no panel
             },
             include: {
                 panel: {
@@ -464,7 +467,7 @@ router.post('/', async (req, res, next) => {
             }
         });
 
-        createdResponse(res, group, 'Provider group created');
+        createdResponse(res, group, 'Provider support created');
     } catch (error) {
         next(error);
     }

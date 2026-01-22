@@ -285,12 +285,12 @@ export default function ProviderGroups() {
         <div className="page-container">
             <div className="page-header">
                 <div>
-                    <h1 className="page-title">Provider Groups</h1>
+                    <h1 className="page-title">Provider Support Groups</h1>
                     <p className="page-subtitle">Manage provider groups for forwarding commands</p>
                 </div>
                 <button className="btn btn-primary" onClick={() => { resetForm(); setEditGroup(null); setShowModal(true); }}>
                     <Plus size={18} />
-                    Add Provider Group
+                    Add Provider Support
                 </button>
             </div>
 
@@ -336,7 +336,7 @@ export default function ProviderGroups() {
             ) : groups.length === 0 ? (
                 <div className="empty-state">
                     <Users size={64} className="text-secondary" />
-                    <h3>No Provider Groups</h3>
+                    <h3>No Provider Support Groups</h3>
                     <p>Create provider groups to forward commands to your SMM panel providers</p>
                     <button className="btn btn-primary" onClick={() => setShowModal(true)}>
                         <Plus size={18} />
@@ -461,7 +461,7 @@ export default function ProviderGroups() {
                 <div className="modal-overlay open" onClick={() => setShowModal(false)}>
                     <div className="modal modal-lg" onClick={(e) => e.stopPropagation()}>
                         <div className="modal-header">
-                            <h2>{editGroup ? 'Edit Provider Group' : 'Add Provider Group'}</h2>
+                            <h2>{editGroup ? 'Edit Provider Support' : 'Add Provider Support'}</h2>
                             <button className="modal-close" onClick={() => setShowModal(false)}>
                                 <X size={20} />
                             </button>
@@ -478,32 +478,32 @@ export default function ProviderGroups() {
 
                                 <div className="form-row">
                                     <div className="form-group">
-                                        <label className="form-label">Group Name *</label>
+                                        <label className="form-label">Group / Support Name *</label>
                                         <input
                                             type="text"
                                             className="form-input"
-                                            placeholder="e.g., SMM Panel Support"
+                                            placeholder="e.g., Provider A Support"
                                             value={formData.name}
                                             onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                                             required
                                         />
                                     </div>
                                     <div className="form-group">
-                                        <label className="form-label">SMM Panel *</label>
+                                        <label className="form-label">Select Panel (Optional)</label>
                                         <select
                                             className="form-select"
                                             value={formData.panelId}
                                             onChange={(e) => {
                                                 setFormData({ ...formData, panelId: e.target.value, providerName: '' })
-                                                fetchProviders(e.target.value)
+                                                if (e.target.value) fetchProviders(e.target.value)
                                             }}
-                                            required
                                         >
-                                            <option value="">Select Panel</option>
+                                            <option value="">No Panel (Manual)</option>
                                             {panels.map(p => (
                                                 <option key={p.id} value={p.id}>{p.alias} - {p.name}</option>
                                             ))}
                                         </select>
+                                        <p className="form-hint">Leave empty for manual services without panel connection</p>
                                     </div>
                                 </div>
 
