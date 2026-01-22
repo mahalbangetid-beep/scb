@@ -117,15 +117,20 @@ class CommandHandlerService {
                 if (result.success) {
                     summary.success++;
                     // Collect for batch forwarding
-                    if (result.details?.providerOrderId || result.details?.order?.providerOrderId) {
-                        successfulOrders.push({
-                            panelOrderId: orderId,
-                            providerOrderId: result.details?.providerOrderId || result.details?.order?.providerOrderId,
-                            providerName: result.details?.providerName || result.details?.order?.providerName,
-                            panelId: result.details?.order?.panelId || panelId,
-                            order: result.details?.order
-                        });
-                    }
+                    // Use providerOrderId if available, otherwise fallback to panel orderId
+                    const forwardOrderId = result.details?.providerOrderId ||
+                        result.details?.order?.providerOrderId ||
+                        orderId;  // Fallback to panel order ID
+
+                    successfulOrders.push({
+                        panelOrderId: orderId,
+                        providerOrderId: forwardOrderId,
+                        providerName: result.details?.providerName || result.details?.order?.providerName,
+                        panelId: result.details?.order?.panelId || panelId,
+                        order: result.details?.order
+                    });
+
+                    console.log(`[CommandHandler] Collected for batch: panelId=${orderId}, forwardId=${forwardOrderId}, provider=${result.details?.providerName || 'unknown'}`);
                 } else {
                     summary.failed++;
                 }
@@ -1672,23 +1677,32 @@ class CommandHandlerService {
         // Send batch message for each provider
         for (const [providerKey, providerData] of ordersByProvider) {
             try {
+                console.log(`[CommandHandler] Looking for provider group for: ${providerKey}, panelId: ${providerData.panelId || panelId}`);
+
                 // Find provider group for this provider
-                const providerGroup = await prisma.providerGroup.findFirst({
+                // Try specific provider first, then default group
+                let providerGroup = await prisma.providerGroup.findFirst({
                     where: {
                         userId,
-                        panelId: providerData.panelId || panelId,
+                        isActive: true,
                         OR: [
+                            // Try specific panel + provider
+                            { panelId: providerData.panelId || panelId, providerName: providerData.providerName },
+                            // Try specific panel + default (no provider name)
+                            { panelId: providerData.panelId || panelId, providerName: null },
+                            // Try any panel with matching provider
                             { providerName: providerData.providerName },
-                            { providerName: null }  // Default group
-                        ],
-                        isActive: true
+                            // Try any active group as fallback
+                            { providerName: null }
+                        ]
                     },
                     include: {
                         device: true
                     },
-                    orderBy: {
-                        providerName: 'desc'  // Prefer specific provider group over default
-                    }
+                    orderBy: [
+                        { providerName: 'desc' },  // Prefer specific provider group
+                        { panelId: 'desc' }        // Prefer groups with panelId
+                    ]
                 });
 
                 if (!providerGroup) {
