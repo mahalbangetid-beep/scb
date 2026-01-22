@@ -7,40 +7,27 @@ const prisma = new PrismaClient();
 async function main() {
     console.log('Fixing ProviderGroup records without userId...\n');
 
-    // Find all ProviderGroups without userId
-    const groupsWithoutUserId = await prisma.providerGroup.findMany({
-        where: { userId: null },
-        include: { panel: true }
-    });
+    // Use raw SQL since userId is now required in Prisma schema
+    // but existing data might have NULL
+    const result = await prisma.$executeRaw`
+        UPDATE "ProviderGroup" 
+        SET "userId" = p."userId"
+        FROM "SmmPanel" p 
+        WHERE "ProviderGroup"."panelId" = p."id" 
+        AND "ProviderGroup"."userId" IS NULL
+    `;
 
-    console.log(`Found ${groupsWithoutUserId.length} groups without userId\n`);
+    console.log(`✅ Fixed ${result} ProviderGroup records`);
 
-    let fixed = 0;
-    let deleted = 0;
+    // Delete orphaned records (no panel, no userId)
+    const deleted = await prisma.$executeRaw`
+        DELETE FROM "ProviderGroup" 
+        WHERE "userId" IS NULL
+    `;
 
-    for (const group of groupsWithoutUserId) {
-        if (group.panel && group.panel.userId) {
-            // Fix: Get userId from panel
-            await prisma.providerGroup.update({
-                where: { id: group.id },
-                data: { userId: group.panel.userId }
-            });
-            console.log(`✅ Fixed: ${group.groupName} -> userId: ${group.panel.userId}`);
-            fixed++;
-        } else {
-            // No panel, can't determine owner - delete orphaned record
-            await prisma.providerGroup.delete({
-                where: { id: group.id }
-            });
-            console.log(`🗑️ Deleted orphaned: ${group.groupName}`);
-            deleted++;
-        }
-    }
+    console.log(`🗑️ Deleted ${deleted} orphaned records`);
 
-    console.log(`\n========================================`);
-    console.log(`Fixed: ${fixed} groups`);
-    console.log(`Deleted: ${deleted} orphaned groups`);
-    console.log(`========================================\n`);
+    console.log('\n✅ Done!');
 }
 
 main()
