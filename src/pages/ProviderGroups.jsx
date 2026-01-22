@@ -411,11 +411,9 @@ export default function ProviderGroups() {
                                         >
                                             {group.isActive ? 'Active' : 'Inactive'}
                                         </button>
-                                        {group.device?.status === 'connected' ? (
-                                            <span className="status-badge connected">Device Connected</span>
-                                        ) : (
-                                            <span className="status-badge disconnected">Device Offline</span>
-                                        )}
+                                        <span className={`status-badge ${group.type === 'WHATSAPP' ? 'whatsapp' : 'telegram'}`}>
+                                            {group.type || 'WHATSAPP'}
+                                        </span>
                                     </div>
 
 
