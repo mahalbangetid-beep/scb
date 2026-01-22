@@ -143,12 +143,12 @@ export default function ProviderGroups() {
     const handleEdit = (group) => {
         setEditGroup(group)
         setFormData({
-            name: group.name,
+            name: group.groupName || group.name || '',
             panelId: group.panelId,
             providerName: group.providerName || '',
             deviceId: group.deviceId || '',
             groupType: group.groupType || 'GROUP',
-            groupJid: group.groupJid || '',
+            groupJid: group.groupId || group.groupJid || '',
             targetNumber: group.targetNumber || '',
             newOrderTemplate: group.newOrderTemplate || '',
             refillTemplate: group.refillTemplate || '',
@@ -358,7 +358,7 @@ export default function ProviderGroups() {
                                         )}
                                     </div>
                                     <div className="group-info">
-                                        <h3>{group.name}</h3>
+                                        <h3>{group.groupName || group.name}</h3>
                                         <p>{group.panel?.alias || 'No panel linked'}</p>
                                         {group.providerName && (
                                             <span className="provider-badge">

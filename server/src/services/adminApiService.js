@@ -366,7 +366,8 @@ class AdminApiService {
                 };
             }
 
-            const orders = response.data.data || response.data || [];
+            const ordersData = response.data.data || response.data || [];
+            const orders = Array.isArray(ordersData) ? ordersData : [];
 
             // Extract unique provider names
             const providersMap = new Map();

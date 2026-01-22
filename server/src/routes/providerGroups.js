@@ -37,7 +37,7 @@ router.get('/', async (req, res, next) => {
                     panel: {
                         select: {
                             id: true,
-                            name: true,
+                            groupName: true,
                             alias: true
                         }
                     }
@@ -100,7 +100,7 @@ router.get('/:id/service-id-rules', async (req, res, next) => {
             },
             select: {
                 id: true,
-                name: true,
+                groupName: true,
                 serviceIdRules: true
             }
         });
@@ -164,7 +164,7 @@ router.put('/:id/service-id-rules', async (req, res, next) => {
             },
             select: {
                 id: true,
-                name: true,
+                groupName: true,
                 serviceIdRules: true
             }
         });
@@ -226,7 +226,7 @@ router.post('/:id/service-id-rules/add', async (req, res, next) => {
             },
             select: {
                 id: true,
-                name: true,
+                groupName: true,
                 serviceIdRules: true
             }
         });
@@ -288,7 +288,7 @@ router.delete('/:id/service-id-rules/:serviceId', async (req, res, next) => {
             },
             select: {
                 id: true,
-                name: true,
+                groupName: true,
                 serviceIdRules: true
             }
         });
@@ -352,7 +352,7 @@ router.get('/:id', async (req, res, next) => {
                 panel: {
                     select: {
                         id: true,
-                        name: true,
+                        groupName: true,
                         alias: true
                     }
                 }
