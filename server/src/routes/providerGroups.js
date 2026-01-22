@@ -375,11 +375,13 @@ router.post('/', async (req, res, next) => {
         const {
             name,
             panelId,
+            providerName,
             deviceId,
             groupType,
             type, // WHATSAPP or TELEGRAM
             groupJid,
             targetNumber,
+            newOrderTemplate,
             refillTemplate,
             cancelTemplate,
             speedUpTemplate,
@@ -426,15 +428,30 @@ router.post('/', async (req, res, next) => {
             throw new AppError('Target number is required for direct type', 400);
         }
 
+        const platformType = type || 'WHATSAPP';
+        const provName = providerName || null;
+
+        // Check for existing group with same panelId + providerName + type
+        const existing = await prisma.providerGroup.findFirst({
+            where: {
+                panelId,
+                providerName: provName,
+                type: platformType
+            }
+        });
+
+        if (existing) {
+            throw new AppError(`A provider group for "${provName || 'default'}" already exists for this panel.`, 400);
+        }
+
         const group = await prisma.providerGroup.create({
             data: {
-                name,
                 panelId,
-                type: type || 'WHATSAPP', // Default to WHATSAPP if not provided
-                groupType: groupType || 'GROUP',
+                providerName: provName,
+                type: platformType,
                 groupId: groupJid || targetNumber,
                 groupName: name,
-                messageTemplate: refillTemplate, // Use first template as default
+                messageTemplate: newOrderTemplate || refillTemplate || null,
                 isActive: isActive !== false,
                 isManualServiceGroup: isManualServiceGroup || false
             },
