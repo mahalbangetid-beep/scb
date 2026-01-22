@@ -391,7 +391,8 @@ router.post('/', async (req, res, next) => {
             cancelTemplate,
             speedUpTemplate,
             isActive,
-            isManualServiceGroup
+            isManualServiceGroup,
+            useSimpleFormat // NEW: simple format mode
         } = req.body;
 
         if (!name) {
@@ -463,7 +464,8 @@ router.post('/', async (req, res, next) => {
                 groupName: name,
                 messageTemplate: newOrderTemplate || refillTemplate || null,
                 isActive: isActive !== false,
-                isManualServiceGroup: isManualServiceGroup || !panelId // Auto-set if no panel
+                isManualServiceGroup: isManualServiceGroup || !panelId, // Auto-set if no panel
+                useSimpleFormat: useSimpleFormat || false
             },
             include: {
                 panel: {
@@ -517,6 +519,7 @@ router.put('/:id', async (req, res, next) => {
             isActive,
             serviceIdRules,
             isManualServiceGroup,
+            useSimpleFormat, // NEW: simple format mode
             deviceId  // NEW: device for sending messages
         } = req.body;
 
@@ -534,6 +537,7 @@ router.put('/:id', async (req, res, next) => {
         if (isActive !== undefined) updateData.isActive = isActive;
         if (serviceIdRules !== undefined) updateData.serviceIdRules = serviceIdRules;
         if (isManualServiceGroup !== undefined) updateData.isManualServiceGroup = isManualServiceGroup;
+        if (useSimpleFormat !== undefined) updateData.useSimpleFormat = useSimpleFormat;
 
         const group = await prisma.providerGroup.update({
             where: { id: req.params.id },

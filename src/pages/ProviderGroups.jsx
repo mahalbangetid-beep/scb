@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import {
     Users, Plus, Edit3, Trash2, X, Globe, Smartphone,
     MessageSquare, Loader2, AlertCircle, CheckCircle2,
-    Send, RefreshCw, Filter, Download, Link2, Settings, Hash, ArrowRight
+    Send, RefreshCw, Filter, Download, Link2, Settings, Hash, ArrowRight, Zap
 } from 'lucide-react'
 import api from '../services/api'
 
@@ -26,7 +26,8 @@ export default function ProviderGroups() {
         cancelTemplate: '',
         speedUpTemplate: '',
         isActive: true,
-        isManualServiceGroup: false  // For manual services (no provider)
+        isManualServiceGroup: false,  // For manual services (no provider)
+        useSimpleFormat: false  // Simple format: just "orderId command"
     })
     const [formLoading, setFormLoading] = useState(false)
     const [error, setError] = useState(null)
@@ -155,7 +156,8 @@ export default function ProviderGroups() {
             cancelTemplate: group.cancelTemplate || '',
             speedUpTemplate: group.speedUpTemplate || '',
             isActive: group.isActive,
-            isManualServiceGroup: group.isManualServiceGroup || false
+            isManualServiceGroup: group.isManualServiceGroup || false,
+            useSimpleFormat: group.useSimpleFormat || false
         })
         // Fetch providers for the panel
         if (group.panelId) {
@@ -212,7 +214,8 @@ export default function ProviderGroups() {
             cancelTemplate: '',
             speedUpTemplate: '',
             isActive: true,
-            isManualServiceGroup: false
+            isManualServiceGroup: false,
+            useSimpleFormat: false
         })
         setProviders([])
         setTestResult(null)
@@ -568,6 +571,29 @@ export default function ProviderGroups() {
                                             </span>
                                             <span className="toggle-hint">
                                                 Enable this for orders without provider info (custom/manual services)
+                                            </span>
+                                        </div>
+                                    </label>
+                                </div>
+
+                                {/* Simple Format Toggle */}
+                                <div className={`simple-format-section ${formData.useSimpleFormat ? 'active' : ''}`}>
+                                    <label className="checkbox-label simple-format-toggle">
+                                        <input
+                                            type="checkbox"
+                                            checked={formData.useSimpleFormat}
+                                            onChange={(e) => setFormData({
+                                                ...formData,
+                                                useSimpleFormat: e.target.checked
+                                            })}
+                                        />
+                                        <div className="toggle-content">
+                                            <span className="toggle-title">
+                                                <Zap size={14} />
+                                                Simple Format Mode
+                                            </span>
+                                            <span className="toggle-hint">
+                                                Send simple commands like "7416281 refill" instead of detailed templates
                                             </span>
                                         </div>
                                     </label>

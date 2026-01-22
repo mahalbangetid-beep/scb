@@ -562,45 +562,92 @@ class CommandHandlerService {
             };
         }
 
-        // ==================== GUARANTEE VALIDATION ====================
-        // Check if order is within guarantee period based on service name keywords
-        try {
-            const guaranteeService = require('./guaranteeService');
+        // ==================== PANEL API REFILL CHECK ====================
+        // First, check if panel Admin API explicitly tells us refill is available
+        // This takes priority over local pattern-based guarantee check
+        let panelRefillAvailable = order.canRefill;
 
-            console.log(`[CommandHandler] Checking guarantee for order ${orderId}:`);
-            console.log(`  - Service Name: "${order.serviceName}"`);
-            console.log(`  - Completed At: ${order.completedAt}`);
+        // If we don't have canRefill info cached, try to fetch from panel
+        if (panelRefillAvailable === null || panelRefillAvailable === undefined) {
+            if (order.panel?.supportsAdminApi && order.panel?.adminApiKey) {
+                try {
+                    console.log(`[CommandHandler] Checking refill availability from Panel API for order ${orderId}...`);
+                    const statusResult = await adminApiService.getOrderStatus(order.panel, orderId);
+                    if (statusResult.success) {
+                        panelRefillAvailable = statusResult.canRefill;
+                        console.log(`[CommandHandler] Panel API canRefill: ${panelRefillAvailable}`);
 
-            const guaranteeCheck = await guaranteeService.checkGuarantee(order, order.userId);
+                        // Update the order record with this info
+                        await prisma.order.update({
+                            where: { id: order.id },
+                            data: {
+                                canRefill: panelRefillAvailable,
+                                actionsUpdatedAt: new Date()
+                            }
+                        });
+                    }
+                } catch (apiError) {
+                    console.log(`[CommandHandler] Failed to check refill from Panel API: ${apiError.message}`);
+                }
+            }
+        }
 
-            if (!guaranteeCheck.valid) {
-                console.log(`[CommandHandler] Guarantee check FAILED for order ${orderId}: ${guaranteeCheck.reason}`);
+        // If Panel API explicitly says refill is available, trust it and skip local guarantee check
+        if (panelRefillAvailable === true) {
+            console.log(`[CommandHandler] Panel API confirms refill is available for order ${orderId} - skipping local guarantee check`);
+            // Continue to execute refill below
+        }
+        // If Panel API explicitly says refill is NOT available
+        else if (panelRefillAvailable === false) {
+            console.log(`[CommandHandler] Panel API says refill is NOT available for order ${orderId}`);
+            return {
+                success: false,
+                message: `❌ Order ${orderId}: Refill is not available according to panel. The refill period may have expired.`,
+                details: { reason: 'panel_refill_not_available' }
+            };
+        }
+        // If Panel API info is not available, fall back to local guarantee check
+        else {
+            // ==================== GUARANTEE VALIDATION (FALLBACK) ====================
+            // Check if order is within guarantee period based on service name keywords
+            try {
+                const guaranteeService = require('./guaranteeService');
 
-                // Format message based on reason
-                let message;
-                if (guaranteeCheck.reason === 'NO_GUARANTEE') {
-                    message = `❌ Order ${orderId}: This is not possible to refill. This is a no-refill, no-support service.`;
-                } else if (guaranteeCheck.reason === 'EXPIRED') {
-                    message = `❌ Order ${orderId}: Refill period has expired.`;
-                } else {
-                    message = guaranteeService.formatGuaranteeMessage(guaranteeCheck, order);
+                console.log(`[CommandHandler] Panel API canRefill not available, checking local guarantee for order ${orderId}:`);
+                console.log(`  - Service Name: "${order.serviceName}"`);
+                console.log(`  - Completed At: ${order.completedAt}`);
+
+                const guaranteeCheck = await guaranteeService.checkGuarantee(order, order.userId);
+
+                if (!guaranteeCheck.valid) {
+                    console.log(`[CommandHandler] Guarantee check FAILED for order ${orderId}: ${guaranteeCheck.reason}`);
+
+                    // Format message based on reason
+                    let message;
+                    if (guaranteeCheck.reason === 'NO_GUARANTEE') {
+                        message = `❌ Order ${orderId}: This is not possible to refill. This is a no-refill, no-support service.`;
+                    } else if (guaranteeCheck.reason === 'EXPIRED') {
+                        message = `❌ Order ${orderId}: Refill period has expired.`;
+                    } else {
+                        message = guaranteeService.formatGuaranteeMessage(guaranteeCheck, order);
+                    }
+
+                    return {
+                        success: false,
+                        message,
+                        details: {
+                            reason: 'guarantee_failed',
+                            guaranteeReason: guaranteeCheck.reason,
+                            ...guaranteeCheck.details
+                        }
+                    };
                 }
 
-                return {
-                    success: false,
-                    message,
-                    details: {
-                        reason: 'guarantee_failed',
-                        guaranteeReason: guaranteeCheck.reason,
-                        ...guaranteeCheck.details
-                    }
-                };
+                console.log(`[CommandHandler] Guarantee check PASSED for order ${orderId}: ${guaranteeCheck.reason}`);
+            } catch (guaranteeError) {
+                // Log but don't fail the command if guarantee service has issues
+                console.error('[CommandHandler] Guarantee validation error:', guaranteeError.message);
             }
-
-            console.log(`[CommandHandler] Guarantee check PASSED for order ${orderId}: ${guaranteeCheck.reason}`);
-        } catch (guaranteeError) {
-            // Log but don't fail the command if guarantee service has issues
-            console.error('[CommandHandler] Guarantee validation error:', guaranteeError.message);
         }
 
         try {
@@ -731,6 +778,51 @@ class CommandHandlerService {
                 details: { reason: 'status', status: order.status }
             };
         }
+
+        // ==================== PANEL API CANCEL CHECK ====================
+        // Check if panel Admin API explicitly tells us cancel is available
+        let panelCancelAvailable = order.canCancel;
+
+        // If we don't have canCancel info cached, try to fetch from panel
+        if (panelCancelAvailable === null || panelCancelAvailable === undefined) {
+            if (order.panel?.supportsAdminApi && order.panel?.adminApiKey) {
+                try {
+                    console.log(`[CommandHandler] Checking cancel availability from Panel API for order ${orderId}...`);
+                    const statusResult = await adminApiService.getOrderStatus(order.panel, orderId);
+                    if (statusResult.success) {
+                        panelCancelAvailable = statusResult.canCancel;
+                        console.log(`[CommandHandler] Panel API canCancel: ${panelCancelAvailable}`);
+
+                        // Update the order record with this info
+                        await prisma.order.update({
+                            where: { id: order.id },
+                            data: {
+                                canCancel: panelCancelAvailable,
+                                actionsUpdatedAt: new Date()
+                            }
+                        });
+                    }
+                } catch (apiError) {
+                    console.log(`[CommandHandler] Failed to check cancel from Panel API: ${apiError.message}`);
+                }
+            }
+        }
+
+        // If Panel API explicitly says cancel is NOT available
+        if (panelCancelAvailable === false) {
+            console.log(`[CommandHandler] Panel API says cancel is NOT available for order ${orderId}`);
+            return {
+                success: false,
+                message: `❌ Order ${orderId}: Cancel is not available according to panel. Order may be in progress or already processed.`,
+                details: { reason: 'panel_cancel_not_available' }
+            };
+        }
+
+        // Log if panel confirms cancel is available
+        if (panelCancelAvailable === true) {
+            console.log(`[CommandHandler] Panel API confirms cancel is available for order ${orderId}`);
+        }
+
 
         try {
             // Create command record
@@ -917,17 +1009,24 @@ class CommandHandlerService {
             // Get fresh status from panel Admin API
             const status = await adminApiService.getOrderStatus(order.panel, order.externalOrderId);
 
-            // Update order with new status
+            // Update order with new status and action availability
             const newStatus = status.status || 'PENDING';
-            await prisma.order.update({
+            const updatedOrder = await prisma.order.update({
                 where: { id: order.id },
                 data: {
                     status: newStatus,
                     startCount: status.startCount ? parseInt(status.startCount) : order.startCount,
                     remains: status.remains ? parseInt(status.remains) : order.remains,
-                    lastCheckedAt: new Date()
+                    lastCheckedAt: new Date(),
+                    // Update action availability from panel
+                    canRefill: status.canRefill ?? order.canRefill,
+                    canCancel: status.canCancel ?? order.canCancel,
+                    actionsUpdatedAt: new Date()
                 }
             });
+
+            // Use updated values for display
+            order = { ...order, ...updatedOrder };
 
             // Build template variables
             const templateVars = {

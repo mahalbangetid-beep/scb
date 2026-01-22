@@ -327,6 +327,25 @@ class GroupForwardingService {
      * Uses providerOrderId (from Admin API) if available, otherwise falls back to panel order ID
      */
     formatProviderMessage(command, order, providerGroup, providerOrderId) {
+        // Determine which order ID to use - ALWAYS prefer Provider Order ID
+        const displayOrderId = providerOrderId || order.providerOrderId || order.externalOrderId || 'N/A';
+
+        // ==================== SIMPLE FORMAT MODE ====================
+        // If provider group has useSimpleFormat enabled, send just "orderId command"
+        // This is what providers expect: "7416281 refill"
+        if (providerGroup.useSimpleFormat) {
+            const commandMap = {
+                'NEW_ORDER': 'new',
+                'REFILL': 'refill',
+                'CANCEL': 'cancel',
+                'SPEED_UP': 'speed up'
+            };
+            const simpleCmd = commandMap[command.toUpperCase()] || command.toLowerCase();
+            logger.info(`📤 Using simple format: ${displayOrderId} ${simpleCmd}`);
+            return `${displayOrderId} ${simpleCmd}`;
+        }
+
+        // ==================== STANDARD FORMAT MODE ====================
         // Use custom template from providerGroup if available, otherwise use default
         const customTemplate = providerGroup.messageTemplate;
 

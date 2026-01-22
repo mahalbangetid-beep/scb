@@ -331,6 +331,10 @@ model ProviderGroup {
 
   // For manual services (services without provider)
   isManualServiceGroup Boolean @default(false) // Set true for manual services group
+  
+  // Simple format mode - sends just "orderId command" instead of verbose template
+  // Example: "7416281 refill" instead of full message with details
+  useSimpleFormat Boolean @default(false)
 
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
