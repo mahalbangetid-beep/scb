@@ -19,11 +19,9 @@ router.get('/', async (req, res, next) => {
         const { page, limit, skip } = parsePagination(req.query);
         const { panelId } = req.query;
 
-        // Filter through panel relation since ProviderGroup doesn't have userId
+        // Simple filter by userId (now stored directly on ProviderGroup)
         const where = {
-            panel: {
-                userId: req.user.id
-            }
+            userId: req.user.id
         };
 
         if (panelId) {
@@ -449,6 +447,7 @@ router.post('/', async (req, res, next) => {
 
         const group = await prisma.providerGroup.create({
             data: {
+                userId: req.user.id,
                 panelId: panelId || null,
                 providerName: provName,
                 type: platformType,
