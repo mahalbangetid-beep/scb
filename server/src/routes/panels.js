@@ -926,6 +926,36 @@ router.get('/:id/providers', async (req, res, next) => {
     }
 });
 
+// POST /api/panels/:id/sync-providers - Sync/refresh providers list from Admin API
+router.post('/:id/sync-providers', async (req, res, next) => {
+    try {
+        const panel = await prisma.smmPanel.findFirst({
+            where: {
+                id: req.params.id,
+                userId: req.user.id
+            }
+        });
+
+        if (!panel) {
+            throw new AppError('Panel not found', 404);
+        }
+
+        if (!panel.supportsAdminApi || !panel.adminApiKey) {
+            throw new AppError('Admin API not configured for this panel', 400);
+        }
+
+        const result = await smmPanelService.getProvidersList(req.params.id);
+
+        if (!result.success) {
+            throw new AppError(result.error || 'Failed to sync providers', 500);
+        }
+
+        successResponse(res, { providers: result.data }, `Synced ${result.data.length} providers`);
+    } catch (error) {
+        next(error);
+    }
+});
+
 // POST /api/panels/:id/sync-provider-info - Sync provider info for orders
 router.post('/:id/sync-provider-info', async (req, res, next) => {
     try {
