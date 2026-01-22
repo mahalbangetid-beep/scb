@@ -667,9 +667,15 @@ Panel: ${group.panel?.alias || 'N/A'}
 Timestamp: ${new Date().toLocaleString()}`;
 
         // Use correct field names: groupId and type
-        const targetJid = group.type === 'DIRECT' || !group.groupId.includes('@g.us')
-            ? `${group.groupId.replace(/\\D/g, '')}@s.whatsapp.net`
-            : group.groupId;
+        // If groupId already contains @, use as-is. Otherwise format as phone number
+        let targetJid = group.groupId;
+        if (!targetJid.includes('@')) {
+            // Clean phone number (remove non-digits) and add suffix
+            const cleanNumber = targetJid.replace(/\D/g, '');
+            targetJid = `${cleanNumber}@s.whatsapp.net`;
+        }
+
+        console.log(`[ProviderGroups] Test message - groupId: ${group.groupId}, targetJid: ${targetJid}, deviceId: ${group.device.id}`);
 
         await whatsappService.sendMessage(group.device.id, targetJid, testMessage);
 
