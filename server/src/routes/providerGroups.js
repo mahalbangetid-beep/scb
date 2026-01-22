@@ -627,12 +627,11 @@ router.post('/:id/test', async (req, res, next) => {
         const group = await prisma.providerGroup.findFirst({
             where: {
                 id: req.params.id,
-                panel: {
-                    userId: req.user.id
-                }
+                userId: req.user.id
             },
             include: {
-                panel: true
+                panel: true,
+                device: true
             }
         });
 
@@ -641,7 +640,7 @@ router.post('/:id/test', async (req, res, next) => {
         }
 
         if (!group.device) {
-            throw new AppError('No WhatsApp device linked to this group', 400);
+            throw new AppError('No WhatsApp device linked to this group. Please edit the group and select a device.', 400);
         }
 
         if (group.device.status !== 'connected') {
@@ -658,14 +657,15 @@ router.post('/:id/test', async (req, res, next) => {
         const testMessage = `🧪 *TEST MESSAGE*
 
 This is a test message from DICREWA Bot.
-Provider Group: ${group.name}
+Provider Group: ${group.groupName}
 Panel: ${group.panel?.alias || 'N/A'}
 
 Timestamp: ${new Date().toLocaleString()}`;
 
-        const targetJid = group.groupType === 'DIRECT'
-            ? `${group.targetNumber.replace(/\D/g, '')}@s.whatsapp.net`
-            : group.groupJid;
+        // Use correct field names: groupId and type
+        const targetJid = group.type === 'DIRECT' || !group.groupId.includes('@g.us')
+            ? `${group.groupId.replace(/\\D/g, '')}@s.whatsapp.net`
+            : group.groupId;
 
         await whatsappService.sendMessage(group.device.id, targetJid, testMessage);
 
