@@ -37,7 +37,7 @@ router.get('/', async (req, res, next) => {
                     panel: {
                         select: {
                             id: true,
-                            groupName: true,
+                            name: true,
                             alias: true
                         }
                     }
@@ -352,7 +352,7 @@ router.get('/:id', async (req, res, next) => {
                 panel: {
                     select: {
                         id: true,
-                        groupName: true,
+                        name: true,
                         alias: true
                     }
                 }
