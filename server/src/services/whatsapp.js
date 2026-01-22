@@ -564,9 +564,15 @@ class WhatsAppService {
 
     /**
      * Format nomor telepon ke JID WhatsApp
+     * Preserves group JIDs (@g.us) as-is
      */
     formatJid(number) {
-        // Hapus karakter non-digit
+        // If already a valid JID (contains @), return as-is
+        if (number.includes('@')) {
+            return number;
+        }
+
+        // Hapus karakter non-digit for phone numbers
         let cleaned = number.replace(/\D/g, '');
 
         // Hapus leading 0 dan ganti dengan 62 (Indonesia)
@@ -574,12 +580,8 @@ class WhatsAppService {
             cleaned = '62' + cleaned.substring(1);
         }
 
-        // Tambah @s.whatsapp.net jika belum ada
-        if (!cleaned.includes('@')) {
-            cleaned = cleaned + '@s.whatsapp.net';
-        }
-
-        return cleaned;
+        // Tambah @s.whatsapp.net untuk private chat
+        return cleaned + '@s.whatsapp.net';
     }
 
     /**
