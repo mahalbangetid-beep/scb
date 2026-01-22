@@ -555,7 +555,39 @@ router.delete('/:id', async (req, res, next) => {
 
 // ==================== GROUP OPERATIONS ====================
 
+// PATCH /api/provider-groups/:id/toggle - Toggle provider group active status
+router.patch('/:id/toggle', async (req, res, next) => {
+    try {
+        const group = await prisma.providerGroup.findFirst({
+            where: {
+                id: req.params.id,
+                panel: {
+                    userId: req.user.id
+                }
+            }
+        });
+
+        if (!group) {
+            throw new AppError('Provider group not found', 404);
+        }
+
+        const updated = await prisma.providerGroup.update({
+            where: { id: req.params.id },
+            data: { isActive: !group.isActive },
+            include: {
+                panel: { select: { alias: true } }
+            }
+        });
+
+        logger.info(`Provider group ${req.params.id} toggled to ${updated.isActive ? 'active' : 'inactive'}`);
+        successResponse(res, updated, `Provider group ${updated.isActive ? 'activated' : 'deactivated'}`);
+    } catch (error) {
+        next(error);
+    }
+});
+
 // POST /api/provider-groups/:id/test - Test sending message to group
+
 router.post('/:id/test', async (req, res, next) => {
     try {
         const group = await prisma.providerGroup.findFirst({

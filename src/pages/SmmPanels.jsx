@@ -282,11 +282,13 @@ export default function SmmPanels() {
             await api.get(`/panels/${panelId}/balance`)
             fetchPanels()
         } catch (err) {
-            setError(err.message || 'Failed to refresh balance')
+            const errorMsg = err.response?.data?.message || err.response?.data?.error || err.message || 'Failed to refresh balance'
+            setError(errorMsg)
         } finally {
             setSyncingPanel(null)
         }
     }
+
 
     const resetSmartForm = () => {
         setSmartForm({

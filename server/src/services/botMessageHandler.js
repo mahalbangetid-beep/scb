@@ -9,6 +9,8 @@ const prisma = require('../utils/prisma');
 const commandParser = require('./commandParser');
 const commandHandler = require('./commandHandler');
 const creditService = require('./creditService');
+const messageCreditService = require('./messageCreditService');
+const billingModeService = require('./billingModeService');
 
 class BotMessageHandler {
     constructor() {
@@ -42,9 +44,11 @@ class BotMessageHandler {
                 id: true,
                 username: true,
                 creditBalance: true,
+                messageCredits: true,
                 customWaRate: true,
                 customTgRate: true,
                 customGroupRate: true,
+                customCreditRate: true,
                 discountRate: true,
                 role: true,
                 status: true
@@ -180,6 +184,7 @@ class BotMessageHandler {
                     `• \`[Order ID] status\` - Check order status\n` +
                     `• \`[Order ID] refill\` - Request refill\n` +
                     `• \`[Order ID] cancel\` - Cancel order\n` +
+                    `• \`ticket\` - View your tickets\n` +
                     `• \`.help\` - Show all commands\n\n` +
                     `Example: \`12345 status\``;
 
@@ -279,7 +284,10 @@ class BotMessageHandler {
                     `• \`[order_id] status\` - Check order status\n` +
                     `• \`[order_id] refill\` - Request refill\n` +
                     `• \`[order_id] cancel\` - Request cancel\n` +
-                    `• \`status [order_id]\` - Alternative format`
+                    `• \`status [order_id]\` - Alternative format\n\n` +
+                    `*Support:*\n` +
+                    `• \`ticket\` - View your tickets\n` +
+                    `• \`ticket [TICKET_NUMBER]\` - Check ticket status`
             };
         }
 
@@ -293,22 +301,40 @@ class BotMessageHandler {
     async handleSmmCommand(params) {
         const { userId, user, message, senderNumber, deviceId, panelId, platform, isGroup } = params;
 
-        // Check if user has sufficient balance for response
-        const rate = await creditService.getMessageRate(platform, isGroup, user);
+        // Check billing mode
+        const isCreditsMode = await billingModeService.isCreditsMode();
 
-        if (user.creditBalance < rate && user.role !== 'MASTER_ADMIN' && user.role !== 'ADMIN') {
-            console.log(`[BotHandler] Insufficient balance for ${userId}`);
+        // Check if user has sufficient balance based on billing mode
+        if (user.role !== 'MASTER_ADMIN' && user.role !== 'ADMIN') {
+            if (isCreditsMode) {
+                // CREDITS MODE: Check message credits
+                const creditsPerMessage = user.customCreditRate || 1;
+                const userCredits = user.messageCredits || 0;
 
-            // Send low balance warning
-            const warningMessage = `⚠️ Your credit balance is low (${user.creditBalance.toFixed(2)}). Please top up to continue using the bot.`;
-
-            return {
-                handled: true,
-                type: 'smm_command',
-                response: warningMessage,
-                creditCharged: false,
-                reason: 'insufficient_balance'
-            };
+                if (userCredits < creditsPerMessage) {
+                    console.log(`[BotHandler] Insufficient message credits for ${userId} (has: ${userCredits}, needs: ${creditsPerMessage})`);
+                    return {
+                        handled: true,
+                        type: 'smm_command',
+                        response: `⚠️ Your message credits are low (${userCredits} credits remaining). Please buy more credits to continue using the bot.\n\nVisit your dashboard to top up.`,
+                        creditCharged: false,
+                        reason: 'insufficient_credits'
+                    };
+                }
+            } else {
+                // DOLLARS MODE: Check dollar balance
+                const rate = await creditService.getMessageRate(platform, isGroup, user);
+                if ((user.creditBalance || 0) < rate) {
+                    console.log(`[BotHandler] Insufficient balance for ${userId}`);
+                    return {
+                        handled: true,
+                        type: 'smm_command',
+                        response: `⚠️ Your credit balance is low ($${(user.creditBalance || 0).toFixed(2)}). Please top up to continue using the bot.`,
+                        creditCharged: false,
+                        reason: 'insufficient_balance'
+                    };
+                }
+            }
         }
 
         // Process the command with panelId for panel-specific order lookup
@@ -331,12 +357,16 @@ class BotMessageHandler {
             };
         }
 
-        // Charge credit for the response
+        // Charge based on billing mode
         let creditResult = { charged: false };
         try {
-            creditResult = await creditService.chargeMessage(userId, platform, isGroup, user);
+            if (isCreditsMode) {
+                creditResult = await messageCreditService.chargeMessage(userId, platform, isGroup, user);
+            } else {
+                creditResult = await creditService.chargeMessage(userId, platform, isGroup, user);
+            }
         } catch (error) {
-            console.error(`[BotHandler] Credit charge error:`, error);
+            console.error(`[BotHandler] Charge error:`, error);
         }
 
         // Log the message
@@ -394,21 +424,21 @@ class BotMessageHandler {
                 // Charge credit for response
                 const user = await prisma.user.findUnique({
                     where: { id: userId },
-                    select: { creditBalance: true, role: true }
+                    select: { messageCredits: true, role: true }
                 });
 
                 let creditResult = { charged: false };
                 if (user.role !== 'MASTER_ADMIN' && user.role !== 'ADMIN') {
                     try {
-                        creditResult = await creditService.chargeMessage(userId, platform, isGroup);
+                        creditResult = await messageCreditService.chargeMessage(userId, platform, isGroup);
 
-                        if (!creditResult.charged && creditResult.reason === 'insufficient_balance') {
+                        if (!creditResult.charged && creditResult.reason === 'insufficient_credits') {
                             return {
                                 handled: true,
                                 type: 'auto_reply',
-                                response: `⚠️ Low balance. Please top up to enable auto-replies.`,
+                                response: `⚠️ Low message credits. Please top up to enable auto-replies.`,
                                 creditCharged: false,
-                                reason: 'insufficient_balance'
+                                reason: 'insufficient_credits'
                             };
                         }
                     } catch (error) {

@@ -27,6 +27,14 @@ class EndpointScanner {
             ],
             // Get order list
             orders: [
+                // ========== RENTAL PANEL V1 (ACTION-BASED, KEY IN QUERY) ==========
+                // PRIORITY: Try these first for Rental Panel (bam1.net, etc.)
+                { method: 'GET', endpoint: '/adminapi/v1', params: { action: 'getOrders', limit: 1 }, isV1: true, keyParam: 'key' },
+                { method: 'GET', endpoint: '/adminapi/v1', params: { action: 'getOrders' }, isV1: true, keyParam: 'key' },
+                { method: 'GET', endpoint: '/adminapi/v1', params: { action: 'getorder', limit: 1 }, isV1: true, keyParam: 'key' },
+                { method: 'GET', endpoint: '/adminapi/v1', params: { action: 'getOrders-by-id', orders: '1' }, isV1: true, keyParam: 'key' },
+
+                // ========== PERFECT PANEL V2 (RESTFUL, KEY IN HEADER) ==========
                 { method: 'GET', endpoint: '/adminapi/v2/orders', params: { limit: 1 } },
                 { method: 'GET', endpoint: '/adminapi/v1/orders', params: { limit: 1 } },
                 { method: 'GET', endpoint: '/adminapi/orders', params: { limit: 1 } },
@@ -45,6 +53,11 @@ class EndpointScanner {
             ],
             // Get single order - /orders/{id}
             status: [
+                // ========== RENTAL PANEL V1 (ACTION-BASED) ==========
+                { method: 'GET', endpoint: '/adminapi/v1', params: { action: 'getOrders-by-id', orders: '{id}', provider: 1 }, isV1: true, keyParam: 'key' },
+                { method: 'GET', endpoint: '/adminapi/v1', params: { action: 'getorder', type: '{id}' }, isV1: true, keyParam: 'key' },
+
+                // ========== PERFECT PANEL V2 (RESTFUL) ==========
                 { method: 'GET', endpoint: '/adminapi/v2/orders/{id}' },
                 { method: 'GET', endpoint: '/adminapi/v1/orders/{id}' },
                 { method: 'GET', endpoint: '/adminapi/orders/{id}' },
@@ -173,6 +186,10 @@ class EndpointScanner {
             // ==================== PAYMENTS ====================
             // Get payment list - /payments
             payments: [
+                // ========== RENTAL PANEL V1 (ACTION-BASED) ==========
+                // Note: Rental Panel v1 doesn't have getPayments, use addPayment test instead
+
+                // ========== PERFECT PANEL V2 (RESTFUL) ==========
                 { method: 'GET', endpoint: '/adminapi/v2/payments', params: { limit: 1 } },
                 { method: 'GET', endpoint: '/adminapi/v1/payments', params: { limit: 1 } },
                 { method: 'GET', endpoint: '/api/admin/v2/payments', params: { limit: 1 } },
@@ -182,6 +199,10 @@ class EndpointScanner {
             ],
             // Add payment - /payments/add
             paymentsAdd: [
+                // ========== RENTAL PANEL V1 (ACTION-BASED) ==========
+                { method: 'POST', endpoint: '/adminapi/v1', body: { action: 'addPayment' }, isV1: true, keyParam: 'key', testMode: true },
+
+                // ========== PERFECT PANEL V2 (RESTFUL) ==========
                 { method: 'POST', endpoint: '/adminapi/v2/payments/add', testMode: true },
                 { method: 'POST', endpoint: '/adminapi/v1/payments/add', testMode: true },
                 { method: 'POST', endpoint: '/api/admin/payments/add', testMode: true },
@@ -198,6 +219,10 @@ class EndpointScanner {
             ],
             // Get user list - /users
             users: [
+                // ========== RENTAL PANEL V1 (ACTION-BASED) ==========
+                { method: 'GET', endpoint: '/adminapi/v1', params: { action: 'getUser', username: 'test' }, isV1: true, keyParam: 'key' },
+
+                // ========== PERFECT PANEL V2 (RESTFUL) ==========
                 { method: 'GET', endpoint: '/adminapi/v2/users', params: { limit: 1 } },
                 { method: 'GET', endpoint: '/adminapi/v1/users', params: { limit: 1 } },
                 { method: 'GET', endpoint: '/api/admin/v2/users', params: { limit: 1 } },
@@ -360,10 +385,15 @@ class EndpointScanner {
                 if (pattern.testMode) {
                     // For test mode, we just check if endpoint returns 400/422 (bad request but endpoint exists)
                     // rather than 404 (not found)
-                    const response = await this.makeRequest(panel, pattern.method, endpoint, {}, true);
+                    const response = await this.makeRequest(panel, pattern.method, endpoint, {}, true, pattern);
 
                     if (response.exists) {
-                        detectedEndpoint = pattern.endpoint;
+                        // For V1 patterns, include the action in the endpoint display
+                        if (pattern.isV1 && pattern.params?.action) {
+                            detectedEndpoint = `${pattern.endpoint}?action=${pattern.params.action}`;
+                        } else {
+                            detectedEndpoint = pattern.endpoint;
+                        }
                         detectedMethod = pattern.method;
                         patternResult.status = 'success';
                         patternResult.message = 'Endpoint exists (test mode)';
@@ -379,11 +409,18 @@ class EndpointScanner {
                         panel,
                         pattern.method,
                         endpoint,
-                        pattern.params || pattern.body || {}
+                        pattern.params || pattern.body || {},
+                        false,
+                        pattern
                     );
 
                     if (response.success) {
-                        detectedEndpoint = pattern.endpoint;
+                        // For V1 patterns, include the action in the endpoint display
+                        if (pattern.isV1 && pattern.params?.action) {
+                            detectedEndpoint = `${pattern.endpoint}?action=${pattern.params.action}`;
+                        } else {
+                            detectedEndpoint = pattern.endpoint;
+                        }
                         detectedMethod = pattern.method;
                         patternResult.status = 'success';
                         patternResult.message = 'Working endpoint found';
@@ -413,8 +450,9 @@ class EndpointScanner {
 
     /**
      * Make request to test an endpoint
+     * Supports both header auth (Perfect Panel) and query param auth (Rental Panel v1)
      */
-    async makeRequest(panel, method, endpoint, params = {}, testMode = false) {
+    async makeRequest(panel, method, endpoint, params = {}, testMode = false, pattern = {}) {
         try {
             const baseUrl = panel.adminApiBaseUrl || panel.url;
             const url = `${baseUrl.replace(/\/$/, '')}${endpoint}`;
@@ -435,7 +473,6 @@ class EndpointScanner {
                 method,
                 url,
                 headers: {
-                    'X-Api-Key': apiKey,
                     'Content-Type': 'application/json',
                     'Accept': 'application/json'
                 },
@@ -443,10 +480,31 @@ class EndpointScanner {
                 validateStatus: (status) => true // Don't throw on any status
             };
 
-            if (method === 'GET') {
-                config.params = params;
+            // Check if this is a V1 pattern (key in query param instead of header)
+            const isV1Pattern = pattern.isV1 && pattern.keyParam;
+
+            if (isV1Pattern) {
+                // V1 style - key in query/body parameter
+                if (method === 'GET') {
+                    config.params = {
+                        [pattern.keyParam]: apiKey,
+                        ...params
+                    };
+                } else {
+                    config.data = {
+                        [pattern.keyParam]: apiKey,
+                        ...params
+                    };
+                }
             } else {
-                config.data = params;
+                // V2 style - key in header
+                config.headers['X-Api-Key'] = apiKey;
+
+                if (method === 'GET') {
+                    config.params = params;
+                } else {
+                    config.data = params;
+                }
             }
 
             const response = await axios(config);

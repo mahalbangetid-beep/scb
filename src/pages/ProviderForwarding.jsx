@@ -264,14 +264,15 @@ export default function ProviderForwarding() {
                                         <div>
                                             <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--spacing-sm)', marginBottom: 'var(--spacing-xs)' }}>
                                                 <h3 style={{ margin: 0 }}>{config.providerName}</h3>
-                                                {config.alias && <span style={{ color: 'var(--text-muted)' }}>({config.alias})</span>}
+                                                {config.alias && <span style={{ color: 'var(--primary-500)', fontWeight: 500 }}>({config.alias})</span>}
                                                 <span className={`badge ${config.isActive ? 'badge-success' : 'badge-warning'}`}>
                                                     {config.isActive ? 'Active' : 'Inactive'}
                                                 </span>
                                             </div>
-                                            {config.providerDomain && (
-                                                <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', margin: '0 0 var(--spacing-sm)' }}>
-                                                    Domain: <code>{config.providerDomain}</code>
+                                            {/* Show alias as primary, only show domain hint if no alias */}
+                                            {!config.alias && config.providerDomain && (
+                                                <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: '0 0 var(--spacing-sm)', fontStyle: 'italic' }}>
+                                                    Auto-match: {config.providerDomain.replace(/https?:\/\//, '')}
                                                 </p>
                                             )}
 
@@ -468,6 +469,23 @@ export default function ProviderForwarding() {
                             </div>
 
                             <h4 style={{ marginBottom: 'var(--spacing-sm)' }}>WhatsApp Destinations</h4>
+                            <div style={{
+                                marginBottom: 'var(--spacing-md)',
+                                padding: 'var(--spacing-md)',
+                                background: 'rgba(37, 211, 102, 0.1)',
+                                borderRadius: 'var(--radius-md)',
+                                border: '1px solid rgba(37, 211, 102, 0.2)'
+                            }}>
+                                <p style={{ fontSize: '0.85rem', margin: 0, color: 'var(--text-secondary)' }}>
+                                    <strong>💡 How to get WhatsApp Group JID:</strong><br />
+                                    1. Add the bot number to your provider group<br />
+                                    2. Send <code>.groupid</code> in the group<br />
+                                    3. Copy the Group JID from the bot's response<br />
+                                    <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                                        Format: <code>120363xxxxxxxxxx@g.us</code>
+                                    </span>
+                                </p>
+                            </div>
                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--spacing-md)' }}>
                                 <div className="form-group">
                                     <label className="form-label">WhatsApp Group JID</label>
@@ -478,9 +496,10 @@ export default function ProviderForwarding() {
                                         onChange={e => setFormData({ ...formData, whatsappGroupJid: e.target.value })}
                                         placeholder="120363xxx@g.us"
                                     />
+                                    <p className="form-hint">Paste the Group JID from .groupid command</p>
                                 </div>
                                 <div className="form-group">
-                                    <label className="form-label">WhatsApp Number</label>
+                                    <label className="form-label">WhatsApp Number (Direct)</label>
                                     <input
                                         type="text"
                                         className="form-input"
@@ -488,10 +507,28 @@ export default function ProviderForwarding() {
                                         onChange={e => setFormData({ ...formData, whatsappNumber: e.target.value })}
                                         placeholder="628xxx"
                                     />
+                                    <p className="form-hint">For direct message to provider's number</p>
                                 </div>
                             </div>
 
                             <h4 style={{ marginTop: 'var(--spacing-lg)', marginBottom: 'var(--spacing-sm)' }}>Telegram Destination</h4>
+                            <div style={{
+                                marginBottom: 'var(--spacing-md)',
+                                padding: 'var(--spacing-md)',
+                                background: 'rgba(0, 136, 204, 0.1)',
+                                borderRadius: 'var(--radius-md)',
+                                border: '1px solid rgba(0, 136, 204, 0.2)'
+                            }}>
+                                <p style={{ fontSize: '0.85rem', margin: 0, color: 'var(--text-secondary)' }}>
+                                    <strong>💡 How to get Telegram Chat ID:</strong><br />
+                                    1. Add <code>@userinfobot</code> or <code>@getidsbot</code> to your group<br />
+                                    2. The bot will reply with the Chat ID<br />
+                                    3. For groups, ID starts with <code>-100</code> (e.g., <code>-1001234567890</code>)<br />
+                                    <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                                        Private chats use your user ID (positive number)
+                                    </span>
+                                </p>
+                            </div>
                             <div className="form-group">
                                 <label className="form-label">Telegram Chat ID</label>
                                 <input
@@ -501,6 +538,7 @@ export default function ProviderForwarding() {
                                     onChange={e => setFormData({ ...formData, telegramChatId: e.target.value })}
                                     placeholder="-1001234567890"
                                 />
+                                <p className="form-hint">Paste the Chat ID from @getidsbot</p>
                             </div>
 
                             <h4 style={{ marginTop: 'var(--spacing-lg)', marginBottom: 'var(--spacing-sm)' }}>Error Notifications</h4>

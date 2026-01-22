@@ -21,6 +21,7 @@ export default function ProviderGroups() {
         groupType: 'GROUP',
         groupJid: '',
         targetNumber: '',
+        newOrderTemplate: '',
         refillTemplate: '',
         cancelTemplate: '',
         speedUpTemplate: '',
@@ -133,7 +134,7 @@ export default function ProviderGroups() {
             resetForm()
             fetchGroups()
         } catch (err) {
-            setError(err.error?.message || err.message || 'Failed to save group')
+            setError(err.response?.data?.message || err.message || 'Failed to save group')
         } finally {
             setFormLoading(false)
         }
@@ -149,6 +150,7 @@ export default function ProviderGroups() {
             groupType: group.groupType || 'GROUP',
             groupJid: group.groupJid || '',
             targetNumber: group.targetNumber || '',
+            newOrderTemplate: group.newOrderTemplate || '',
             refillTemplate: group.refillTemplate || '',
             cancelTemplate: group.cancelTemplate || '',
             speedUpTemplate: group.speedUpTemplate || '',
@@ -169,7 +171,16 @@ export default function ProviderGroups() {
             await api.delete(`/provider-groups/${groupId}`)
             fetchGroups()
         } catch (err) {
-            setError(err.message || 'Failed to delete group')
+            setError(err.response?.data?.message || err.message || 'Failed to delete group')
+        }
+    }
+
+    const handleToggle = async (groupId) => {
+        try {
+            await api.patch(`/provider-groups/${groupId}/toggle`)
+            fetchGroups()
+        } catch (err) {
+            setError(err.response?.data?.message || err.message || 'Failed to toggle group')
         }
     }
 
@@ -196,6 +207,7 @@ export default function ProviderGroups() {
             groupType: 'GROUP',
             groupJid: '',
             targetNumber: '',
+            newOrderTemplate: '',
             refillTemplate: '',
             cancelTemplate: '',
             speedUpTemplate: '',
@@ -392,15 +404,20 @@ export default function ProviderGroups() {
                                     </div>
 
                                     <div className="group-status">
-                                        <span className={`status-badge ${group.isActive ? 'active' : 'inactive'}`}>
+                                        <button
+                                            className={`status-toggle ${group.isActive ? 'active' : 'inactive'}`}
+                                            onClick={() => handleToggle(group.id)}
+                                            title={`Click to ${group.isActive ? 'deactivate' : 'activate'}`}
+                                        >
                                             {group.isActive ? 'Active' : 'Inactive'}
-                                        </span>
+                                        </button>
                                         {group.device?.status === 'connected' ? (
                                             <span className="status-badge connected">Device Connected</span>
                                         ) : (
                                             <span className="status-badge disconnected">Device Offline</span>
                                         )}
                                     </div>
+
 
                                     {testResult && testResult.groupId === group.id && (
                                         <div className={`test-result ${testResult.success ? 'success' : 'error'}`}>
@@ -616,6 +633,20 @@ export default function ProviderGroups() {
 
                                 <hr style={{ margin: 'var(--spacing-lg) 0', borderColor: 'var(--border-color)' }} />
                                 <h4 style={{ marginBottom: 'var(--spacing-md)' }}>Message Templates (Optional)</h4>
+
+                                <div className="form-group">
+                                    <label className="form-label">New Order Template</label>
+                                    <textarea
+                                        className="form-textarea"
+                                        placeholder="Custom new order message template..."
+                                        value={formData.newOrderTemplate}
+                                        onChange={(e) => setFormData({ ...formData, newOrderTemplate: e.target.value })}
+                                        rows={3}
+                                    />
+                                    <p className="form-hint">
+                                        Sent when a new order is placed. Variables: {'{orderDisplayId}'}, {'{panelAlias}'}, {'{providerName}'}, {'{serviceName}'}, {'{serviceId}'}, {'{link}'}, {'{quantity}'}, {'{timestamp}'}
+                                    </p>
+                                </div>
 
                                 <div className="form-group">
                                     <label className="form-label">Refill Template</label>
@@ -944,6 +975,34 @@ export default function ProviderGroups() {
                     color: #ef4444;
                 }
 
+                .status-toggle {
+                    padding: 4px 12px;
+                    border-radius: var(--radius-sm);
+                    font-size: 0.75rem;
+                    font-weight: 500;
+                    border: none;
+                    cursor: pointer;
+                    transition: all 0.2s ease;
+                }
+
+                .status-toggle.active {
+                    background: rgba(34, 197, 94, 0.1);
+                    color: #22c55e;
+                }
+
+                .status-toggle.active:hover {
+                    background: rgba(34, 197, 94, 0.2);
+                }
+
+                .status-toggle.inactive {
+                    background: rgba(107, 114, 128, 0.1);
+                    color: #6b7280;
+                }
+
+                .status-toggle.inactive:hover {
+                    background: rgba(107, 114, 128, 0.2);
+                }
+
                 .test-result {
                     display: flex;
                     align-items: center;
@@ -1036,6 +1095,8 @@ export default function ProviderGroups() {
 
                 .modal-lg {
                     max-width: 700px;
+                    max-height: 85vh;
+                    overflow-y: auto;
                 }
 
                 .badge-primary {

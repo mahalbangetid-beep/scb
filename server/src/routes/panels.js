@@ -567,12 +567,18 @@ router.get('/:id/balance', async (req, res, next) => {
             throw new AppError('Panel not found', 404);
         }
 
-        const result = await smmPanelService.getBalance(req.params.id);
-        successResponse(res, result);
+        try {
+            const result = await smmPanelService.getBalance(req.params.id);
+            successResponse(res, result, 'Balance refreshed successfully');
+        } catch (balanceError) {
+            console.error(`[Panel] Balance refresh failed for ${panel.alias}:`, balanceError.message);
+            throw new AppError(balanceError.message || 'Failed to refresh balance from panel', 500);
+        }
     } catch (error) {
         next(error);
     }
 });
+
 
 // GET /api/panels/:id/services - Get panel services
 router.get('/:id/services', async (req, res, next) => {

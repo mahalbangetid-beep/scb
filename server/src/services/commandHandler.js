@@ -11,6 +11,7 @@ const commandParser = require('./commandParser');
 const groupForwardingService = require('./groupForwarding');
 const securityService = require('./securityService');
 const commandTemplateService = require('./commandTemplateService');
+const responseTemplateService = require('./responseTemplateService');
 const botFeatureService = require('./botFeatureService');
 
 class CommandHandlerService {
@@ -54,7 +55,7 @@ class CommandHandlerService {
 
         const { command, isUserCommand, argument, needsArgument } = parsed;
 
-        // ==================== HANDLE USER COMMANDS (verify, account) ====================
+        // ==================== HANDLE USER COMMANDS (verify, account, ticket) ====================
         if (isUserCommand) {
             return await this.processUserCommand({
                 userId,
@@ -62,7 +63,10 @@ class CommandHandlerService {
                 argument,
                 needsArgument,
                 senderNumber,
-                platform
+                platform,
+                // Pass ticket-specific params if present
+                ticketNumber: parsed.ticketNumber,
+                showList: parsed.showList
             });
         }
 
@@ -1000,7 +1004,7 @@ class CommandHandlerService {
     /**
      * Format all responses into a single message
      */
-    formatResponses(command, responses) {
+    formatResponses(command, responses, userId = null) {
         if (responses.length === 0) {
             return 'No orders processed.';
         }
@@ -1013,13 +1017,28 @@ class CommandHandlerService {
         const successful = responses.filter(r => r.success);
         const failed = responses.filter(r => !r.success);
 
-        let message = `📋 ${commandParser.getDisplayCommand(command)} Results\n`;
-        message += `━━━━━━━━━━━━━━━━\n`;
+        // Get templates (use defaults, will be customizable via UI)
+        const defaults = responseTemplateService.defaultTemplates;
+
+        // Format header
+        const headerTemplate = defaults['BULK_HEADER']?.template || '📋 {command} Results\n━━━━━━━━━━━━━━━━';
+        const successItemTemplate = defaults['BULK_SUCCESS_ITEM']?.template || '• {order_id}';
+        const failedItemTemplate = defaults['BULK_FAILED_ITEM']?.template || '• {order_id}: {error}';
+        const summaryTemplate = defaults['BULK_SUMMARY']?.template || '━━━━━━━━━━━━━━━━\nTotal: {total} | ✅ {success_count} | ❌ {failed_count}';
+
+        let message = responseTemplateService.formatTemplate(headerTemplate, {
+            command: commandParser.getDisplayCommand(command)
+        });
+        message += '\n';
 
         if (successful.length > 0) {
             message += `\n✅ Successful (${successful.length}):\n`;
             for (const r of successful.slice(0, 20)) { // Limit display
-                message += `• ${r.orderId}\n`;
+                message += responseTemplateService.formatTemplate(successItemTemplate, {
+                    order_id: r.orderId,
+                    status: r.details?.status || '',
+                    service: r.details?.service || ''
+                }) + '\n';
             }
             if (successful.length > 20) {
                 message += `... and ${successful.length - 20} more\n`;
@@ -1029,15 +1048,22 @@ class CommandHandlerService {
         if (failed.length > 0) {
             message += `\n❌ Failed (${failed.length}):\n`;
             for (const r of failed.slice(0, 10)) {
-                message += `• ${r.orderId}: ${r.details?.error || r.details?.reason || 'Error'}\n`;
+                message += responseTemplateService.formatTemplate(failedItemTemplate, {
+                    order_id: r.orderId,
+                    error: r.details?.error || r.details?.reason || 'Error',
+                    reason: r.details?.reason || ''
+                }) + '\n';
             }
             if (failed.length > 10) {
                 message += `... and ${failed.length - 10} more\n`;
             }
         }
 
-        message += `\n━━━━━━━━━━━━━━━━\n`;
-        message += `Total: ${responses.length} | ✅ ${successful.length} | ❌ ${failed.length}`;
+        message += '\n' + responseTemplateService.formatTemplate(summaryTemplate, {
+            total: responses.length.toString(),
+            success_count: successful.length.toString(),
+            failed_count: failed.length.toString()
+        });
 
         return message;
     }
@@ -1095,6 +1121,8 @@ class CommandHandlerService {
                 return await this.handleVerifyPayment(userId, argument, needsArgument, senderNumber);
             case 'account':
                 return await this.handleAccountDetails(userId, senderNumber);
+            case 'ticket':
+                return await this.handleTicketStatus(userId, senderNumber, params.ticketNumber, params.showList);
             default:
                 return {
                     success: false,
@@ -1319,6 +1347,140 @@ class CommandHandlerService {
             return {
                 success: false,
                 formattedResponse: `❌ Error fetching account details: ${error.message}`,
+                responses: []
+            };
+        }
+    }
+
+    /**
+     * Handle ticket status command
+     * Usage: ticket (shows list) or ticket T2501-0001 (shows specific ticket)
+     */
+    async handleTicketStatus(userId, senderNumber, ticketNumber = null, showList = false) {
+        try {
+            const ticketService = require('./ticketAutomationService');
+
+            if (showList || !ticketNumber) {
+                // Show list of customer's recent tickets
+                const tickets = await ticketService.getByCustomerPhone(userId, senderNumber);
+
+                if (!tickets || tickets.length === 0) {
+                    return {
+                        success: true,
+                        formattedResponse: `📋 *Your Tickets*\n\nNo tickets found for your number.\n\nTo create a ticket, contact support or use a command that requires support (e.g., refill for unsupported orders).`,
+                        responses: []
+                    };
+                }
+
+                // Format tickets list
+                let message = `📋 *Your Tickets*\n\n`;
+                const statusEmoji = {
+                    'OPEN': '🔵',
+                    'PENDING': '🟡',
+                    'IN_PROGRESS': '🔄',
+                    'WAITING_CUSTOMER': '⏳',
+                    'RESOLVED': '✅',
+                    'CLOSED': '⚫'
+                };
+
+                tickets.slice(0, 5).forEach((ticket, idx) => {
+                    const emoji = statusEmoji[ticket.status] || '📌';
+                    message += `${idx + 1}. ${emoji} *#${ticket.ticketNumber}*\n`;
+                    message += `   ${ticket.subject}\n`;
+                    message += `   Status: ${ticket.status}\n\n`;
+                });
+
+                if (tickets.length > 5) {
+                    message += `_... and ${tickets.length - 5} more tickets_\n\n`;
+                }
+
+                message += `💡 To view ticket details, reply:\n*TICKET [TICKET_NUMBER]*\n\nExample: TICKET ${tickets[0].ticketNumber}`;
+
+                return {
+                    success: true,
+                    formattedResponse: message,
+                    responses: tickets
+                };
+            }
+
+            // Show specific ticket details
+            const ticket = await ticketService.getByNumber(ticketNumber, userId);
+
+            if (!ticket) {
+                return {
+                    success: false,
+                    formattedResponse: `❌ Ticket *#${ticketNumber}* not found.\n\nMake sure you entered the correct ticket number.\nTo see your tickets list, send: *TICKET*`,
+                    responses: []
+                };
+            }
+
+            // Format ticket details with history
+            const statusEmoji = {
+                'OPEN': '🔵 Open',
+                'PENDING': '🟡 Pending',
+                'IN_PROGRESS': '🔄 In Progress',
+                'WAITING_CUSTOMER': '⏳ Waiting for You',
+                'RESOLVED': '✅ Resolved',
+                'CLOSED': '⚫ Closed'
+            };
+
+            let message = `📋 *Ticket Details*\n\n`;
+            message += `📌 *Ticket:* #${ticket.ticketNumber}\n`;
+            message += `📝 *Subject:* ${ticket.subject}\n`;
+            message += `📊 *Status:* ${statusEmoji[ticket.status] || ticket.status}\n`;
+            message += `📂 *Category:* ${ticket.category}\n`;
+            message += `🕐 *Created:* ${new Date(ticket.createdAt).toLocaleString()}\n`;
+
+            if (ticket.resolvedAt) {
+                message += `✅ *Resolved:* ${new Date(ticket.resolvedAt).toLocaleString()}\n`;
+            }
+
+            // Show message history
+            const messages = ticket.messages || [];
+            if (messages.length > 0) {
+                message += `\n━━━━━━━━━━━━━━━━━━\n`;
+                message += `💬 *Message History* (${messages.length})\n\n`;
+
+                // Show last 5 messages
+                const recentMessages = messages.slice(-5);
+                recentMessages.forEach((msg, idx) => {
+                    const typeEmoji = msg.type === 'CUSTOMER' ? '👤' : (msg.type === 'STAFF' ? '👨‍💼' : '🔔');
+                    const time = new Date(msg.timestamp).toLocaleString('en-US', {
+                        month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
+                    });
+                    message += `${typeEmoji} *${msg.type}* (${time})\n`;
+                    // Truncate long messages
+                    const content = msg.content.length > 100 ? msg.content.substring(0, 100) + '...' : msg.content;
+                    message += `${content}\n\n`;
+                });
+
+                if (messages.length > 5) {
+                    message += `_... ${messages.length - 5} earlier messages_\n`;
+                }
+            } else {
+                message += `\n💬 *No replies yet* - We will respond shortly.`;
+            }
+
+            // Add action hints based on status
+            if (ticket.status === 'WAITING_CUSTOMER') {
+                message += `\n\n⚠️ *Action Required:* Please reply to this ticket in the panel.`;
+            } else if (ticket.status === 'RESOLVED' || ticket.status === 'CLOSED') {
+                message += `\n\n✅ This ticket has been ${ticket.status.toLowerCase()}.`;
+            } else {
+                message += `\n\n⏳ Our team will respond shortly.`;
+            }
+
+            return {
+                success: true,
+                formattedResponse: message,
+                responses: [ticket]
+            };
+
+        } catch (error) {
+            console.error('[CommandHandler] handleTicketStatus error:', error);
+            return {
+                success: false,
+                formattedResponse: `❌ Error fetching ticket status: ${error.message}`,
                 responses: []
             };
         }

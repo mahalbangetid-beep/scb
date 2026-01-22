@@ -27,65 +27,71 @@ enum UserStatus {
 }
 
 model User {
-  id               String     @id @default(cuid())
-  username         String     @unique
-  email            String     @unique
-  password         String
-  name             String
-  role             String     @default("USER") // MASTER_ADMIN, ADMIN, USER, STAFF
-  status           String     @default("ACTIVE") // ACTIVE, SUSPENDED, BANNED
-  avatar           String?
-  
+  id       String  @id @default(cuid())
+  username String  @unique
+  email    String  @unique
+  password String
+  name     String
+  role     String  @default("USER") // MASTER_ADMIN, ADMIN, USER, STAFF
+  status   String  @default("ACTIVE") // ACTIVE, SUSPENDED, BANNED
+  avatar   String?
+
   // SMM Panel Integration Fields
-  whatsappNumber   String?    // Primary WhatsApp number
-  telegramUsername String?    // Telegram username
-  primaryPanelUrl  String?    // Primary SMM Panel URL
-  primaryPanelKey  String?    // Encrypted API Key
-  
-  // Credit & Pricing
-  creditBalance    Float      @default(0)
-  discountRate     Float      @default(0) // Percentage discount
-  customWaRate     Float?     // Custom WhatsApp message rate
-  customTgRate     Float?     // Custom Telegram message rate
-  customGroupRate  Float?     // Custom group message rate
-  
+  whatsappNumber   String? // Primary WhatsApp number
+  telegramUsername String? // Telegram username
+  primaryPanelUrl  String? // Primary SMM Panel URL
+  primaryPanelKey  String? // Encrypted API Key
+
+  // Dollar Balance (for payments/deposits)
+  creditBalance   Float  @default(0)
+  discountRate    Float  @default(0) // Percentage discount
+  customWaRate    Float? // Custom WhatsApp message rate (dollar)
+  customTgRate    Float? // Custom Telegram message rate (dollar)
+  customGroupRate Float? // Custom group message rate (dollar)
+
+  // Message Credits System (for bot usage)
+  messageCredits   Int     @default(0) // Message credits balance
+  freeCreditsGiven Boolean @default(false) // Track if free signup credits given
+  customCreditRate Int? // Custom credits per message (null = use system default 1)
+
   // Tracking
-  registrationIp   String?
-  lastLoginIp      String?
-  lastLoginAt      DateTime?
-  isActive         Boolean    @default(true)
-  createdAt        DateTime   @default(now())
-  updatedAt        DateTime   @updatedAt
+  registrationIp String?
+  lastLoginIp    String?
+  lastLoginAt    DateTime?
+  isActive       Boolean   @default(true)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
   // Relations
-  apiKeys            ApiKey[]
-  devices            Device[]
-  telegramBots       TelegramBot[]
-  contacts           Contact[]
-  tags               Tag[]
-  autoReplyRules     AutoReplyRule[]
-  webhooks           Webhook[]
-  settings           Setting[]
-  smmPanels          SmmPanel[]
-  orders             Order[]
-  creditTransactions CreditTransaction[]
-  loginHistory       LoginHistory[]
-  staffPermissions   StaffPermission[]
-  managedByStaff     StaffPermission[] @relation("StaffUser")
-  payments           Payment[]
-  paymentConfig      UserPaymentConfig?
-  walletTransactions WalletTransaction[]
-  contactBackups     ContactBackup[]
+  apiKeys                   ApiKey[]
+  devices                   Device[]
+  telegramBots              TelegramBot[]
+  contacts                  Contact[]
+  tags                      Tag[]
+  autoReplyRules            AutoReplyRule[]
+  webhooks                  Webhook[]
+  settings                  Setting[]
+  smmPanels                 SmmPanel[]
+  orders                    Order[]
+  creditTransactions        CreditTransaction[]
+  messageCreditTransactions MessageCreditTransaction[]
+  loginHistory              LoginHistory[]
+  staffPermissions          StaffPermission[]
+  managedByStaff            StaffPermission[]          @relation("StaffUser")
+  payments                  Payment[]
+  paymentConfig             UserPaymentConfig?
+  walletTransactions        WalletTransaction[]
+  contactBackups            ContactBackup[]
 }
 
 model ApiKey {
-  id        String   @id @default(cuid())
-  key       String   @unique
+  id        String    @id @default(cuid())
+  key       String    @unique
   name      String
   userId    String
-  isActive  Boolean  @default(true)
+  isActive  Boolean   @default(true)
   lastUsed  DateTime?
-  createdAt DateTime @default(now())
+  createdAt DateTime  @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
@@ -93,15 +99,15 @@ model ApiKey {
 // ==================== STAFF & PERMISSIONS ====================
 
 model StaffPermission {
-  id          String   @id @default(cuid())
-  staffId     String   // The staff user
-  userId      String?  // Optional: specific user they can manage (null = all users)
-  permission  String   // Permission type: USER_MANAGE, CREDIT_MANAGE, REPORT_VIEW, SETTINGS, SUPPORT
-  canView     Boolean  @default(true)
-  canEdit     Boolean  @default(false)
-  canDelete   Boolean  @default(false)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id         String   @id @default(cuid())
+  staffId    String // The staff user
+  userId     String? // Optional: specific user they can manage (null = all users)
+  permission String // Permission type: USER_MANAGE, CREDIT_MANAGE, REPORT_VIEW, SETTINGS, SUPPORT
+  canView    Boolean  @default(true)
+  canEdit    Boolean  @default(false)
+  canDelete  Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
   staff User  @relation(fields: [staffId], references: [id], onDelete: Cascade)
   user  User? @relation("StaffUser", fields: [userId], references: [id], onDelete: Cascade)
@@ -112,13 +118,13 @@ model StaffPermission {
 // ==================== LOGIN HISTORY ====================
 
 model LoginHistory {
-  id        String   @id @default(cuid())
-  userId    String
-  ipAddress String
-  userAgent String?
-  status    String   @default("SUCCESS") // SUCCESS, FAILED, BLOCKED
+  id         String   @id @default(cuid())
+  userId     String
+  ipAddress  String
+  userAgent  String?
+  status     String   @default("SUCCESS") // SUCCESS, FAILED, BLOCKED
   failReason String?
-  createdAt DateTime @default(now())
+  createdAt  DateTime @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
@@ -126,68 +132,68 @@ model LoginHistory {
 // ==================== SMM PANELS ====================
 
 model SmmPanel {
-  id          String   @id @default(cuid())
-  userId      String
-  name        String   // Display name
-  alias       String   // Alias for hiding real provider name
-  url         String   // Panel Base URL
-  apiKey      String   // Encrypted API key
-  apiId       String?  // Encrypted API ID (for panels that use api_id + api_key)
-  panelType   String   @default("GENERIC") // PERFECT_PANEL, RENTAL, GENERIC
-  
+  id        String  @id @default(cuid())
+  userId    String
+  name      String // Display name
+  alias     String // Alias for hiding real provider name
+  url       String // Panel Base URL
+  apiKey    String // Encrypted API key
+  apiId     String? // Encrypted API ID (for panels that use api_id + api_key)
+  panelType String  @default("GENERIC") // PERFECT_PANEL, RENTAL, GENERIC
+
   // API Format Configuration
-  apiFormat   String   @default("STANDARD") // STANDARD, RESTFUL, CUSTOM
+  apiFormat String @default("STANDARD") // STANDARD, RESTFUL, CUSTOM
   // For STANDARD: single endpoint with action param (most common)
   // For RESTFUL: separate endpoints per action
   // For CUSTOM: user defines each endpoint
-  
+
   // Custom Endpoints (used when apiFormat = CUSTOM or RESTFUL)
-  endpointBalance     String?  // e.g., /api/balance or /api/v2?action=balance
-  endpointServices    String?  // e.g., /api/services
-  endpointAddOrder    String?  // e.g., /api/order
-  endpointOrderStatus String?  // e.g., /api/status  
-  endpointRefill      String?  // e.g., /api/refill
-  endpointCancel      String?  // e.g., /api/cancel
-  
+  endpointBalance     String? // e.g., /api/balance or /api/v2?action=balance
+  endpointServices    String? // e.g., /api/services
+  endpointAddOrder    String? // e.g., /api/order
+  endpointOrderStatus String? // e.g., /api/status  
+  endpointRefill      String? // e.g., /api/refill
+  endpointCancel      String? // e.g., /api/cancel
+
   // Request Configuration
-  apiKeyParam  String  @default("key")       // Parameter name for API key
-  apiIdParam   String  @default("api_id")    // Parameter name for API ID (if used)
-  actionParam  String  @default("action")    // Parameter name for action (STANDARD mode)
-  httpMethod   String  @default("POST")      // POST or GET
-  useApiId     Boolean @default(false)       // Whether to send api_id parameter
-  
+  apiKeyParam String  @default("key") // Parameter name for API key
+  apiIdParam  String  @default("api_id") // Parameter name for API ID (if used)
+  actionParam String  @default("action") // Parameter name for action (STANDARD mode)
+  httpMethod  String  @default("POST") // POST or GET
+  useApiId    Boolean @default(false) // Whether to send api_id parameter
+
   // ==================== ADMIN API CONFIGURATION ====================
   // Admin API is required for provider-level data (external_id, provider name)
-  adminApiKey         String?   // Encrypted Admin API key (different from user API key)
-  supportsAdminApi    Boolean   @default(false)  // Whether panel has Admin API access
-  adminApiBaseUrl     String?   // Base URL for Admin API (if different from panel URL)
+  adminApiKey      String? // Encrypted Admin API key (different from user API key)
+  supportsAdminApi Boolean @default(false) // Whether panel has Admin API access
+  adminApiBaseUrl  String? // Base URL for Admin API (if different from panel URL)
   // Admin API uses X-Api-Key header for authentication
-  
+
   // ==================== DETECTED ENDPOINT PATTERNS ====================
   // These are auto-detected by Smart API Scanner during "Sync All Services"
-  detectedOrdersEndpoint      String?   // e.g., /adminapi/v2/orders, /api/admin/orders
-  detectedRefillEndpoint      String?   // e.g., /adminapi/v2/orders/resend, /refill/pull
-  detectedCancelEndpoint      String?   // e.g., /adminapi/v2/orders/cancel, /cancel
-  detectedStatusEndpoint      String?   // e.g., /adminapi/v2/orders/{id}, /order/status
-  detectedProviderEndpoint    String?   // e.g., /adminapi/v2/orders/{id}?include=provider
-  endpointScanResults         String?   // JSON with full scan details
-  manualEndpointOverrides     String?   // JSON with manual endpoint overrides set by user
-  
-  balance     Float?   // Cached balance
-  currency    String   @default("USD")
-  isActive    Boolean  @default(true)
-  isPrimary   Boolean  @default(false)
-  lastSyncAt  DateTime?
-  lastProviderSyncAt DateTime?  // Last time provider info was synced
-  capabilities String?  // Comma-separated capabilities: orders,refill,cancel,provider,status
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  detectedOrdersEndpoint   String? // e.g., /adminapi/v2/orders, /api/admin/orders
+  detectedRefillEndpoint   String? // e.g., /adminapi/v2/orders/resend, /refill/pull
+  detectedCancelEndpoint   String? // e.g., /adminapi/v2/orders/cancel, /cancel
+  detectedStatusEndpoint   String? // e.g., /adminapi/v2/orders/{id}, /order/status
+  detectedProviderEndpoint String? // e.g., /adminapi/v2/orders/{id}?include=provider
+  endpointScanResults      String? // JSON with full scan details
+  manualEndpointOverrides  String? // JSON with manual endpoint overrides set by user
+
+  balance            Float? // Cached balance
+  currency           String    @default("USD")
+  isActive           Boolean   @default(true)
+  isPrimary          Boolean   @default(false)
+  lastSyncAt         DateTime?
+  lastProviderSyncAt DateTime? // Last time provider info was synced
+  capabilities       String? // Comma-separated capabilities: orders,refill,cancel,provider,status
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
 
   user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
   orders         Order[]
   providerGroups ProviderGroup[]
-  devices        Device[]        // WhatsApp devices bound to this panel
-  telegramBots   TelegramBot[]   // Telegram bots bound to this panel
+  devices        Device[] // WhatsApp devices bound to this panel
+  telegramBots   TelegramBot[] // Telegram bots bound to this panel
 
   @@unique([url, userId])
 }
@@ -195,8 +201,8 @@ model SmmPanel {
 // ==================== ORDERS ====================
 
 model Order {
-  id              String   @id @default(cuid())
-  externalOrderId String   // Order ID from SMM Panel (panel's internal ID)
+  id              String    @id @default(cuid())
+  externalOrderId String // Order ID from SMM Panel (panel's internal ID)
   panelId         String
   userId          String
   serviceId       String?
@@ -204,43 +210,43 @@ model Order {
   link            String?
   quantity        Int?
   charge          Float?
-  status          String   @default("PENDING") // PENDING, IN_PROGRESS, COMPLETED, PARTIAL, CANCELLED, REFUNDED
+  status          String    @default("PENDING") // PENDING, IN_PROGRESS, COMPLETED, PARTIAL, CANCELLED, REFUNDED
   startCount      Int?
   remains         Int?
   lastCheckedAt   DateTime?
-  
+
   // ==================== PROVIDER-LEVEL DATA (from Admin API) ====================
   // This data is fetched via Admin API and is critical for provider group forwarding
-  providerName        String?   // Provider name/alias (e.g., "FastFollowers", "SmmProvider")
-  providerOrderId     String?   // External order ID from provider (e.g., "EXT-99887")
-  providerStatus      String?   // Status at provider level
-  providerCharge      Float?    // Cost from provider (internal tracking)
-  providerSyncedAt    DateTime? // Last time provider info was synced
-  
+  providerName     String? // Provider name/alias (e.g., "FastFollowers", "SmmProvider")
+  providerOrderId  String? // External order ID from provider (e.g., "EXT-99887")
+  providerStatus   String? // Status at provider level
+  providerCharge   Float? // Cost from provider (internal tracking)
+  providerSyncedAt DateTime? // Last time provider info was synced
+
   // ==================== CUSTOMER OWNERSHIP (for security validation) ====================
   // Used to validate that command sender is the actual order owner
-  customerUsername    String?   // Customer username on panel
-  customerEmail       String?   // Customer email (from panel)
-  customerPhone       String?   // Customer WhatsApp number (if available)
-  
+  customerUsername String? // Customer username on panel
+  customerEmail    String? // Customer email (from panel)
+  customerPhone    String? // Customer WhatsApp number (if available)
+
   // ==================== CLAIM SYSTEM (WhatsApp ownership verification) ====================
   // First-claim in DM to prevent fraud in group chats
-  claimedByPhone      String?   // WhatsApp number that claimed this order
-  claimedAt           DateTime? // When the order was claimed
-  isVerified          Boolean   @default(false)  // Whether ownership has been verified
-  
+  claimedByPhone String? // WhatsApp number that claimed this order
+  claimedAt      DateTime? // When the order was claimed
+  isVerified     Boolean   @default(false) // Whether ownership has been verified
+
   // ==================== AVAILABLE ACTIONS (from Admin API) ====================
   // Indicates what actions are available for this order based on panel settings
-  canRefill           Boolean   @default(false)  // Whether refill button is available
-  canCancel           Boolean   @default(false)  // Whether cancel button is available
-  actionsUpdatedAt    DateTime? // Last time actions were synced from panel
+  canRefill        Boolean   @default(false) // Whether refill button is available
+  canCancel        Boolean   @default(false) // Whether cancel button is available
+  actionsUpdatedAt DateTime? // Last time actions were synced from panel
 
   // ==================== GUARANTEE TRACKING ====================
   // For guarantee validation on refill requests
-  completedAt         DateTime? // When order was marked as completed
-  
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  completedAt DateTime? // When order was marked as completed
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   panel    SmmPanel       @relation(fields: [panelId], references: [id], onDelete: Cascade)
   user     User           @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -252,16 +258,16 @@ model Order {
 }
 
 model OrderCommand {
-  id          String   @id @default(cuid())
+  id          String    @id @default(cuid())
   orderId     String
-  command     String   // REFILL, CANCEL, SPEED_UP, STATUS
-  status      String   @default("PENDING") // PENDING, PROCESSING, SUCCESS, FAILED
-  requestedBy String   // WhatsApp number or username who requested
+  command     String // REFILL, CANCEL, SPEED_UP, STATUS
+  status      String    @default("PENDING") // PENDING, PROCESSING, SUCCESS, FAILED
+  requestedBy String // WhatsApp number or username who requested
   response    String?
   error       String?
-  forwardedTo String?  // Provider group it was forwarded to
+  forwardedTo String? // Provider group it was forwarded to
   processedAt DateTime?
-  createdAt   DateTime @default(now())
+  createdAt   DateTime  @default(now())
 
   order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
 }
@@ -271,12 +277,30 @@ model OrderCommand {
 model CreditTransaction {
   id            String   @id @default(cuid())
   userId        String
-  type          String   // CREDIT, DEBIT
+  type          String // CREDIT, DEBIT
   amount        Float
   balanceBefore Float
   balanceAfter  Float
   description   String
-  reference     String?  // Payment ID, Order ID, etc
+  reference     String? // Payment ID, Order ID, etc
+  createdAt     DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// ==================== MESSAGE CREDITS ====================
+// Separate from dollar-based CreditTransaction
+// Used for tracking message credits (1 credit = 1 message)
+
+model MessageCreditTransaction {
+  id            String   @id @default(cuid())
+  userId        String
+  type          String // CREDIT, DEBIT, CONVERSION, SIGNUP_BONUS
+  amount        Int // Number of credits (Integer, not Float)
+  balanceBefore Int
+  balanceAfter  Int
+  description   String
+  reference     String? // Conversion ID, Message ID, etc
   createdAt     DateTime @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -285,93 +309,93 @@ model CreditTransaction {
 // ==================== PROVIDER GROUPS ====================
 
 model ProviderGroup {
-  id           String   @id @default(cuid())
+  id           String  @id @default(cuid())
   panelId      String
-  providerName String?  // Provider name to match with Order.providerName (null = default group)
-  type         String   // WHATSAPP, TELEGRAM
-  groupId      String   // WhatsApp group JID or Telegram chat ID
+  providerName String? // Provider name to match with Order.providerName (null = default group)
+  type         String // WHATSAPP, TELEGRAM
+  groupId      String // WhatsApp group JID or Telegram chat ID
   groupName    String
-  
+
   // Message template for forwarding commands
   // Variables: {PROVIDER_ORDER_ID}, {PANEL_ORDER_ID}, {COMMAND}, {SERVICE_NAME}, {LINK}, {PANEL_ALIAS}
-  messageTemplate String?  // Custom message template for this provider
-  
+  messageTemplate String? // Custom message template for this provider
+
   // ==================== SERVICE ID ROUTING ====================
   // Route specific service IDs to specific groups (override default routing)
   // Format: { "serviceId": "targetGroupId", "1234": "group123@g.us", "5678": "6281xxx@s.whatsapp.net" }
-  serviceIdRules  Json?    // Service ID to target JID mapping
-  
+  serviceIdRules Json? // Service ID to target JID mapping
+
   // For manual services (services without provider)
-  isManualServiceGroup Boolean @default(false)  // Set true for manual services group
-  
+  isManualServiceGroup Boolean @default(false) // Set true for manual services group
+
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   panel SmmPanel @relation(fields: [panelId], references: [id], onDelete: Cascade)
 
-  @@unique([panelId, providerName, type])  // One group per panel+provider+type
+  @@unique([panelId, providerName, type]) // One group per panel+provider+type
   @@index([providerName])
 }
 
 // ==================== DEVICES (WhatsApp) ====================
 
 model Device {
-  id           String   @id @default(cuid())
-  name         String
-  phone        String?
-  type         String   @default("WHATSAPP") // WHATSAPP, TELEGRAM
-  status       String   @default("pending") // pending, connected, disconnected
-  sessionData  String?  // Store session JSON
-  lastActive   DateTime?
-  
+  id          String    @id @default(cuid())
+  name        String
+  phone       String?
+  type        String    @default("WHATSAPP") // WHATSAPP, TELEGRAM
+  status      String    @default("pending") // pending, connected, disconnected
+  sessionData String? // Store session JSON
+  lastActive  DateTime?
+
   // Panel Binding - Which SMM Panel this device serves
   // If null, device will search orders across ALL user's panels
-  panelId      String?
-  
+  panelId String?
+
   // Charging
-  isFreeLogin  Boolean  @default(true) // First login is free
-  chargeType   String?  // MONTHLY, ONE_TIME
+  isFreeLogin  Boolean   @default(true) // First login is free
+  chargeType   String? // MONTHLY, ONE_TIME
   chargeAmount Float?
   nextChargeAt DateTime?
-  
-  userId       String
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
 
-  user        User            @relation(fields: [userId], references: [id], onDelete: Cascade)
-  panel       SmmPanel?       @relation(fields: [panelId], references: [id], onDelete: SetNull)
-  messages    Message[]
-  broadcasts  Broadcast[]
-  autoReplies AutoReplyRule[]
+  userId    String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  panel          SmmPanel?       @relation(fields: [panelId], references: [id], onDelete: SetNull)
+  messages       Message[]
+  broadcasts     Broadcast[]
+  autoReplies    AutoReplyRule[]
   contactBackups ContactBackup[]
 }
 
 // ==================== CONTACT BACKUP ====================
 
 model ContactBackup {
-  id           String   @id @default(cuid())
-  deviceId     String
-  userId       String
-  
+  id       String @id @default(cuid())
+  deviceId String
+  userId   String
+
   // Backup data
-  totalContacts Int     @default(0)
-  totalGroups   Int     @default(0)
-  contacts      Json?   // Array of contact objects [{jid, name, pushName, phone}]
-  groups        Json?   // Array of group objects [{jid, name, subject, participants}]
-  
+  totalContacts Int   @default(0)
+  totalGroups   Int   @default(0)
+  contacts      Json? // Array of contact objects [{jid, name, pushName, phone}]
+  groups        Json? // Array of group objects [{jid, name, subject, participants}]
+
   // Metadata
-  backupType    String  @default("AUTO")  // AUTO, MANUAL
-  fileSize      Int     @default(0)       // Size in bytes
-  status        String  @default("COMPLETED") // PENDING, COMPLETED, FAILED
-  errorMessage  String?
-  
-  createdAt     DateTime @default(now())
-  expiresAt     DateTime? // Optional: Auto-delete old backups
-  
-  device        Device   @relation(fields: [deviceId], references: [id], onDelete: Cascade)
-  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
+  backupType   String  @default("AUTO") // AUTO, MANUAL
+  fileSize     Int     @default(0) // Size in bytes
+  status       String  @default("COMPLETED") // PENDING, COMPLETED, FAILED
+  errorMessage String?
+
+  createdAt DateTime  @default(now())
+  expiresAt DateTime? // Optional: Auto-delete old backups
+
+  device Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
   @@index([deviceId, createdAt])
   @@index([userId, createdAt])
 }
@@ -379,62 +403,62 @@ model ContactBackup {
 // ==================== TELEGRAM BOTS ====================
 
 model TelegramBot {
-  id          String   @id @default(cuid())
+  id          String  @id @default(cuid())
   userId      String
-  botToken    String   // Encrypted
+  botToken    String // Encrypted
   botUsername String?
   botName     String?
-  status      String   @default("pending") // pending, connected, disconnected
-  
+  status      String  @default("pending") // pending, connected, disconnected
+
   // Panel Binding - Which SMM Panel this bot serves
   // If null, bot will search orders across ALL user's panels
-  panelId     String?
-  
+  panelId String?
+
   // Charging
-  isFreeLogin  Boolean  @default(true)
+  isFreeLogin  Boolean   @default(true)
   chargeType   String?
   chargeAmount Float?
   nextChargeAt DateTime?
-  
-  lastActive  DateTime?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
 
-  user     User       @relation(fields: [userId], references: [id], onDelete: Cascade)
-  panel    SmmPanel?  @relation(fields: [panelId], references: [id], onDelete: SetNull)
+  lastActive DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  panel    SmmPanel? @relation(fields: [panelId], references: [id], onDelete: SetNull)
   messages Message[]
 }
 
 // ==================== MESSAGES ====================
 
 model Message {
-  id              String   @id @default(cuid())
-  deviceId        String?  // For WhatsApp messages (optional now)
-  telegramBotId   String?  // For Telegram messages
-  platform        String   @default("WHATSAPP") // WHATSAPP, TELEGRAM
-  type            String   @default("outgoing") // incoming, outgoing
-  mediaType       String?  // text, image, video, document, audio
-  to              String?  // For outgoing messages
-  toName          String?
-  from            String?  // For incoming messages
-  fromName        String?
-  message         String
-  mediaUrl        String?
-  status          String   @default("pending") // pending, sent, delivered, read, failed
-  error           String?
-  broadcastId     String?
-  contactId       String?  // Optional link to contact
-  
-  // Credit tracking
-  creditCharged Float   @default(0)
-  
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id            String  @id @default(cuid())
+  deviceId      String? // For WhatsApp messages (optional now)
+  telegramBotId String? // For Telegram messages
+  platform      String  @default("WHATSAPP") // WHATSAPP, TELEGRAM
+  type          String  @default("outgoing") // incoming, outgoing
+  mediaType     String? // text, image, video, document, audio
+  to            String? // For outgoing messages
+  toName        String?
+  from          String? // For incoming messages
+  fromName      String?
+  message       String
+  mediaUrl      String?
+  status        String  @default("pending") // pending, sent, delivered, read, failed
+  error         String?
+  broadcastId   String?
+  contactId     String? // Optional link to contact
 
-  device       Device?       @relation(fields: [deviceId], references: [id], onDelete: Cascade)
-  telegramBot  TelegramBot?  @relation(fields: [telegramBotId], references: [id], onDelete: Cascade)
-  broadcast    Broadcast?    @relation(fields: [broadcastId], references: [id])
-  contact      Contact?      @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  // Credit tracking
+  creditCharged Float @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  device      Device?      @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  telegramBot TelegramBot? @relation(fields: [telegramBotId], references: [id], onDelete: Cascade)
+  broadcast   Broadcast?   @relation(fields: [broadcastId], references: [id])
+  contact     Contact?     @relation(fields: [contactId], references: [id], onDelete: SetNull)
 }
 
 // ==================== CONTACTS ====================
@@ -442,7 +466,7 @@ model Message {
 model Contact {
   id        String   @id @default(cuid())
   name      String
-  phone     String   
+  phone     String
   email     String?
   notes     String?
   userId    String
@@ -483,43 +507,42 @@ model ContactTag {
 // ==================== AUTO REPLY ====================
 
 model AutoReplyRule {
-  id           String   @id @default(cuid())
+  id           String  @id @default(cuid())
   name         String
-  keywords     String   // Keywords separated by comma
-  triggerType  String   @default("contains") // exact, contains, startswith, regex, command
+  keywords     String // Keywords separated by comma
+  triggerType  String  @default("contains") // exact, contains, startswith, regex, command
   response     String
   mediaUrl     String?
-  isActive     Boolean  @default(true)
-  priority     Int      @default(0)
-  deviceId     String?  // null = applies to all devices
+  isActive     Boolean @default(true)
+  priority     Int     @default(0)
+  deviceId     String? // null = applies to all devices
   userId       String
-  triggerCount Int      @default(0)
-  
+  triggerCount Int     @default(0)
+
   // For SMM commands
   isCommandHandler Boolean @default(false)
   commandType      String? // REFILL, CANCEL, SPEED_UP, STATUS
-  
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
   device Device? @relation(fields: [deviceId], references: [id], onDelete: SetNull)
 }
 
-
 // ==================== WEBHOOKS ====================
 
 model Webhook {
-  id         String   @id @default(cuid())
+  id         String    @id @default(cuid())
   name       String
   url        String
   secret     String
-  events     String   // JSON array of events
-  status     String   @default("active") // active, inactive
+  events     String // JSON array of events
+  status     String    @default("active") // active, inactive
   userId     String
   lastCalled DateTime?
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
 
   user User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   logs WebhookLog[]
@@ -529,10 +552,10 @@ model WebhookLog {
   id           String   @id @default(cuid())
   webhookId    String
   event        String
-  payload      String   // JSON
+  payload      String // JSON
   responseCode Int?
   responseBody String?
-  duration     Int?     // milliseconds
+  duration     Int? // milliseconds
   status       String   @default("pending") // pending, success, failed
   createdAt    DateTime @default(now())
 
@@ -542,34 +565,34 @@ model WebhookLog {
 // ==================== BROADCAST ====================
 
 model Broadcast {
-  id              String   @id @default(cuid())
+  id              String    @id @default(cuid())
   name            String
   deviceId        String
   message         String
   mediaUrl        String?
-  status          String   @default("draft") // draft, scheduled, running, completed, cancelled
-  totalRecipients Int      @default(0)
-  sent            Int      @default(0)
-  delivered       Int      @default(0)
-  read            Int      @default(0)
-  failed          Int      @default(0)
+  status          String    @default("draft") // draft, scheduled, running, completed, cancelled
+  totalRecipients Int       @default(0)
+  sent            Int       @default(0)
+  delivered       Int       @default(0)
+  read            Int       @default(0)
+  failed          Int       @default(0)
   scheduledAt     DateTime?
   startedAt       DateTime?
   completedAt     DateTime?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
-  device     Device                @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  device     Device               @relation(fields: [deviceId], references: [id], onDelete: Cascade)
   recipients BroadcastRecipient[]
   messages   Message[]
 }
 
 model BroadcastRecipient {
-  id          String   @id @default(cuid())
+  id          String    @id @default(cuid())
   broadcastId String
   phone       String
   name        String?
-  status      String   @default("pending") // pending, sent, delivered, read, failed
+  status      String    @default("pending") // pending, sent, delivered, read, failed
   error       String?
   sentAt      DateTime?
 
@@ -582,7 +605,7 @@ model Setting {
   id        String   @id @default(cuid())
   userId    String
   key       String
-  value     String   // JSON
+  value     String // JSON
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -596,7 +619,7 @@ model Setting {
 model SystemConfig {
   id        String   @id @default(cuid())
   key       String   @unique
-  value     String   // JSON
+  value     String // JSON
   category  String   @default("general") // general, pricing, security, features
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -607,13 +630,13 @@ model SystemConfig {
 model WalletTransaction {
   id          String   @id @default(cuid())
   userId      String
-  type        String   // TOPUP, WITHDRAWAL, REFUND
+  type        String // TOPUP, WITHDRAWAL, REFUND
   amount      Float
   status      String   @default("PENDING") // PENDING, COMPLETED, FAILED, CANCELLED
-  gateway     String?  // ESEWA, CRYPTOMUS, BINANCE, MANUAL
-  gatewayRef  String?  // Reference ID from gateway
+  gateway     String? // ESEWA, CRYPTOMUS, BINANCE, MANUAL
+  gatewayRef  String? // Reference ID from gateway
   description String?
-  metadata    String?  // JSON data
+  metadata    String? // JSON data
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -627,59 +650,59 @@ model WalletTransaction {
 // ==================== PAYMENTS ====================
 
 model Payment {
-  id            String   @id @default(cuid())
+  id            String    @id @default(cuid())
   userId        String
   amount        Float
-  currency      String   @default("USD")
-  method        String   // BINANCE, CRYPTOMUS, TIKKART, ESEWA, MANUAL, VOUCHER, BANK_TRANSFER, CRYPTO
-  status        String   @default("PENDING") // PENDING, COMPLETED, FAILED, CANCELLED, REJECTED
-  reference     String?  // Payment reference code
-  transactionId String?  // External transaction ID
-  gatewayData   String?  // JSON response from gateway
-  metadata      String?  // Additional JSON data
-  approvedBy    String?  // Admin who approved (for manual)
-  processedBy   String?  // Admin who processed
+  currency      String    @default("USD")
+  method        String // BINANCE, CRYPTOMUS, TIKKART, ESEWA, MANUAL, VOUCHER, BANK_TRANSFER, CRYPTO
+  status        String    @default("PENDING") // PENDING, COMPLETED, FAILED, CANCELLED, REJECTED
+  reference     String? // Payment reference code
+  transactionId String? // External transaction ID
+  gatewayData   String? // JSON response from gateway
+  metadata      String? // Additional JSON data
+  approvedBy    String? // Admin who approved (for manual)
+  processedBy   String? // Admin who processed
   processedAt   DateTime?
   notes         String?
   completedAt   DateTime?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model Voucher {
-  id               String   @id @default(cuid())
-  code             String   @unique
-  type             String   @default("FIXED") // PERCENTAGE, FIXED
-  amount           Float    // Credit amount to add
-  value            Float?   // For percentage type
-  maxUsage         Int?     // Maximum number of uses (null = unlimited)
-  maxUses          Int      @default(1) // Alias for compatibility
-  usageCount       Int      @default(0)
-  usedCount        Int      @default(0) // Alias for compatibility
-  minAmount        Float?   // Minimum purchase amount
-  singleUsePerUser Boolean  @default(true)
-  isActive         Boolean  @default(true)
+  id               String    @id @default(cuid())
+  code             String    @unique
+  type             String    @default("FIXED") // PERCENTAGE, FIXED
+  amount           Float // Credit amount to add
+  value            Float? // For percentage type
+  maxUsage         Int? // Maximum number of uses (null = unlimited)
+  maxUses          Int       @default(1) // Alias for compatibility
+  usageCount       Int       @default(0)
+  usedCount        Int       @default(0) // Alias for compatibility
+  minAmount        Float? // Minimum purchase amount
+  singleUsePerUser Boolean   @default(true)
+  isActive         Boolean   @default(true)
   expiresAt        DateTime?
-  createdBy        String?  // Admin who created
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  createdBy        String? // Admin who created
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
 }
 
 // ==================== ACTIVITY AUDIT LOGS ====================
 
 model ActivityLog {
   id          String   @id @default(cuid())
-  userId      String?  // Can be null for system actions
-  action      String   // LOGIN, LOGOUT, CREATE_DEVICE, DELETE_DEVICE, SEND_MESSAGE, etc.
+  userId      String? // Can be null for system actions
+  action      String // LOGIN, LOGOUT, CREATE_DEVICE, DELETE_DEVICE, SEND_MESSAGE, etc.
   category    String   @default("general") // auth, device, message, order, admin, system
   description String?
-  metadata    String?  // JSON string for additional data
+  metadata    String? // JSON string for additional data
   ipAddress   String?
   userAgent   String?
   status      String   @default("success") // success, failed, warning
-  duration    Int?     // Request duration in ms
+  duration    Int? // Request duration in ms
   createdAt   DateTime @default(now())
 
   @@index([userId])
@@ -691,15 +714,15 @@ model ActivityLog {
 // ==================== COMMAND COOLDOWN (Rate Limiting) ====================
 
 model CommandCooldown {
-  id          String   @id @default(cuid())
-  orderId     String   // Order that was commanded
-  command     String   // refill, cancel, status, speedup
-  senderPhone String   // WhatsApp number that sent the command
-  userId      String   // Panel owner ID
-  
-  createdAt   DateTime @default(now())
-  expiresAt   DateTime // When the cooldown expires
-  
+  id          String @id @default(cuid())
+  orderId     String // Order that was commanded
+  command     String // refill, cancel, status, speedup
+  senderPhone String // WhatsApp number that sent the command
+  userId      String // Panel owner ID
+
+  createdAt DateTime @default(now())
+  expiresAt DateTime // When the cooldown expires
+
   @@index([orderId, command])
   @@index([senderPhone])
   @@index([userId])
@@ -711,29 +734,29 @@ model CommandCooldown {
 model UserBotSettings {
   id     String @id @default(cuid())
   userId String @unique
-  
+
   // Order Claim Settings
   // auto = Auto-claim first command in DM
   // email = Require email verification
   // disabled = No claim system (current behavior)
   orderClaimMode String @default("disabled") // auto, email, disabled
-  
+
   // Group Security Mode
   // none = All commands allowed (current behavior)
   // verified = Only verified/claimed orders can be commanded in groups
   // disabled = No commands allowed in groups (DM only)
   groupSecurityMode String @default("none") // none, verified, disabled
-  
+
   // Username Validation Mode
   // disabled = No validation (current behavior)
   // ask = Ask username before first command on unclaimed order
   // strict = Always verify username matches order.customerUsername
   usernameValidationMode String @default("disabled") // disabled, ask, strict
-  
+
   // Rate Limiting
-  maxCommandsPerMinute Int @default(10)     // Per sender
-  commandCooldownSecs  Int @default(300)    // 5 minutes between same command on same order
-  
+  maxCommandsPerMinute Int @default(10) // Per sender
+  commandCooldownSecs  Int @default(300) // 5 minutes between same command on same order
+
   // Response Settings
   showProviderInResponse Boolean @default(false) // Show provider name in customer response
   showDetailedStatus     Boolean @default(false) // Show detailed status with all order info
@@ -754,63 +777,61 @@ model UserBotSettings {
   // - "detailed" = Full status with provider info (same as showDetailedStatus)
   // - "minimal" = Minimal status only
   statusResponseMode String @default("standard") // standard, detailed, minimal
-  
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
-
 
 // ==================== CONVERSATION STATE ====================
 // For tracking multi-step conversations (e.g., username verification)
 
 model ConversationState {
-  id            String   @id @default(cuid())
-  
+  id String @id @default(cuid())
+
   // Who is this conversation with
-  senderPhone   String   // WhatsApp number
-  userId        String   // Panel owner ID
-  platform      String   @default("WHATSAPP") // WHATSAPP, TELEGRAM
-  
+  senderPhone String // WhatsApp number
+  userId      String // Panel owner ID
+  platform    String @default("WHATSAPP") // WHATSAPP, TELEGRAM
+
   // Conversation type and state
-  stateType     String   // USERNAME_VERIFICATION, EMAIL_VERIFICATION, etc.
-  currentStep   String   // AWAITING_USERNAME, AWAITING_CONFIRMATION, etc.
-  
+  stateType   String // USERNAME_VERIFICATION, EMAIL_VERIFICATION, etc.
+  currentStep String // AWAITING_USERNAME, AWAITING_CONFIRMATION, etc.
+
   // Context data (JSON)
   // e.g., { orderId: "123", command: "refill", attempts: 0 }
-  contextData   String   
-  
+  contextData String
+
   // Expiry
-  expiresAt     DateTime
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-  
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   @@unique([senderPhone, userId, stateType])
   @@index([senderPhone])
   @@index([userId])
   @@index([expiresAt])
 }
 
-
 // ==================== COMMAND TEMPLATES ====================
 // Custom response templates for bot commands (status, refill, cancel, speed-up)
 
 model CommandTemplate {
-  id          String   @id @default(cuid())
-  userId      String
-  
+  id     String @id @default(cuid())
+  userId String
+
   // Command type: STATUS, REFILL, CANCEL, SPEEDUP
   // Sub-types: SUCCESS, PENDING, ERROR, NOT_FOUND, ALREADY_REQUESTED, etc.
-  command     String   // e.g., "STATUS", "REFILL_SUCCESS", "REFILL_PENDING"
-  
+  command String // e.g., "STATUS", "REFILL_SUCCESS", "REFILL_PENDING"
+
   // Template content with variables like {orderId}, {status}, {serviceName}
-  template    String   // The actual template text
-  
+  template String // The actual template text
+
   // Optional: enable/disable this template
-  isActive    Boolean  @default(true)
-  
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  
+  isActive Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   @@unique([userId, command])
   @@index([userId])
 }
@@ -818,10 +839,10 @@ model CommandTemplate {
 // Default system templates (for reference, populated on first use)
 model SystemCommandTemplate {
   id          String   @id @default(cuid())
-  command     String   @unique  // e.g., "STATUS", "REFILL_SUCCESS"
-  template    String   // Default template
-  description String?  // Explanation of when this template is used
-  variables   String   // JSON array of available variables for this command
+  command     String   @unique // e.g., "STATUS", "REFILL_SUCCESS"
+  template    String // Default template
+  description String? // Explanation of when this template is used
+  variables   String // JSON array of available variables for this command
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 }
@@ -833,71 +854,71 @@ model SystemCommandTemplate {
 model BotFeatureToggles {
   id     String @id @default(cuid())
   userId String @unique
-  
+
   // ==================== HIGH-RISK RULES (Opt-in only) ====================
   // These features can affect orders, funds, or account data
-  
+
   // Error/Failed Order Auto Handling
   // Allows failed/error orders to be auto-cancelled or refunded
-  autoHandleFailedOrders      Boolean @default(false)
-  failedOrderAction           String  @default("NOTIFY") // CANCEL, REFUND, NOTIFY, IGNORE
-  
+  autoHandleFailedOrders Boolean @default(false)
+  failedOrderAction      String  @default("NOTIFY") // CANCEL, REFUND, NOTIFY, IGNORE
+
   // Force Order Status to Completed (DANGEROUS!)
   // Allows marking orders as completed regardless of actual status
-  allowForceCompleted         Boolean @default(false)
-  
+  allowForceCompleted Boolean @default(false)
+
   // Order Link Update via Chatbot
   // Allows users to update order link through WhatsApp
-  allowLinkUpdateViaBot       Boolean @default(false)
-  
+  allowLinkUpdateViaBot Boolean @default(false)
+
   // Payment Verification Mode
   // Bot can check payment/transaction status
-  allowPaymentVerification    Boolean @default(false)
-  
+  allowPaymentVerification Boolean @default(false)
+
   // User Account Details via Chatbot
   // Bot replies with username, balance, total spent
-  allowAccountDetailsViaBot   Boolean @default(false)
-  
+  allowAccountDetailsViaBot Boolean @default(false)
+
   // Ticket Auto-Reply
   // Bot automatically replies to panel tickets
-  allowTicketAutoReply        Boolean @default(false)
-  
+  allowTicketAutoReply Boolean @default(false)
+
   // ==================== COMMAND TOGGLES ====================
   // Enable/disable specific command types
-  
-  allowRefillCommand          Boolean @default(true)
-  allowCancelCommand          Boolean @default(true)
-  allowSpeedUpCommand         Boolean @default(true)
-  allowStatusCommand          Boolean @default(true)
-  
+
+  allowRefillCommand  Boolean @default(true)
+  allowCancelCommand  Boolean @default(true)
+  allowSpeedUpCommand Boolean @default(true)
+  allowStatusCommand  Boolean @default(true)
+
   // ==================== PROCESSING STATUS RULES ====================
   // Special handling for orders with "Processing" status
-  
-  processingSpeedUpEnabled    Boolean @default(true)   // Allow speed-up for processing orders
-  processingCancelEnabled     Boolean @default(false)  // Allow cancel for processing orders
-  autoForwardProcessingCancel Boolean @default(false)  // Auto-forward cancel to provider
-  
+
+  processingSpeedUpEnabled    Boolean @default(true) // Allow speed-up for processing orders
+  processingCancelEnabled     Boolean @default(false) // Allow cancel for processing orders
+  autoForwardProcessingCancel Boolean @default(false) // Auto-forward cancel to provider
+
   // ==================== PROVIDER COMMAND TEMPLATES ====================
   // Custom command formats for provider forwarding
-  
-  providerSpeedUpTemplate     String  @default("{speed}")
-  providerRefillTemplate      String  @default("{refill}")
-  providerCancelTemplate      String  @default("{cancel}")
-  
+
+  providerSpeedUpTemplate String @default("{speed}")
+  providerRefillTemplate  String @default("{refill}")
+  providerCancelTemplate  String @default("{cancel}")
+
   // ==================== RESPONSE SETTINGS ====================
-  
-  bulkResponseThreshold       Int     @default(5)   // Switch to compact mode after this many orders
-  maxBulkOrders               Int     @default(100) // Max orders per message
-  showProviderInResponse      Boolean @default(false)
-  showDetailedStatus          Boolean @default(false)
-  
+
+  bulkResponseThreshold  Int     @default(5) // Switch to compact mode after this many orders
+  maxBulkOrders          Int     @default(100) // Max orders per message
+  showProviderInResponse Boolean @default(false)
+  showDetailedStatus     Boolean @default(false)
+
   // ==================== REPLY TO ALL MESSAGES ====================
   // When enabled, bot replies to all incoming messages
   // When disabled, bot only responds to recognized commands
-  
-  replyToAllMessages          Boolean @default(false)  // Toggle for replying to all messages
-  fallbackMessage             String? @db.Text         // Message sent when no handler matches
-  
+
+  replyToAllMessages Boolean @default(false) // Toggle for replying to all messages
+  fallbackMessage    String? @db.Text // Message sent when no handler matches
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -907,33 +928,33 @@ model BotFeatureToggles {
 // Phase 2: Refill guarantee validation
 
 model GuaranteeConfig {
-  id          String   @id @default(cuid())
-  userId      String   @unique
-  
+  id     String @id @default(cuid())
+  userId String @unique
+
   // Pattern configuration (JSON array of regex patterns)
   // Example: ["(\\d+)\\s*Days?\\s*♻️", "Guarantee\\s*(\\d+)"]
-  patterns    String   @default("[]")
-  
+  patterns String @default("[]")
+
   // Simple keyword matching (comma-separated)
   // Example: "guarantee,♻️,refill,days"
-  keywords    String?
-  
+  keywords String?
+
   // Emoji patterns (comma-separated)
   // Example: "♻️,🔄,✅"
-  emojis      String?
-  
+  emojis String?
+
   // Default guarantee days if pattern found but no days specified
-  defaultDays Int      @default(30)
-  
+  defaultDays Int @default(30)
+
   // Whether to enable guarantee validation
-  isEnabled   Boolean  @default(true)
-  
+  isEnabled Boolean @default(true)
+
   // What to do when no guarantee found
   // ALLOW = allow refill anyway, DENY = deny refill, ASK = ask user
   noGuaranteeAction String @default("DENY")
-  
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 // ==================== CREDIT PACKAGES ====================
@@ -941,37 +962,37 @@ model GuaranteeConfig {
 // From clientupdate2.md: $50 = 5000 credits model
 
 model CreditPackage {
-  id          String   @id @default(cuid())
-  
+  id String @id @default(cuid())
+
   // Package info
-  name        String   // "Starter", "Pro", "Enterprise"
+  name        String // "Starter", "Pro", "Enterprise"
   description String?
-  
+
   // Pricing
-  price       Float    // USD amount
-  credits     Int      // Number of message credits
-  
+  price   Float // USD amount
+  credits Int // Number of message credits
+
   // Bonus credits for larger packages
-  bonusCredits  Int    @default(0)
-  
+  bonusCredits Int @default(0)
+
   // Discount percentage (for display)
-  discountPct   Float  @default(0)
-  
+  discountPct Float @default(0)
+
   // Package limits
-  minPurchase   Int    @default(1)  // Min qty per transaction
-  maxPurchase   Int?   // Max qty per transaction (null = unlimited)
-  
+  minPurchase Int  @default(1) // Min qty per transaction
+  maxPurchase Int? // Max qty per transaction (null = unlimited)
+
   // Status and display
-  isActive      Boolean @default(true)
-  isFeatured    Boolean @default(false)  // Highlight this package
-  sortOrder     Int     @default(0)       // Display order
-  
+  isActive   Boolean @default(true)
+  isFeatured Boolean @default(false) // Highlight this package
+  sortOrder  Int     @default(0) // Display order
+
   // Admin tracking
-  createdBy     String?
-  
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-  
+  createdBy String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   @@index([isActive])
   @@index([sortOrder])
 }
@@ -981,46 +1002,46 @@ model CreditPackage {
 // From clientupdate2.md: Auto-renewal system
 
 model MonthlySubscription {
-  id          String   @id @default(cuid())
-  userId      String
-  
+  id     String @id @default(cuid())
+  userId String
+
   // What is being subscribed to
-  resourceType String  // DEVICE, TELEGRAM_BOT, SMM_PANEL
-  resourceId   String  // ID of the device/bot/panel
+  resourceType String // DEVICE, TELEGRAM_BOT, SMM_PANEL
+  resourceId   String // ID of the device/bot/panel
   resourceName String? // Display name for reference
-  
+
   // Pricing
-  monthlyFee   Float
-  currency     String  @default("USD")
-  
+  monthlyFee Float
+  currency   String @default("USD")
+
   // Status
-  status       String  @default("ACTIVE") // ACTIVE, PAUSED, CANCELLED, EXPIRED, PENDING
-  
+  status String @default("ACTIVE") // ACTIVE, PAUSED, CANCELLED, EXPIRED, PENDING
+
   // Billing cycle
   startDate       DateTime
   nextBillingDate DateTime
   lastBilledAt    DateTime?
-  
+
   // Grace period settings
-  gracePeriodDays Int      @default(3)
+  gracePeriodDays Int       @default(3)
   pausedAt        DateTime?
   expiresAt       DateTime? // After grace period ends
-  
+
   // Payment tracking
-  failedAttempts  Int      @default(0)
-  lastFailReason  String?
-  lastFailedAt    DateTime?
-  
+  failedAttempts Int       @default(0)
+  lastFailReason String?
+  lastFailedAt   DateTime?
+
   // Free first login tracking
-  isFreeFirst     Boolean  @default(false)
-  
+  isFreeFirst Boolean @default(false)
+
   // Notifications sent
-  reminderSentAt  DateTime?
-  expiringSentAt  DateTime?
-  
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-  
+  reminderSentAt DateTime?
+  expiringSentAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   @@index([userId])
   @@index([resourceType, resourceId])
   @@index([nextBillingDate])
@@ -1032,49 +1053,49 @@ model MonthlySubscription {
 // Phase 1: Username & User Validation System
 
 model UserWhatsAppMapping {
-  id              String   @id @default(cuid())
-  userId          String   // Panel owner (WABAR user)
-  
+  id     String @id @default(cuid())
+  userId String // Panel owner (WABAR user)
+
   // Panel user info
-  panelUsername   String   // Username on the SMM panel
-  panelEmail      String?  // Email on the SMM panel
-  panelUserId     String?  // User ID on the SMM panel
-  
+  panelUsername String // Username on the SMM panel
+  panelEmail    String? // Email on the SMM panel
+  panelUserId   String? // User ID on the SMM panel
+
   // WhatsApp mappings (JSON array of phone numbers)
   // Example: ["628123456789", "628987654321"]
-  whatsappNumbers String   @default("[]")
-  
+  whatsappNumbers String @default("[]")
+
   // Group IDs (JSON array of WhatsApp group JIDs)
   // Example: ["123456789@g.us", "987654321@g.us"]
-  groupIds        String   @default("[]")
-  
+  groupIds String @default("[]")
+
   // Bot control per user
-  isBotEnabled    Boolean  @default(true)  // Active/Disabled toggle
-  
+  isBotEnabled Boolean @default(true) // Active/Disabled toggle
+
   // Admin notes (internal only)
-  adminNotes      String?
-  
+  adminNotes String?
+
   // Auto-suspend for spam/abuse
-  isAutoSuspended Boolean  @default(false)
+  isAutoSuspended Boolean   @default(false)
   suspendReason   String?
   suspendedAt     DateTime?
-  
+
   // Spam tracking
-  spamCount       Int      @default(0)
-  lastSpamAt      DateTime?
-  
+  spamCount  Int       @default(0)
+  lastSpamAt DateTime?
+
   // Activity tracking
-  lastMessageAt   DateTime?
-  totalMessages   Int      @default(0)
-  
+  lastMessageAt DateTime?
+  totalMessages Int       @default(0)
+
   // Verification status
-  isVerified      Boolean  @default(false)
-  verifiedAt      DateTime?
-  verifiedBy      String?  // "SELF", "ADMIN", "AUTO"
-  
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-  
+  isVerified Boolean   @default(false)
+  verifiedAt DateTime?
+  verifiedBy String? // "SELF", "ADMIN", "AUTO"
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   @@unique([userId, panelUsername])
   @@index([panelEmail])
   @@index([whatsappNumbers])
@@ -1086,38 +1107,38 @@ model UserWhatsAppMapping {
 // Phase 5: Provider Integration & Security
 
 model ProviderDomainMapping {
-  id            String   @id @default(cuid())
-  userId        String
-  panelId       String
-  
+  id      String @id @default(cuid())
+  userId  String
+  panelId String
+
   // Provider identification
-  providerId    String   // Provider ID from panel (e.g., "130")
-  providerName  String   // Original provider name from panel
-  
+  providerId   String // Provider ID from panel (e.g., "130")
+  providerName String // Original provider name from panel
+
   // Hidden domain (INTERNAL ONLY - never exposed to UI!)
   // This is for security and provider identification
-  hiddenDomain  String?  // e.g., "smmrapid.com", extracted from provider data
-  
+  hiddenDomain String? // e.g., "smmrapid.com", extracted from provider data
+
   // Public alias (user-facing, configurable)
-  publicAlias   String   // e.g., "SMMRPD"
-  
+  publicAlias String // e.g., "SMMRPD"
+
   // Multiple forwarding destinations (JSON array)
   // Structure: [{type: "WHATSAPP_GROUP", id: "xxx@g.us", name: "Support"}, ...]
   // Types: WHATSAPP_GROUP, WHATSAPP_NUMBER, TELEGRAM_GROUP, TELEGRAM_USERNAME
   forwardDestinations String @default("[]")
-  
+
   // Forwarding control
   isForwardingEnabled Boolean @default(true)
-  isApiRequestEnabled Boolean @default(true)  // Also send API request to panel
-  
+  isApiRequestEnabled Boolean @default(true) // Also send API request to panel
+
   // Stats
-  totalForwarded Int      @default(0)
+  totalForwarded  Int       @default(0)
   lastForwardedAt DateTime?
-  
-  lastSyncedAt  DateTime?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-  
+
+  lastSyncedAt DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
   @@unique([userId, panelId, providerId])
   @@index([hiddenDomain])
   @@index([publicAlias])
@@ -1129,49 +1150,49 @@ model ProviderDomainMapping {
 // From clientupdate2.md: "Create a separate section where keywords define replies"
 
 model KeywordResponse {
-  id          String   @id @default(cuid())
-  userId      String
-  
+  id     String @id @default(cuid())
+  userId String
+
   // Keyword configuration
-  keyword     String   // The keyword to match
-  
+  keyword String // The keyword to match
+
   // Match type: EXACT, CONTAINS, STARTS_WITH, ENDS_WITH, REGEX
-  matchType   String   @default("CONTAINS")
-  
+  matchType String @default("CONTAINS")
+
   // Case sensitivity
   caseSensitive Boolean @default(false)
-  
+
   // Response configuration
-  responseText  String   // The reply message
-  responseMedia String?  // Optional media URL (image, document, etc.)
-  
+  responseText  String // The reply message
+  responseMedia String? // Optional media URL (image, document, etc.)
+
   // Optional actions when keyword matched
   // NONE, FORWARD_TO_ADMIN, CREATE_TICKET, TRIGGER_WEBHOOK, BLOCK_USER
-  triggerAction String?  @default("NONE")
-  
+  triggerAction String? @default("NONE")
+
   // Action configuration (JSON)
   // e.g., { "webhookUrl": "...", "adminPhone": "..." }
-  actionConfig  String?  @default("{}")
-  
+  actionConfig String? @default("{}")
+
   // Targeting
-  deviceId      String?  // Specific device only, null = all devices
-  platform      String   @default("ALL") // WHATSAPP, TELEGRAM, ALL
-  applyToGroups Boolean  @default(true)  // Apply in group chats
-  applyToDMs    Boolean  @default(true)  // Apply in direct messages
-  
+  deviceId      String? // Specific device only, null = all devices
+  platform      String  @default("ALL") // WHATSAPP, TELEGRAM, ALL
+  applyToGroups Boolean @default(true) // Apply in group chats
+  applyToDMs    Boolean @default(true) // Apply in direct messages
+
   // Priority (higher = checked first)
-  priority      Int      @default(0)
-  
+  priority Int @default(0)
+
   // Status
-  isActive      Boolean  @default(true)
-  
+  isActive Boolean @default(true)
+
   // Stats
-  triggerCount  Int      @default(0)
+  triggerCount    Int       @default(0)
   lastTriggeredAt DateTime?
-  
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-  
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   @@index([userId])
   @@index([keyword])
   @@index([priority])
@@ -1180,40 +1201,40 @@ model KeywordResponse {
 // ==================== TICKET AUTOMATION ====================
 
 model Ticket {
-  id              String   @id @default(uuid())
-  userId          String
-  ticketNumber    String   @unique
-  
+  id           String @id @default(uuid())
+  userId       String
+  ticketNumber String @unique
+
   // Related order (optional)
   orderId         String?
   orderExternalId String?
   panelId         String?
-  
+
   // Customer info
-  customerPhone   String?
+  customerPhone    String?
   customerUsername String?
-  
+
   // Ticket details
-  category        String   @default("GENERAL") // REFILL, CANCEL, SPEEDUP, PARTIAL, GENERAL, TECHNICAL
-  subject         String
-  status          String   @default("OPEN") // OPEN, PENDING, IN_PROGRESS, WAITING_CUSTOMER, RESOLVED, CLOSED
-  priority        String   @default("NORMAL") // LOW, NORMAL, HIGH, URGENT
-  source          String   @default("WHATSAPP") // WHATSAPP, TELEGRAM, WEB, API
-  
+  category String @default("GENERAL") // REFILL, CANCEL, SPEEDUP, PARTIAL, GENERAL, TECHNICAL
+  subject  String
+  status   String @default("OPEN") // OPEN, PENDING, IN_PROGRESS, WAITING_CUSTOMER, RESOLVED, CLOSED
+  priority String @default("NORMAL") // LOW, NORMAL, HIGH, URGENT
+  source   String @default("WHATSAPP") // WHATSAPP, TELEGRAM, WEB, API
+
   // Messages stored as JSON array
-  messages        String   @default("[]") @db.Text
-  
+  messages String @default("[]") @db.Text
+
   // Panel integration
-  panelTicketId   String?
-  syncedAt        DateTime?
-  
+  panelTicketId String?
+  syncedAt      DateTime?
+
   // Timestamps
-  assignedAt      DateTime?
-  resolvedAt      DateTime?
-  lastReplyAt     DateTime?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-  
+  assignedAt  DateTime?
+  resolvedAt  DateTime?
+  lastReplyAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
   @@index([userId])
   @@index([ticketNumber])
   @@index([status])
@@ -1223,44 +1244,44 @@ model Ticket {
 // ==================== USER PANEL MAPPING ====================
 
 model UserPanelMapping {
-  id              String   @id @default(cuid())
-  userId          String
-  
+  id     String @id @default(cuid())
+  userId String
+
   // Panel user info
-  panelUsername   String
-  panelEmail      String?
-  panelUserId     String?
-  
+  panelUsername String
+  panelEmail    String?
+  panelUserId   String?
+
   // WhatsApp numbers (stored as JSON array)
-  whatsappNumbers String   @default("[]") @db.Text
-  
+  whatsappNumbers String @default("[]") @db.Text
+
   // Group IDs (stored as JSON array)
-  groupIds        String   @default("[]") @db.Text
-  
+  groupIds String @default("[]") @db.Text
+
   // Status
-  isVerified      Boolean  @default(false)
-  verifiedAt      DateTime?
-  verifiedBy      String?  // SELF, ADMIN, API, ORDER
-  
-  isBotEnabled    Boolean  @default(true)
-  isAutoSuspended Boolean  @default(false)
+  isVerified Boolean   @default(false)
+  verifiedAt DateTime?
+  verifiedBy String? // SELF, ADMIN, API, ORDER
+
+  isBotEnabled    Boolean   @default(true)
+  isAutoSuspended Boolean   @default(false)
   suspendedAt     DateTime?
   suspendReason   String?
-  
+
   // Spam tracking
-  spamCount       Int      @default(0)
-  lastSpamAt      DateTime?
-  
+  spamCount  Int       @default(0)
+  lastSpamAt DateTime?
+
   // Activity tracking
-  lastMessageAt   DateTime?
-  totalMessages   Int      @default(0)
-  
+  lastMessageAt DateTime?
+  totalMessages Int       @default(0)
+
   // Admin
-  adminNotes      String?  @db.Text
-  
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-  
+  adminNotes String? @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   @@unique([userId, panelUsername])
   @@index([userId])
   @@index([panelUsername])
@@ -1271,50 +1292,51 @@ model UserPanelMapping {
 // Feature 2: Provider Forwarding Configuration
 
 model ProviderConfig {
-  id              String   @id @default(cuid())
-  userId          String
-  
+  id     String @id @default(cuid())
+  userId String
+
   // Provider identification
-  providerName    String   // e.g., "smmnepal", "main_provider", "backup_provider"
-  alias           String?  // Display name
-  
+  providerName String // e.g., "smmnepal", "main_provider", "backup_provider"
+  alias        String? // Display name
+
   // Provider domain matching (optional - for auto-detect)
-  providerDomain  String?  // e.g., "smmnepal.com" - matches order.providerName
-  
+  providerDomain String? // e.g., "smmnepal.com" - matches order.providerName
+
   // Which request types to forward to this provider
-  forwardRefill   Boolean  @default(true)
-  forwardCancel   Boolean  @default(true)
-  forwardSpeedup  Boolean  @default(true)
-  forwardStatus   Boolean  @default(false)  // Usually not needed
-  
+  forwardRefill  Boolean @default(true)
+  forwardCancel  Boolean @default(true)
+  forwardSpeedup Boolean @default(true)
+  forwardStatus  Boolean @default(false) // Usually not needed
+
   // WhatsApp forwarding destinations
-  whatsappGroupJid String?  // WhatsApp group ID for forwarding (e.g., "120363xxx@g.us")
-  whatsappNumber   String?  // WhatsApp number for forwarding (e.g., "628xxx")
-  
+  whatsappGroupJid String? // WhatsApp group ID for forwarding (e.g., "120363xxx@g.us")
+  whatsappNumber   String? // WhatsApp number for forwarding (e.g., "628xxx")
+
   // Telegram forwarding destinations
-  telegramChatId   String?  // Telegram chat/group ID (e.g., "-1001234567890")
-  telegramBotToken String?  // Optional: use different bot for this provider
-  
+  telegramChatId   String? // Telegram chat/group ID (e.g., "-1001234567890")
+  telegramBotToken String? // Optional: use different bot for this provider
+
   // Error handling
-  errorGroupJid    String?  // WhatsApp group for error notifications
-  errorChatId      String?  // Telegram chat for error notifications
+  errorGroupJid      String? // WhatsApp group for error notifications
+  errorChatId        String? // Telegram chat for error notifications
   errorNotifyEnabled Boolean @default(true)
-  
+
   // Message templates (with variables support)
-  refillTemplate   String?  @db.Text  // Template for refill messages
-  cancelTemplate   String?  @db.Text  // Template for cancel messages
-  speedupTemplate  String?  @db.Text  // Template for speedup messages
-  errorTemplate    String?  @db.Text  // Template for error messages
-  
+  newOrderTemplate String? @db.Text // Template for new order messages
+  refillTemplate  String? @db.Text // Template for refill messages
+  cancelTemplate  String? @db.Text // Template for cancel messages
+  speedupTemplate String? @db.Text // Template for speedup messages
+  errorTemplate   String? @db.Text // Template for error messages
+
   // Priority (lower = higher priority)
-  priority         Int      @default(0)
-  
+  priority Int @default(0)
+
   // Status
-  isActive         Boolean  @default(true)
-  
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
-  
+  isActive Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   @@unique([userId, providerName])
   @@index([userId])
   @@index([providerDomain])
@@ -1322,28 +1344,28 @@ model ProviderConfig {
 
 // Provider forwarding logs
 model ProviderForwardLog {
-  id              String   @id @default(cuid())
-  userId          String
-  
+  id     String @id @default(cuid())
+  userId String
+
   // References
-  orderId         String?  // Order ID being forwarded
-  providerId      String?  // ProviderConfig ID used
-  
+  orderId    String? // Order ID being forwarded
+  providerId String? // ProviderConfig ID used
+
   // Forwarding details
-  requestType     String   // REFILL, CANCEL, SPEEDUP, ERROR
-  destination     String   // Group JID, number, or chatId
-  platform        String   // WHATSAPP, TELEGRAM
-  
+  requestType String // REFILL, CANCEL, SPEEDUP, ERROR
+  destination String // Group JID, number, or chatId
+  platform    String // WHATSAPP, TELEGRAM
+
   // Message content
-  messageContent  String   @db.Text
-  
+  messageContent String @db.Text
+
   // Status
-  status          String   @default("SENT")  // SENT, FAILED, PENDING
-  errorMessage    String?  @db.Text
-  responseTime    Int?     // Time in ms
-  
-  createdAt       DateTime @default(now())
-  
+  status       String  @default("SENT") // SENT, FAILED, PENDING
+  errorMessage String? @db.Text
+  responseTime Int? // Time in ms
+
+  createdAt DateTime @default(now())
+
   @@index([userId])
   @@index([orderId])
   @@index([createdAt])
@@ -1354,44 +1376,44 @@ model ProviderForwardLog {
 // Purpose: Recovery, abuse control, internal reference, platform stability
 
 model MasterBackup {
-  id                  String   @id @default(cuid())
-  
+  id String @id @default(cuid())
+
   // User who owns this panel
-  userId              String
-  username            String   // Snapshot of username at backup time
-  userEmail           String   // Snapshot of email at backup time
-  
+  userId    String
+  username  String // Snapshot of username at backup time
+  userEmail String // Snapshot of email at backup time
+
   // Original panel ID (if still exists)
-  originalPanelId     String?
-  
+  originalPanelId String?
+
   // Panel information (backed up data)
-  panelName           String
-  panelAlias          String?
-  panelDomain         String   // Hidden domain URL
-  panelApiKey         String   // Encrypted API key
-  panelAdminApiKey    String?  // Encrypted Admin API key
-  panelType           String?
-  
+  panelName        String
+  panelAlias       String?
+  panelDomain      String // Hidden domain URL
+  panelApiKey      String // Encrypted API key
+  panelAdminApiKey String? // Encrypted Admin API key
+  panelType        String?
+
   // Provider information (backed up)
-  providerDomains     Json?    // Array of linked provider domains
-  providerAliases     Json?    // Array of provider aliases
-  providerGroups      Json?    // Snapshot of provider group configs
-  
+  providerDomains Json? // Array of linked provider domains
+  providerAliases Json? // Array of provider aliases
+  providerGroups  Json? // Snapshot of provider group configs
+
   // Backup metadata
-  backupType          String   @default("AUTO") // AUTO, MANUAL, DELETION
-  backupReason        String?  // Why backup was created
-  
+  backupType   String  @default("AUTO") // AUTO, MANUAL, DELETION
+  backupReason String? // Why backup was created
+
   // Deletion tracking
-  deletedByUser       Boolean  @default(false)
-  userDeletedAt       DateTime?
-  
+  deletedByUser Boolean   @default(false)
+  userDeletedAt DateTime?
+
   // Timestamps
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
-  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   // Note: No relation to User to prevent cascade deletion
   // MasterBackup must persist even if user is deleted
-  
+
   @@index([userId])
   @@index([originalPanelId])
   @@index([panelDomain])
@@ -1403,22 +1425,22 @@ model MasterBackup {
 // Stores user's payment gateway configurations (Binance, etc.)
 
 model UserPaymentConfig {
-  id              String   @id @default(cuid())
-  userId          String   @unique
-  
+  id     String @id @default(cuid())
+  userId String @unique
+
   // Binance Configuration
-  binanceEnabled  Boolean  @default(false)
-  binanceId       String?  // Binance User ID
-  binanceApiKey   String?  // Encrypted - Read-Only API Key
-  binanceSecret   String?  // Encrypted - API Secret
-  binanceQrUrl    String?  // QR Code image URL (hosted on ImgBB/Cloudinary)
+  binanceEnabled   Boolean @default(false)
+  binanceId        String? // Binance User ID
+  binanceApiKey    String? // Encrypted - Read-Only API Key
+  binanceSecret    String? // Encrypted - API Secret
+  binanceQrUrl     String? // QR Code image URL (hosted on ImgBB/Cloudinary)
   binanceMinAmount Float   @default(1)
-  binanceBonus    Float    @default(0)  // Bonus percentage (e.g., 5 = 5%)
-  binanceName     String?  // Display name (e.g., "Binance [5% Bonus Min 1000$+]")
-  binanceCurrency String   @default("USDT") // USDT, USDC, BUSD
-  
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-  
-  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  binanceBonus     Float   @default(0) // Bonus percentage (e.g., 5 = 5%)
+  binanceName      String? // Display name (e.g., "Binance [5% Bonus Min 1000$+]")
+  binanceCurrency  String  @default("USDT") // USDT, USDC, BUSD
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }

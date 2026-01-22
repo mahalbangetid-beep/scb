@@ -63,6 +63,38 @@ class GroupForwardingService {
     }
 
     /**
+     * Forward NEW ORDER to provider group
+     * Called when an order is first created/fetched from provider panel
+     * 
+     * @param {Object} params - { order, userId, deviceId }
+     * @returns {Object} { success, message, groupName }
+     */
+    async forwardNewOrder(params) {
+        const { order, userId, deviceId } = params;
+
+        if (!order) {
+            return { success: false, reason: 'no_order', message: 'Order object is required' };
+        }
+
+        // Only forward if order has provider info (meaning it was successfully sent to provider)
+        if (!order.providerOrderId && !order.providerName) {
+            logger.info(`Skipping NEW_ORDER forward for order ${order.externalOrderId} - no provider info`);
+            return { success: false, reason: 'no_provider', message: 'No provider info available' };
+        }
+
+        logger.info(`📦 Forwarding NEW ORDER ${order.externalOrderId} to provider group...`);
+
+        return this.forwardToProvider({
+            order,
+            command: 'NEW_ORDER',
+            userId,
+            providerOrderId: order.providerOrderId,
+            providerName: order.providerName,
+            deviceId
+        });
+    }
+
+    /**
      * Forward command to provider-specific group using Provider Order ID
      * This is the primary method that uses Admin API data
      * 
@@ -299,6 +331,7 @@ class GroupForwardingService {
         const customTemplate = providerGroup.messageTemplate;
 
         const templates = {
+            NEW_ORDER: customTemplate || providerGroup.newOrderTemplate || this.getProviderTemplate('NEW_ORDER'),
             REFILL: customTemplate || providerGroup.refillTemplate || this.getProviderTemplate('REFILL'),
             CANCEL: customTemplate || providerGroup.cancelTemplate || this.getProviderTemplate('CANCEL'),
             SPEED_UP: customTemplate || providerGroup.speedUpTemplate || this.getProviderTemplate('SPEED_UP')
@@ -314,6 +347,25 @@ class GroupForwardingService {
      */
     getProviderTemplate(command) {
         const defaults = {
+            // NEW ORDER template - sent when order is first forwarded to provider
+            NEW_ORDER: `📦 *NEW ORDER RECEIVED*
+
+External ID: {orderDisplayId}
+🏷️ Panel: {panelAlias}
+🔗 Provider: {providerName}
+
+━━━━━━━━━━━━━━━
+📋 *Order Details*
+Service: {serviceName}
+Service ID: {serviceId}
+Link: {link}
+Quantity: {quantity}
+
+👤 Customer: {customerUsername}
+📅 Placed: {timestamp}
+
+✅ Action: New Order`,
+
             // Provider templates use {providerOrderId} as primary identifier
             REFILL: `🔄 *REFILL REQUEST*
 

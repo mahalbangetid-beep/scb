@@ -11,7 +11,7 @@ export default function SystemSettings() {
     const [saving, setSaving] = useState(false)
     const [error, setError] = useState(null)
     const [success, setSuccess] = useState(null)
-    const [activeSection, setActiveSection] = useState('pricing')
+    const [activeSection, setActiveSection] = useState('billing')
 
     const [settings, setSettings] = useState({
         // Pricing
@@ -44,6 +44,10 @@ export default function SystemSettings() {
         favicon: ''
     })
 
+    // Billing mode state (separate from regular settings)
+    const [billingMode, setBillingMode] = useState('CREDITS')
+    const [billingLoading, setBillingLoading] = useState(false)
+
     const frontendLogoRef = useRef(null)
     const backendLogoRef = useRef(null)
     const faviconRef = useRef(null)
@@ -51,6 +55,7 @@ export default function SystemSettings() {
     const MAX_FAVICON_SIZE = 100 * 1024 // 100KB for favicon
 
     const sections = [
+        { id: 'billing', label: 'Billing Mode', icon: CreditCard, color: '#10b981' },
         { id: 'pricing', label: 'Pricing & Rates', icon: DollarSign, color: '#22c55e' },
         { id: 'platform', label: 'Platform', icon: Globe, color: '#3b82f6' },
         { id: 'security', label: 'Security', icon: Shield, color: '#a855f7' },
@@ -64,8 +69,11 @@ export default function SystemSettings() {
     const fetchSettings = async () => {
         try {
             setLoading(true)
-            const response = await api.get('/admin/config')
-            const configData = response.data?.data || {}
+            const [configRes, billingRes] = await Promise.all([
+                api.get('/admin/config'),
+                api.get('/billing-mode').catch(() => ({ data: { data: { mode: 'CREDITS' } } }))
+            ])
+            const configData = configRes.data?.data || {}
 
             const mapConfig = (category, key, defaultValue) => {
                 const items = configData[category] || []
@@ -94,10 +102,27 @@ export default function SystemSettings() {
                 backendLogo: mapConfig('branding', 'backendLogo', ''),
                 favicon: mapConfig('branding', 'favicon', '')
             })
+
+            // Set billing mode
+            setBillingMode(billingRes.data?.data?.mode || billingRes.data?.mode || 'CREDITS')
         } catch (err) {
             console.warn('Failed to load config:', err.message)
         } finally {
             setLoading(false)
+        }
+    }
+
+    const handleBillingModeChange = async (newMode) => {
+        setBillingLoading(true)
+        try {
+            await api.put('/billing-mode', { mode: newMode })
+            setBillingMode(newMode)
+            setSuccess(`Billing mode changed to ${newMode}!`)
+            setTimeout(() => setSuccess(null), 3000)
+        } catch (err) {
+            setError(err.message || 'Failed to change billing mode')
+        } finally {
+            setBillingLoading(false)
         }
     }
 
@@ -283,6 +308,88 @@ export default function SystemSettings() {
 
                 {/* Content Area */}
                 <main className="settings-content">
+                    {/* Billing Mode Section */}
+                    {activeSection === 'billing' && (
+                        <div className="section-content animate-in">
+                            <div className="section-header">
+                                <div className="section-icon" style={{ background: 'rgba(16, 185, 129, 0.1)', color: '#10b981' }}>
+                                    <CreditCard size={24} />
+                                </div>
+                                <div>
+                                    <h2>Billing Mode</h2>
+                                    <p>Choose how bot messages are charged to users</p>
+                                </div>
+                            </div>
+
+                            <div className="config-card highlight">
+                                <div className="card-header">
+                                    <Zap size={20} />
+                                    <h3>Global Billing System</h3>
+                                </div>
+                                <p className="card-desc">This setting applies to all users. Choose between credit-based or dollar-based charging.</p>
+
+                                <div className="billing-mode-selector">
+                                    <button
+                                        className={`billing-mode-btn ${billingMode === 'CREDITS' ? 'active credits' : ''}`}
+                                        onClick={() => handleBillingModeChange('CREDITS')}
+                                        disabled={billingLoading || billingMode === 'CREDITS'}
+                                    >
+                                        <div className="mode-icon">
+                                            <MessageSquare size={24} />
+                                        </div>
+                                        <div className="mode-info">
+                                            <span className="mode-title">Credits Mode</span>
+                                            <span className="mode-desc">1 credit = 1 message</span>
+                                        </div>
+                                        {billingMode === 'CREDITS' && <CheckCircle2 size={20} className="mode-check" />}
+                                    </button>
+
+                                    <button
+                                        className={`billing-mode-btn ${billingMode === 'DOLLARS' ? 'active dollars' : ''}`}
+                                        onClick={() => handleBillingModeChange('DOLLARS')}
+                                        disabled={billingLoading || billingMode === 'DOLLARS'}
+                                    >
+                                        <div className="mode-icon">
+                                            <DollarSign size={24} />
+                                        </div>
+                                        <div className="mode-info">
+                                            <span className="mode-title">Dollar Mode</span>
+                                            <span className="mode-desc">$ per message rate</span>
+                                        </div>
+                                        {billingMode === 'DOLLARS' && <CheckCircle2 size={20} className="mode-check" />}
+                                    </button>
+                                </div>
+
+                                {billingLoading && (
+                                    <div className="billing-loading">
+                                        <Loader2 className="animate-spin" size={18} />
+                                        <span>Changing billing mode...</span>
+                                    </div>
+                                )}
+
+                                <div className="billing-mode-info">
+                                    {billingMode === 'CREDITS' ? (
+                                        <div className="mode-active-info credits">
+                                            <MessageSquare size={18} />
+                                            <div>
+                                                <strong>Credits Mode Active</strong>
+                                                <p>Users pay 1 credit per bot message. Users can convert their dollar balance to credits.</p>
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <div className="mode-active-info dollars">
+                                            <DollarSign size={18} />
+                                            <div>
+                                                <strong>Dollar Mode Active</strong>
+                                                <p>Users pay per-message rates from their dollar balance. Rates configured in Pricing section.</p>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
                     {/* Pricing Section */}
                     {activeSection === 'pricing' && (
                         <div className="section-content animate-in">
@@ -810,6 +917,142 @@ export default function SystemSettings() {
                     padding: var(--spacing-lg);
                     max-width: 1400px;
                     margin: 0 auto;
+                }
+
+                /* Billing Mode Styles */
+                .billing-mode-selector {
+                    display: grid;
+                    grid-template-columns: 1fr 1fr;
+                    gap: var(--spacing-md);
+                    margin: var(--spacing-lg) 0;
+                }
+
+                .billing-mode-btn {
+                    display: flex;
+                    align-items: center;
+                    gap: var(--spacing-md);
+                    padding: var(--spacing-lg);
+                    background: var(--bg-tertiary);
+                    border: 2px solid var(--border-color);
+                    border-radius: var(--radius-lg);
+                    cursor: pointer;
+                    transition: all 0.2s ease;
+                    text-align: left;
+                }
+
+                .billing-mode-btn:hover:not(:disabled) {
+                    border-color: var(--primary-500);
+                    background: var(--bg-secondary);
+                }
+
+                .billing-mode-btn:disabled {
+                    cursor: default;
+                }
+
+                .billing-mode-btn.active.credits {
+                    border-color: #10b981;
+                    background: rgba(16, 185, 129, 0.1);
+                }
+
+                .billing-mode-btn.active.dollars {
+                    border-color: #3b82f6;
+                    background: rgba(59, 130, 246, 0.1);
+                }
+
+                .billing-mode-btn .mode-icon {
+                    width: 48px;
+                    height: 48px;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    background: var(--bg-secondary);
+                    border-radius: var(--radius-md);
+                    color: var(--text-secondary);
+                }
+
+                .billing-mode-btn.active.credits .mode-icon {
+                    background: rgba(16, 185, 129, 0.2);
+                    color: #10b981;
+                }
+
+                .billing-mode-btn.active.dollars .mode-icon {
+                    background: rgba(59, 130, 246, 0.2);
+                    color: #3b82f6;
+                }
+
+                .billing-mode-btn .mode-info {
+                    flex: 1;
+                    display: flex;
+                    flex-direction: column;
+                    gap: 4px;
+                }
+
+                .billing-mode-btn .mode-title {
+                    font-weight: 600;
+                    color: var(--text-primary);
+                    font-size: 1rem;
+                }
+
+                .billing-mode-btn .mode-desc {
+                    font-size: 0.875rem;
+                    color: var(--text-secondary);
+                }
+
+                .billing-mode-btn .mode-check {
+                    color: #10b981;
+                }
+
+                .billing-mode-btn.active.dollars .mode-check {
+                    color: #3b82f6;
+                }
+
+                .billing-loading {
+                    display: flex;
+                    align-items: center;
+                    gap: var(--spacing-sm);
+                    color: var(--text-secondary);
+                    padding: var(--spacing-md);
+                }
+
+                .billing-mode-info {
+                    margin-top: var(--spacing-md);
+                }
+
+                .mode-active-info {
+                    display: flex;
+                    align-items: flex-start;
+                    gap: var(--spacing-md);
+                    padding: var(--spacing-md);
+                    border-radius: var(--radius-md);
+                }
+
+                .mode-active-info.credits {
+                    background: rgba(16, 185, 129, 0.1);
+                    border: 1px solid rgba(16, 185, 129, 0.3);
+                    color: #10b981;
+                }
+
+                .mode-active-info.dollars {
+                    background: rgba(59, 130, 246, 0.1);
+                    border: 1px solid rgba(59, 130, 246, 0.3);
+                    color: #3b82f6;
+                }
+
+                .mode-active-info strong {
+                    display: block;
+                    margin-bottom: 4px;
+                }
+
+                .mode-active-info p {
+                    font-size: 0.875rem;
+                    opacity: 0.9;
+                    margin: 0;
+                }
+
+                @media (max-width: 600px) {
+                    .billing-mode-selector {
+                        grid-template-columns: 1fr;
+                    }
                 }
 
                 .settings-loading {

@@ -5,9 +5,47 @@ const { successResponse, paginatedResponse, parsePagination } = require('../util
 const { AppError } = require('../middleware/errorHandler');
 const { authenticate } = require('../middleware/auth');
 const adminApiService = require('../services/adminApiService');
+const providerDomainService = require('../services/providerDomainService');
 
 // All routes require authentication
 router.use(authenticate);
+
+/**
+ * Sanitize provider name - hide domain URLs, show alias if available
+ * @param {string} providerName - Raw provider name from API
+ * @param {Object} providerMappings - User's provider domain mappings (keyed by name)
+ * @returns {string} Sanitized provider display name
+ */
+function sanitizeProviderName(providerName, providerMappings = {}) {
+    if (!providerName) return null;
+
+    // Check if we have a mapping with alias for this provider
+    const lowerName = providerName.toLowerCase();
+    for (const [key, mapping] of Object.entries(providerMappings)) {
+        if (key.toLowerCase() === lowerName ||
+            (mapping.aliases && mapping.aliases.some(a => a.toLowerCase() === lowerName))) {
+            // Return alias if available, otherwise the mapping name
+            return mapping.alias || mapping.providerName || key;
+        }
+    }
+
+    // If the provider name looks like a URL/domain, sanitize it
+    if (providerName.includes('.') && (
+        providerName.includes('http') ||
+        providerName.match(/\.(com|net|io|org|co|app|me|xyz)$/i)
+    )) {
+        // Extract just the name part (without domain extension)
+        const cleaned = providerName
+            .replace(/https?:\/\//gi, '')
+            .replace(/\.(com|net|io|org|co|app|me|xyz|panel|smm)$/gi, '')
+            .replace(/www\./gi, '')
+            .replace(/\//g, '')
+            .trim();
+        return cleaned || providerName;
+    }
+
+    return providerName;
+}
 
 // ==================== ORDER LISTING ====================
 
@@ -46,7 +84,7 @@ router.get('/', async (req, res, next) => {
             }
         }
 
-        const [orders, total] = await Promise.all([
+        const [orders, total, providerMappings] = await Promise.all([
             prisma.order.findMany({
                 where,
                 include: {
@@ -62,10 +100,35 @@ router.get('/', async (req, res, next) => {
                 take: limit,
                 skip
             }),
-            prisma.order.count({ where })
+            prisma.order.count({ where }),
+            // Get user's provider domain mappings for alias lookup
+            prisma.providerDomainMapping.findMany({
+                where: { userId: req.user.id },
+                select: {
+                    providerName: true,
+                    aliases: true,
+                    isHidden: true
+                }
+            })
         ]);
 
-        paginatedResponse(res, orders, { page, limit, total });
+        // Build provider mappings lookup
+        const mappingsLookup = {};
+        for (const m of providerMappings) {
+            mappingsLookup[m.providerName] = {
+                providerName: m.providerName,
+                aliases: m.aliases ? JSON.parse(m.aliases) : [],
+                alias: m.providerName // Use providerName as the display alias
+            };
+        }
+
+        // Sanitize provider names in orders
+        const sanitizedOrders = orders.map(order => ({
+            ...order,
+            providerName: sanitizeProviderName(order.providerName, mappingsLookup)
+        }));
+
+        paginatedResponse(res, sanitizedOrders, { page, limit, total });
     } catch (error) {
         next(error);
     }

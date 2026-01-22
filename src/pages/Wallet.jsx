@@ -2,7 +2,8 @@ import { useState, useEffect } from 'react'
 import {
     Wallet, CreditCard, ArrowUpRight, ArrowDownLeft,
     Gift, Clock, CheckCircle2, XCircle, AlertCircle,
-    Plus, Loader2, X, RefreshCw, DollarSign, TrendingUp, Package, Star, QrCode, Copy
+    Plus, Loader2, X, RefreshCw, DollarSign, TrendingUp, Package, Star, QrCode, Copy,
+    MessageSquare, ArrowRightLeft, Zap
 } from 'lucide-react'
 import api from '../services/api'
 
@@ -32,6 +33,15 @@ export default function WalletPage() {
     const [binanceAmount, setBinanceAmount] = useState('')
     const [binanceTxnId, setBinanceTxnId] = useState('')
 
+    // Message Credits state
+    const [messageCreditInfo, setMessageCreditInfo] = useState(null)
+    const [showConvertModal, setShowConvertModal] = useState(false)
+    const [convertAmount, setConvertAmount] = useState('')
+    const [convertLoading, setConvertLoading] = useState(false)
+
+    // Billing mode state
+    const [billingMode, setBillingMode] = useState('CREDITS') // CREDITS or DOLLARS
+
     useEffect(() => {
         fetchData()
     }, [])
@@ -39,12 +49,14 @@ export default function WalletPage() {
     const fetchData = async () => {
         try {
             setLoading(true)
-            const [walletRes, summaryRes, txRes, payRes, packagesRes] = await Promise.all([
+            const [walletRes, summaryRes, txRes, payRes, packagesRes, creditRes, modeRes] = await Promise.all([
                 api.get('/wallet'),
                 api.get('/wallet/summary'),
                 api.get('/wallet/transactions?limit=10'),
                 api.get('/wallet/payments?limit=10'),
-                api.get('/credit-packages').catch(() => ({ data: { data: [] } }))
+                api.get('/credit-packages').catch(() => ({ data: { data: [] } })),
+                api.get('/message-credits/balance').catch(() => ({ data: null })),
+                api.get('/billing-mode').catch(() => ({ data: { data: { mode: 'CREDITS' } } }))
             ])
             // API returns { success, message, data } - extract .data
             setWalletInfo(walletRes.data || walletRes)
@@ -52,6 +64,8 @@ export default function WalletPage() {
             setTransactions(txRes.data || [])
             setPayments(payRes.data || [])
             setCreditPackages(packagesRes.data?.data || packagesRes.data || [])
+            setMessageCreditInfo(creditRes.data?.data || creditRes.data || null)
+            setBillingMode(modeRes.data?.data?.mode || modeRes.data?.mode || 'CREDITS')
         } catch (err) {
             setError(err.message || 'Failed to load wallet data')
         } finally {
@@ -280,6 +294,32 @@ export default function WalletPage() {
         return `$${(amount || 0).toFixed(2)}`
     }
 
+    const handleConvertToCredits = async (e) => {
+        e.preventDefault()
+        if (!convertAmount || parseFloat(convertAmount) <= 0) {
+            setError('Please enter a valid amount')
+            return
+        }
+
+        setConvertLoading(true)
+        setError(null)
+
+        try {
+            const res = await api.post('/message-credits/convert', {
+                amount: parseFloat(convertAmount)
+            })
+            setSuccess(`Converted $${convertAmount} to ${res.data?.data?.creditsReceived || res.data?.creditsReceived} message credits!`)
+            setShowConvertModal(false)
+            setConvertAmount('')
+            fetchData()
+            window.dispatchEvent(new CustomEvent('user-data-updated'))
+        } catch (err) {
+            setError(err.response?.data?.message || err.message || 'Failed to convert')
+        } finally {
+            setConvertLoading(false)
+        }
+    }
+
     const getTransactionIcon = (type) => {
         return type === 'CREDIT' ? (
             <ArrowDownLeft className="text-success" size={18} />
@@ -347,37 +387,89 @@ export default function WalletPage() {
                 </div>
             )}
 
-            {/* Balance Card */}
-            <div className="balance-section">
-                <div className="balance-card">
-                    <div className="balance-header">
-                        <Wallet size={24} />
-                        <span>Current Balance</span>
-                    </div>
-                    <div className="balance-amount">
-                        {formatCurrency(walletInfo?.balance)}
-                    </div>
-                    {walletInfo?.discountRate > 0 && (
-                        <div className="discount-badge">
-                            {walletInfo.discountRate}% Discount Applied
+            {/* Balance Card - Based on Billing Mode */}
+            <div className="balance-section single-card">
+                {billingMode === 'DOLLARS' ? (
+                    /* DOLLARS MODE: Show Dollar Balance Card */
+                    <div className="balance-card">
+                        <div className="balance-header">
+                            <Wallet size={24} />
+                            <span>Credit Balance</span>
                         </div>
-                    )}
-                    <div className="balance-actions">
-                        <button className="btn btn-primary" onClick={() => setShowTopUpModal(true)}>
-                            <Plus size={18} />
-                            Top Up
-                        </button>
-                        <button className="btn btn-secondary" onClick={() => setShowPackagesModal(true)}>
-                            <Package size={18} />
-                            Buy Credits
-                        </button>
-                        <button className="btn btn-secondary" onClick={() => setShowVoucherModal(true)}>
-                            <Gift size={18} />
-                            Voucher
-                        </button>
+                        <div className="balance-amount">
+                            {formatCurrency(walletInfo?.balance)}
+                        </div>
+                        {walletInfo?.discountRate > 0 && (
+                            <div className="discount-badge">
+                                {walletInfo.discountRate}% Discount Applied
+                            </div>
+                        )}
+                        <div className="balance-info">
+                            <small>Bot messages charged per message rate</small>
+                        </div>
+                        <div className="balance-actions">
+                            <button className="btn btn-primary" onClick={() => setShowTopUpModal(true)}>
+                                <Plus size={18} />
+                                Top Up
+                            </button>
+                            <button className="btn btn-secondary" onClick={() => setShowVoucherModal(true)}>
+                                <Gift size={18} />
+                                Voucher
+                            </button>
+                            <button className="btn btn-secondary" onClick={() => setShowPackagesModal(true)}>
+                                <Package size={18} />
+                                Packages
+                            </button>
+                        </div>
                     </div>
-                </div>
+                ) : (
+                    /* CREDITS MODE: Show Message Credits Card */
+                    <div className="balance-card message-credits-card">
+                        <div className="balance-header">
+                            <MessageSquare size={24} />
+                            <span>Message Credits</span>
+                            <Zap size={16} className="credits-icon" />
+                        </div>
+                        <div className="balance-amount credits-amount">
+                            {(messageCreditInfo?.messageCredits || 0).toLocaleString()}
+                            <span className="credits-label">credits</span>
+                        </div>
+                        <div className="credits-info">
+                            <small>
+                                1 credit = 1 bot message •
+                                ${walletInfo?.balance?.toFixed(2) || '0.00'} available to convert
+                            </small>
+                        </div>
+                        <div className="balance-actions">
+                            <button className="btn btn-primary" onClick={() => setShowTopUpModal(true)}>
+                                <Plus size={18} />
+                                Top Up $
+                            </button>
+                            <button
+                                className="btn btn-secondary"
+                                onClick={() => setShowConvertModal(true)}
+                                disabled={!walletInfo?.balance || walletInfo.balance <= 0}
+                            >
+                                <ArrowRightLeft size={18} />
+                                Convert to Credits
+                            </button>
+                            <button className="btn btn-secondary" onClick={() => setShowPackagesModal(true)}>
+                                <Package size={18} />
+                                Packages
+                            </button>
+                        </div>
+                        {messageCreditInfo?.canSendMessages !== undefined && (
+                            <div className="credits-estimate">
+                                Can send ~{messageCreditInfo.canSendMessages.toLocaleString()} more messages
+                            </div>
+                        )}
+                    </div>
+                )}
+            </div>
 
+            {/* Stats Cards - Based on Billing Mode */}
+            {billingMode === 'DOLLARS' ? (
+                /* DOLLARS MODE: Show dollar-based stats */
                 <div className="stats-cards">
                     <div className="stat-card">
                         <div className="stat-icon">
@@ -407,26 +499,80 @@ export default function WalletPage() {
                         </div>
                     </div>
                 </div>
-            </div>
-
-            {/* Rates Info */}
-            <div className="rates-card">
-                <h3>Message Rates</h3>
-                <div className="rates-grid">
-                    <div className="rate-item">
-                        <span>WhatsApp Message</span>
-                        <span className="rate-value">{formatCurrency(walletInfo?.rates?.waMessage)}</span>
+            ) : (
+                /* CREDITS MODE: Show credits-based stats */
+                <div className="stats-cards credits-stats">
+                    <div className="stat-card">
+                        <div className="stat-icon credits-icon-bg">
+                            <MessageSquare size={20} />
+                        </div>
+                        <div className="stat-content">
+                            <span className="stat-label">Credits Used Today</span>
+                            <span className="stat-value">{messageCreditInfo?.todayUsage || 0} credits</span>
+                        </div>
                     </div>
-                    <div className="rate-item">
-                        <span>Telegram Message</span>
-                        <span className="rate-value">{formatCurrency(walletInfo?.rates?.tgMessage)}</span>
+                    <div className="stat-card">
+                        <div className="stat-icon credits-icon-bg">
+                            <Zap size={20} />
+                        </div>
+                        <div className="stat-content">
+                            <span className="stat-label">Conversion Rate</span>
+                            <span className="stat-value">$1 = {messageCreditInfo?.conversionRate || 100} credits</span>
+                        </div>
                     </div>
-                    <div className="rate-item">
-                        <span>Group Message</span>
-                        <span className="rate-value">{formatCurrency(walletInfo?.rates?.groupMessage)}</span>
+                    <div className="stat-card">
+                        <div className="stat-icon credits-icon-bg">
+                            <ArrowRightLeft size={20} />
+                        </div>
+                        <div className="stat-content">
+                            <span className="stat-label">$ Balance</span>
+                            <span className="stat-value">{formatCurrency(walletInfo?.balance)} available</span>
+                        </div>
                     </div>
                 </div>
-            </div>
+            )}
+
+            {/* Rates Info - Only show for DOLLARS mode */}
+            {billingMode === 'DOLLARS' && (
+                <div className="rates-card">
+                    <h3>Message Rates</h3>
+                    <div className="rates-grid">
+                        <div className="rate-item">
+                            <span>WhatsApp Message</span>
+                            <span className="rate-value">{formatCurrency(walletInfo?.rates?.waMessage)}</span>
+                        </div>
+                        <div className="rate-item">
+                            <span>Telegram Message</span>
+                            <span className="rate-value">{formatCurrency(walletInfo?.rates?.tgMessage)}</span>
+                        </div>
+                        <div className="rate-item">
+                            <span>Group Message</span>
+                            <span className="rate-value">{formatCurrency(walletInfo?.rates?.groupMessage)}</span>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Credits Info - Only show for CREDITS mode */}
+            {billingMode === 'CREDITS' && (
+                <div className="rates-card credits-info-card">
+                    <h3>Credits System</h3>
+                    <div className="rates-grid">
+                        <div className="rate-item">
+                            <span>Cost per Message</span>
+                            <span className="rate-value">1 credit</span>
+                        </div>
+                        <div className="rate-item">
+                            <span>Your Custom Rate</span>
+                            <span className="rate-value">{messageCreditInfo?.customRate || 1} credit/msg</span>
+                        </div>
+                        <div className="rate-item">
+                            <span>Free Signup Credits</span>
+                            <span className="rate-value">100 credits</span>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* Tabs */}
             <div className="tabs">
@@ -445,347 +591,432 @@ export default function WalletPage() {
             </div>
 
             {/* Recent Transactions */}
-            {activeTab === 'overview' && (
-                <div className="section">
-                    <h3>Recent Transactions</h3>
-                    {transactions.length === 0 ? (
-                        <div className="empty-state-sm">
-                            <p>No transactions yet</p>
-                        </div>
-                    ) : (
-                        <div className="transactions-list">
-                            {transactions.map(tx => (
-                                <div key={tx.id} className="transaction-item">
-                                    <div className="tx-icon">
-                                        {getTransactionIcon(tx.type)}
+            {
+                activeTab === 'overview' && (
+                    <div className="section">
+                        <h3>Recent Transactions</h3>
+                        {transactions.length === 0 ? (
+                            <div className="empty-state-sm">
+                                <p>No transactions yet</p>
+                            </div>
+                        ) : (
+                            <div className="transactions-list">
+                                {transactions.map(tx => (
+                                    <div key={tx.id} className="transaction-item">
+                                        <div className="tx-icon">
+                                            {getTransactionIcon(tx.type)}
+                                        </div>
+                                        <div className="tx-info">
+                                            <span className="tx-description">{tx.description}</span>
+                                            <span className="tx-date">
+                                                {new Date(tx.createdAt).toLocaleString()}
+                                            </span>
+                                        </div>
+                                        <div className={`tx-amount ${tx.type === 'CREDIT' ? 'credit' : 'debit'}`}>
+                                            {tx.type === 'CREDIT' ? '+' : '-'}{formatCurrency(tx.amount)}
+                                        </div>
                                     </div>
-                                    <div className="tx-info">
-                                        <span className="tx-description">{tx.description}</span>
-                                        <span className="tx-date">
-                                            {new Date(tx.createdAt).toLocaleString()}
-                                        </span>
-                                    </div>
-                                    <div className={`tx-amount ${tx.type === 'CREDIT' ? 'credit' : 'debit'}`}>
-                                        {tx.type === 'CREDIT' ? '+' : '-'}{formatCurrency(tx.amount)}
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    )}
-                </div>
-            )}
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                )
+            }
 
             {/* Payments */}
-            {activeTab === 'payments' && (
-                <div className="section">
-                    <h3>Payment History</h3>
-                    {payments.length === 0 ? (
-                        <div className="empty-state-sm">
-                            <p>No payments yet</p>
-                        </div>
-                    ) : (
-                        <div className="payments-list">
-                            {payments.map(payment => (
-                                <div key={payment.id} className="payment-item">
-                                    <div className="payment-icon">
-                                        <CreditCard size={20} />
+            {
+                activeTab === 'payments' && (
+                    <div className="section">
+                        <h3>Payment History</h3>
+                        {payments.length === 0 ? (
+                            <div className="empty-state-sm">
+                                <p>No payments yet</p>
+                            </div>
+                        ) : (
+                            <div className="payments-list">
+                                {payments.map(payment => (
+                                    <div key={payment.id} className="payment-item">
+                                        <div className="payment-icon">
+                                            <CreditCard size={20} />
+                                        </div>
+                                        <div className="payment-info">
+                                            <span className="payment-ref">{payment.reference}</span>
+                                            <span className="payment-method">{payment.method}</span>
+                                        </div>
+                                        <div className="payment-amount">{formatCurrency(payment.amount)}</div>
+                                        <div className="payment-status">
+                                            {getPaymentStatusBadge(payment.status)}
+                                        </div>
                                     </div>
-                                    <div className="payment-info">
-                                        <span className="payment-ref">{payment.reference}</span>
-                                        <span className="payment-method">{payment.method}</span>
-                                    </div>
-                                    <div className="payment-amount">{formatCurrency(payment.amount)}</div>
-                                    <div className="payment-status">
-                                        {getPaymentStatusBadge(payment.status)}
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    )}
-                </div>
-            )}
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                )
+            }
 
             {/* Top Up Modal */}
-            {showTopUpModal && (
-                <div className="modal-overlay open" onClick={() => setShowTopUpModal(false)}>
-                    <div className="modal" onClick={(e) => e.stopPropagation()}>
-                        <div className="modal-header">
-                            <h2>Top Up Balance</h2>
-                            <button className="modal-close" onClick={() => setShowTopUpModal(false)}>
-                                <X size={20} />
-                            </button>
-                        </div>
-                        <form onSubmit={handleTopUp}>
-                            <div className="modal-body">
-                                <div className="form-group">
-                                    <label className="form-label">Amount ($)</label>
-                                    <input
-                                        type="number"
-                                        className="form-input"
-                                        placeholder="Enter amount"
-                                        value={topUpForm.amount}
-                                        onChange={(e) => setTopUpForm({ ...topUpForm, amount: e.target.value })}
-                                        min="1"
-                                        step="0.01"
-                                        required
-                                    />
-                                </div>
-                                <div className="form-group">
-                                    <label className="form-label">Payment Method</label>
-                                    <select
-                                        className="form-select"
-                                        value={topUpForm.method}
-                                        onChange={(e) => setTopUpForm({ ...topUpForm, method: e.target.value })}
-                                    >
-                                        <option value="ESEWA">eSewa (Nepal)</option>
-                                        <option value="BINANCE">Binance (Crypto)</option>
-                                        <option value="CRYPTOMUS">Cryptomus (Crypto)</option>
-                                        <option value="BANK_TRANSFER">Bank Transfer</option>
-                                        <option value="MANUAL">Manual Payment</option>
-                                    </select>
-                                </div>
-                                <div className="quick-amounts">
-                                    {[10, 25, 50, 100].map(amt => (
-                                        <button
-                                            key={amt}
-                                            type="button"
-                                            className="quick-amount-btn"
-                                            onClick={() => setTopUpForm({ ...topUpForm, amount: amt.toString() })}
-                                        >
-                                            ${amt}
-                                        </button>
-                                    ))}
-                                </div>
-                            </div>
-                            <div className="modal-footer">
-                                <button type="button" className="btn btn-secondary" onClick={() => setShowTopUpModal(false)}>
-                                    Cancel
-                                </button>
-                                <button type="submit" className="btn btn-primary" disabled={formLoading}>
-                                    {formLoading ? <Loader2 className="animate-spin" size={18} /> : 'Request Payment'}
+            {
+                showTopUpModal && (
+                    <div className="modal-overlay open" onClick={() => setShowTopUpModal(false)}>
+                        <div className="modal" onClick={(e) => e.stopPropagation()}>
+                            <div className="modal-header">
+                                <h2>Top Up Balance</h2>
+                                <button className="modal-close" onClick={() => setShowTopUpModal(false)}>
+                                    <X size={20} />
                                 </button>
                             </div>
-                        </form>
-                    </div>
-                </div>
-            )}
-
-            {/* Voucher Modal */}
-            {showVoucherModal && (
-                <div className="modal-overlay open" onClick={() => setShowVoucherModal(false)}>
-                    <div className="modal" onClick={(e) => e.stopPropagation()}>
-                        <div className="modal-header">
-                            <h2>Redeem Voucher</h2>
-                            <button className="modal-close" onClick={() => setShowVoucherModal(false)}>
-                                <X size={20} />
-                            </button>
-                        </div>
-                        <form onSubmit={handleRedeemVoucher}>
-                            <div className="modal-body">
-                                <div className="form-group">
-                                    <label className="form-label">Voucher Code</label>
-                                    <input
-                                        type="text"
-                                        className="form-input"
-                                        placeholder="Enter voucher code"
-                                        value={voucherCode}
-                                        onChange={(e) => setVoucherCode(e.target.value.toUpperCase())}
-                                        required
-                                    />
-                                </div>
-                            </div>
-                            <div className="modal-footer">
-                                <button type="button" className="btn btn-secondary" onClick={() => setShowVoucherModal(false)}>
-                                    Cancel
-                                </button>
-                                <button type="submit" className="btn btn-primary" disabled={formLoading}>
-                                    {formLoading ? <Loader2 className="animate-spin" size={18} /> : 'Redeem'}
-                                </button>
-                            </div>
-                        </form>
-                    </div>
-                </div>
-            )}
-
-            {/* Credit Packages Modal */}
-            {showPackagesModal && (
-                <div className="modal-overlay open" onClick={() => setShowPackagesModal(false)}>
-                    <div className="modal packages-modal" onClick={(e) => e.stopPropagation()}>
-                        <div className="modal-header">
-                            <h2>Buy Credit Package</h2>
-                            <button className="modal-close" onClick={() => setShowPackagesModal(false)}>
-                                <X size={20} />
-                            </button>
-                        </div>
-                        <div className="modal-body">
-                            <p className="modal-subtitle">Select a package to purchase with your balance</p>
-                            <div className="packages-grid-modal">
-                                {creditPackages.length === 0 ? (
-                                    <div className="empty-state-sm">
-                                        <p>No packages available</p>
-                                    </div>
-                                ) : (
-                                    creditPackages.map(pkg => (
-                                        <div key={pkg.id} className={`package-card-modal ${pkg.isFeatured ? 'featured' : ''}`}>
-                                            {pkg.isFeatured && (
-                                                <div className="featured-ribbon">
-                                                    <Star size={12} /> Popular
-                                                </div>
-                                            )}
-                                            <div className="pkg-name">{pkg.name}</div>
-                                            <div className="pkg-price">${pkg.price}</div>
-                                            <div className="pkg-credits">
-                                                <strong>{pkg.credits.toLocaleString()}</strong> credits
-                                                {pkg.bonusCredits > 0 && (
-                                                    <span className="pkg-bonus">+{pkg.bonusCredits.toLocaleString()} bonus</span>
-                                                )}
-                                            </div>
-                                            {pkg.description && (
-                                                <p className="pkg-desc">{pkg.description}</p>
-                                            )}
-                                            <button
-                                                className="btn btn-primary btn-block"
-                                                onClick={() => handlePurchasePackage(pkg.id)}
-                                                disabled={purchaseLoading === pkg.id || (walletInfo?.balance || 0) < pkg.price}
-                                            >
-                                                {purchaseLoading === pkg.id ? (
-                                                    <Loader2 className="animate-spin" size={18} />
-                                                ) : (walletInfo?.balance || 0) < pkg.price ? (
-                                                    'Insufficient Balance'
-                                                ) : (
-                                                    'Purchase'
-                                                )}
-                                            </button>
-                                        </div>
-                                    ))
-                                )}
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {/* Binance Payment Modal */}
-            {showBinanceModal && binanceInfo && (
-                <div className="modal-overlay open" onClick={() => { setShowBinanceModal(false); resetBinanceState(); }}>
-                    <div className="modal binance-modal" onClick={(e) => e.stopPropagation()}>
-                        <div className="modal-header binance-header">
-                            <div className="binance-title">
-                                <span className="binance-icon">💎</span>
-                                <h2>{binanceInfo.name || 'Binance Payment'}</h2>
-                            </div>
-                            <button className="modal-close" onClick={() => { setShowBinanceModal(false); resetBinanceState(); }}>
-                                <X size={20} />
-                            </button>
-                        </div>
-                        <div className="modal-body">
-                            {binanceStep === 'amount' && (
-                                <div className="binance-step">
+                            <form onSubmit={handleTopUp}>
+                                <div className="modal-body">
                                     <div className="form-group">
-                                        <label className="form-label">Amount ({binanceInfo.currency})</label>
+                                        <label className="form-label">Amount ($)</label>
                                         <input
                                             type="number"
                                             className="form-input"
-                                            placeholder={`Min: $${binanceInfo.minAmount}`}
-                                            value={binanceAmount}
-                                            onChange={(e) => setBinanceAmount(e.target.value)}
-                                            min={binanceInfo.minAmount}
+                                            placeholder="Enter amount"
+                                            value={topUpForm.amount}
+                                            onChange={(e) => setTopUpForm({ ...topUpForm, amount: e.target.value })}
+                                            min="1"
                                             step="0.01"
+                                            required
                                         />
                                     </div>
-                                    {binanceInfo.bonus > 0 && (
-                                        <div className="binance-bonus-badge">
-                                            🎁 {binanceInfo.bonus}% Bonus on this payment!
-                                        </div>
-                                    )}
+                                    <div className="form-group">
+                                        <label className="form-label">Payment Method</label>
+                                        <select
+                                            className="form-select"
+                                            value={topUpForm.method}
+                                            onChange={(e) => setTopUpForm({ ...topUpForm, method: e.target.value })}
+                                        >
+                                            <option value="ESEWA">eSewa (Nepal)</option>
+                                            <option value="BINANCE">Binance (Crypto)</option>
+                                            <option value="CRYPTOMUS">Cryptomus (Crypto)</option>
+                                            <option value="BANK_TRANSFER">Bank Transfer</option>
+                                            <option value="MANUAL">Manual Payment</option>
+                                        </select>
+                                    </div>
                                     <div className="quick-amounts">
-                                        {[10, 25, 50, 100, 250, 500].map(amt => (
+                                        {[10, 25, 50, 100].map(amt => (
                                             <button
                                                 key={amt}
                                                 type="button"
                                                 className="quick-amount-btn"
-                                                onClick={() => setBinanceAmount(amt.toString())}
+                                                onClick={() => setTopUpForm({ ...topUpForm, amount: amt.toString() })}
                                             >
                                                 ${amt}
                                             </button>
                                         ))}
                                     </div>
                                 </div>
-                            )}
+                                <div className="modal-footer">
+                                    <button type="button" className="btn btn-secondary" onClick={() => setShowTopUpModal(false)}>
+                                        Cancel
+                                    </button>
+                                    <button type="submit" className="btn btn-primary" disabled={formLoading}>
+                                        {formLoading ? <Loader2 className="animate-spin" size={18} /> : 'Request Payment'}
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                )
+            }
 
-                            {binanceStep === 'pay' && binancePayment && (
-                                <div className="binance-step binance-pay-step">
-                                    <div className="binance-qr-section">
-                                        {binanceInfo.qrUrl ? (
-                                            <img src={binanceInfo.qrUrl} alt="Binance QR" className="binance-qr-image" />
-                                        ) : (
-                                            <div className="binance-qr-placeholder">
-                                                <QrCode size={80} />
-                                                <p>QR Code not configured</p>
-                                            </div>
-                                        )}
-                                    </div>
-                                    <div className="binance-pay-info">
-                                        <div className="binance-amount-display">
-                                            <span>Send exactly:</span>
-                                            <strong>{binancePayment.amount} {binancePayment.currency}</strong>
-                                        </div>
-                                        <div className="binance-instructions">
-                                            {binanceInfo.instructions?.map((inst, i) => (
-                                                <p key={i}>{inst}</p>
-                                            ))}
-                                        </div>
-                                        <div className="binance-ref">
-                                            <span>Reference: </span>
-                                            <code>{binancePayment.reference}</code>
-                                            <button type="button" className="copy-btn" onClick={() => copyToClipboard(binancePayment.reference)}>
-                                                <Copy size={14} />
-                                            </button>
-                                        </div>
-                                    </div>
-                                    <div className="form-group" style={{ marginTop: '1rem' }}>
-                                        <label className="form-label">Transaction ID / Order ID</label>
+            {/* Voucher Modal */}
+            {
+                showVoucherModal && (
+                    <div className="modal-overlay open" onClick={() => setShowVoucherModal(false)}>
+                        <div className="modal" onClick={(e) => e.stopPropagation()}>
+                            <div className="modal-header">
+                                <h2>Redeem Voucher</h2>
+                                <button className="modal-close" onClick={() => setShowVoucherModal(false)}>
+                                    <X size={20} />
+                                </button>
+                            </div>
+                            <form onSubmit={handleRedeemVoucher}>
+                                <div className="modal-body">
+                                    <div className="form-group">
+                                        <label className="form-label">Voucher Code</label>
                                         <input
                                             type="text"
                                             className="form-input"
-                                            placeholder="Paste your Binance Transaction ID here"
-                                            value={binanceTxnId}
-                                            onChange={(e) => setBinanceTxnId(e.target.value)}
+                                            placeholder="Enter voucher code"
+                                            value={voucherCode}
+                                            onChange={(e) => setVoucherCode(e.target.value.toUpperCase())}
+                                            required
                                         />
-                                        <small className="form-hint">Find this in your Binance transaction history after payment</small>
                                     </div>
                                 </div>
-                            )}
+                                <div className="modal-footer">
+                                    <button type="button" className="btn btn-secondary" onClick={() => setShowVoucherModal(false)}>
+                                        Cancel
+                                    </button>
+                                    <button type="submit" className="btn btn-primary" disabled={formLoading}>
+                                        {formLoading ? <Loader2 className="animate-spin" size={18} /> : 'Redeem'}
+                                    </button>
+                                </div>
+                            </form>
                         </div>
-                        <div className="modal-footer">
-                            <button
-                                type="button"
-                                className="btn btn-secondary"
-                                onClick={() => { setShowBinanceModal(false); resetBinanceState(); }}
-                            >
-                                Cancel
+                    </div>
+                )
+            }
+
+            {/* Credit Packages Modal */}
+            {
+                showPackagesModal && (
+                    <div className="modal-overlay open" onClick={() => setShowPackagesModal(false)}>
+                        <div className="modal packages-modal" onClick={(e) => e.stopPropagation()}>
+                            <div className="modal-header">
+                                <h2>Buy Credit Package</h2>
+                                <button className="modal-close" onClick={() => setShowPackagesModal(false)}>
+                                    <X size={20} />
+                                </button>
+                            </div>
+                            <div className="modal-body">
+                                <p className="modal-subtitle">Select a package to purchase with your balance</p>
+                                <div className="packages-grid-modal">
+                                    {creditPackages.length === 0 ? (
+                                        <div className="empty-state-sm">
+                                            <p>No packages available</p>
+                                        </div>
+                                    ) : (
+                                        creditPackages.map(pkg => (
+                                            <div key={pkg.id} className={`package-card-modal ${pkg.isFeatured ? 'featured' : ''}`}>
+                                                {pkg.isFeatured && (
+                                                    <div className="featured-ribbon">
+                                                        <Star size={12} /> Popular
+                                                    </div>
+                                                )}
+                                                <div className="pkg-name">{pkg.name}</div>
+                                                <div className="pkg-price">${pkg.price}</div>
+                                                <div className="pkg-credits">
+                                                    <strong>{pkg.credits.toLocaleString()}</strong> credits
+                                                    {pkg.bonusCredits > 0 && (
+                                                        <span className="pkg-bonus">+{pkg.bonusCredits.toLocaleString()} bonus</span>
+                                                    )}
+                                                </div>
+                                                {pkg.description && (
+                                                    <p className="pkg-desc">{pkg.description}</p>
+                                                )}
+                                                <button
+                                                    className="btn btn-primary btn-block"
+                                                    onClick={() => handlePurchasePackage(pkg.id)}
+                                                    disabled={purchaseLoading === pkg.id || (walletInfo?.balance || 0) < pkg.price}
+                                                >
+                                                    {purchaseLoading === pkg.id ? (
+                                                        <Loader2 className="animate-spin" size={18} />
+                                                    ) : (walletInfo?.balance || 0) < pkg.price ? (
+                                                        'Insufficient Balance'
+                                                    ) : (
+                                                        'Purchase'
+                                                    )}
+                                                </button>
+                                            </div>
+                                        ))
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )
+            }
+
+            {/* Binance Payment Modal */}
+            {
+                showBinanceModal && binanceInfo && (
+                    <div className="modal-overlay open" onClick={() => { setShowBinanceModal(false); resetBinanceState(); }}>
+                        <div className="modal binance-modal" onClick={(e) => e.stopPropagation()}>
+                            <div className="modal-header binance-header">
+                                <div className="binance-title">
+                                    <span className="binance-icon">💎</span>
+                                    <h2>{binanceInfo.name || 'Binance Payment'}</h2>
+                                </div>
+                                <button className="modal-close" onClick={() => { setShowBinanceModal(false); resetBinanceState(); }}>
+                                    <X size={20} />
+                                </button>
+                            </div>
+                            <div className="modal-body">
+                                {binanceStep === 'amount' && (
+                                    <div className="binance-step">
+                                        <div className="form-group">
+                                            <label className="form-label">Amount ({binanceInfo.currency})</label>
+                                            <input
+                                                type="number"
+                                                className="form-input"
+                                                placeholder={`Min: $${binanceInfo.minAmount}`}
+                                                value={binanceAmount}
+                                                onChange={(e) => setBinanceAmount(e.target.value)}
+                                                min={binanceInfo.minAmount}
+                                                step="0.01"
+                                            />
+                                        </div>
+                                        {binanceInfo.bonus > 0 && (
+                                            <div className="binance-bonus-badge">
+                                                🎁 {binanceInfo.bonus}% Bonus on this payment!
+                                            </div>
+                                        )}
+                                        <div className="quick-amounts">
+                                            {[10, 25, 50, 100, 250, 500].map(amt => (
+                                                <button
+                                                    key={amt}
+                                                    type="button"
+                                                    className="quick-amount-btn"
+                                                    onClick={() => setBinanceAmount(amt.toString())}
+                                                >
+                                                    ${amt}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {binanceStep === 'pay' && binancePayment && (
+                                    <div className="binance-step binance-pay-step">
+                                        <div className="binance-qr-section">
+                                            {binanceInfo.qrUrl ? (
+                                                <img src={binanceInfo.qrUrl} alt="Binance QR" className="binance-qr-image" />
+                                            ) : (
+                                                <div className="binance-qr-placeholder">
+                                                    <QrCode size={80} />
+                                                    <p>QR Code not configured</p>
+                                                </div>
+                                            )}
+                                        </div>
+                                        <div className="binance-pay-info">
+                                            <div className="binance-amount-display">
+                                                <span>Send exactly:</span>
+                                                <strong>{binancePayment.amount} {binancePayment.currency}</strong>
+                                            </div>
+                                            <div className="binance-instructions">
+                                                {binanceInfo.instructions?.map((inst, i) => (
+                                                    <p key={i}>{inst}</p>
+                                                ))}
+                                            </div>
+                                            <div className="binance-ref">
+                                                <span>Reference: </span>
+                                                <code>{binancePayment.reference}</code>
+                                                <button type="button" className="copy-btn" onClick={() => copyToClipboard(binancePayment.reference)}>
+                                                    <Copy size={14} />
+                                                </button>
+                                            </div>
+                                        </div>
+                                        <div className="form-group" style={{ marginTop: '1rem' }}>
+                                            <label className="form-label">Transaction ID / Order ID</label>
+                                            <input
+                                                type="text"
+                                                className="form-input"
+                                                placeholder="Paste your Binance Transaction ID here"
+                                                value={binanceTxnId}
+                                                onChange={(e) => setBinanceTxnId(e.target.value)}
+                                            />
+                                            <small className="form-hint">Find this in your Binance transaction history after payment</small>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                            <div className="modal-footer">
+                                <button
+                                    type="button"
+                                    className="btn btn-secondary"
+                                    onClick={() => { setShowBinanceModal(false); resetBinanceState(); }}
+                                >
+                                    Cancel
+                                </button>
+                                {binanceStep === 'amount' && (
+                                    <button
+                                        type="button"
+                                        className="btn btn-primary"
+                                        onClick={handleBinanceCreatePayment}
+                                        disabled={formLoading || !binanceAmount || parseFloat(binanceAmount) < binanceInfo.minAmount}
+                                    >
+                                        {formLoading ? <Loader2 className="animate-spin" size={18} /> : 'Continue to Payment'}
+                                    </button>
+                                )}
+                                {binanceStep === 'pay' && (
+                                    <button
+                                        type="button"
+                                        className="btn btn-primary"
+                                        onClick={handleBinanceVerify}
+                                        disabled={formLoading || !binanceTxnId.trim()}
+                                    >
+                                        {formLoading ? <Loader2 className="animate-spin" size={18} /> : 'Verify Payment'}
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                )
+            }
+
+            {/* Convert Dollar to Credits Modal */}
+            {showConvertModal && (
+                <div className="modal-overlay open" onClick={() => setShowConvertModal(false)}>
+                    <div className="modal" onClick={(e) => e.stopPropagation()}>
+                        <div className="modal-header">
+                            <h2>Convert to Message Credits</h2>
+                            <button className="modal-close" onClick={() => setShowConvertModal(false)}>
+                                <X size={20} />
                             </button>
-                            {binanceStep === 'amount' && (
-                                <button
-                                    type="button"
-                                    className="btn btn-primary"
-                                    onClick={handleBinanceCreatePayment}
-                                    disabled={formLoading || !binanceAmount || parseFloat(binanceAmount) < binanceInfo.minAmount}
-                                >
-                                    {formLoading ? <Loader2 className="animate-spin" size={18} /> : 'Continue to Payment'}
-                                </button>
-                            )}
-                            {binanceStep === 'pay' && (
-                                <button
-                                    type="button"
-                                    className="btn btn-primary"
-                                    onClick={handleBinanceVerify}
-                                    disabled={formLoading || !binanceTxnId.trim()}
-                                >
-                                    {formLoading ? <Loader2 className="animate-spin" size={18} /> : 'Verify Payment'}
-                                </button>
-                            )}
                         </div>
+                        <form onSubmit={handleConvertToCredits}>
+                            <div className="modal-body">
+                                <div className="convert-info-box">
+                                    <div className="convert-rate">
+                                        <Zap size={20} />
+                                        <span>Conversion Rate: <strong>$1 = {messageCreditInfo?.conversionRate || 100} credits</strong></span>
+                                    </div>
+                                    <div className="convert-balance">
+                                        <span>Your Dollar Balance: <strong>{formatCurrency(walletInfo?.balance)}</strong></span>
+                                    </div>
+                                </div>
+                                <div className="form-group">
+                                    <label className="form-label">Amount to Convert ($)</label>
+                                    <input
+                                        type="number"
+                                        className="form-input"
+                                        placeholder="Enter dollar amount"
+                                        value={convertAmount}
+                                        onChange={(e) => setConvertAmount(e.target.value)}
+                                        min="0.01"
+                                        max={walletInfo?.balance || 0}
+                                        step="0.01"
+                                        required
+                                    />
+                                </div>
+                                {convertAmount && parseFloat(convertAmount) > 0 && (
+                                    <div className="convert-preview">
+                                        <ArrowRightLeft size={20} />
+                                        <span>
+                                            ${parseFloat(convertAmount).toFixed(2)} → <strong>{Math.floor(parseFloat(convertAmount) * (messageCreditInfo?.conversionRate || 100)).toLocaleString()} credits</strong>
+                                        </span>
+                                    </div>
+                                )}
+                                <div className="quick-amounts">
+                                    {[1, 5, 10, 25].filter(amt => amt <= (walletInfo?.balance || 0)).map(amt => (
+                                        <button
+                                            key={amt}
+                                            type="button"
+                                            className="quick-amount-btn"
+                                            onClick={() => setConvertAmount(amt.toString())}
+                                        >
+                                            ${amt} → {(amt * (messageCreditInfo?.conversionRate || 100)).toLocaleString()}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                            <div className="modal-footer">
+                                <button type="button" className="btn btn-secondary" onClick={() => setShowConvertModal(false)}>
+                                    Cancel
+                                </button>
+                                <button
+                                    type="submit"
+                                    className="btn btn-primary"
+                                    disabled={convertLoading || !convertAmount || parseFloat(convertAmount) <= 0 || parseFloat(convertAmount) > (walletInfo?.balance || 0)}
+                                >
+                                    {convertLoading ? <Loader2 className="animate-spin" size={18} /> : 'Convert Now'}
+                                </button>
+                            </div>
+                        </form>
                     </div>
                 </div>
             )}
@@ -793,15 +1024,28 @@ export default function WalletPage() {
             <style>{`
                 .balance-section {
                     display: grid;
-                    grid-template-columns: 1fr 2fr;
+                    grid-template-columns: 1fr 1fr;
                     gap: var(--spacing-lg);
                     margin-bottom: var(--spacing-xl);
+                }
+
+                .balance-section.single-card {
+                    grid-template-columns: 1fr;
+                    max-width: 500px;
                 }
 
                 @media (max-width: 768px) {
                     .balance-section {
                         grid-template-columns: 1fr;
                     }
+                    .balance-section.single-card {
+                        max-width: 100%;
+                    }
+                }
+
+                .balance-info {
+                    opacity: 0.8;
+                    margin-bottom: var(--spacing-md);
                 }
 
                 .balance-card {
@@ -865,10 +1109,108 @@ export default function WalletPage() {
                     background: rgba(255, 255, 255, 0.3);
                 }
 
-                .stats-cards {
+                /* Message Credits Card */
+                .message-credits-card {
+                    background: linear-gradient(135deg, #10b981, #059669);
+                }
+
+                .credits-icon {
+                    color: #fbbf24;
+                    margin-left: auto;
+                }
+
+                .credits-amount {
                     display: flex;
-                    flex-direction: column;
+                    align-items: baseline;
+                    gap: var(--spacing-sm);
+                }
+
+                .credits-label {
+                    font-size: 1rem;
+                    opacity: 0.8;
+                }
+
+                .credits-info {
+                    opacity: 0.8;
+                    margin-bottom: var(--spacing-md);
+                }
+
+                .credits-estimate {
+                    margin-top: var(--spacing-md);
+                    padding: var(--spacing-sm) var(--spacing-md);
+                    background: rgba(255, 255, 255, 0.15);
+                    border-radius: var(--radius-md);
+                    font-size: 0.875rem;
+                    text-align: center;
+                }
+
+                /* Credits Mode Stats */
+                .credits-stats .stat-card {
+                    border-left: 3px solid #10b981;
+                }
+
+                .credits-icon-bg {
+                    background: rgba(16, 185, 129, 0.15) !important;
+                    color: #10b981 !important;
+                }
+
+                .credits-info-card {
+                    border-left: 3px solid #10b981;
+                    background: linear-gradient(135deg, rgba(16, 185, 129, 0.05), transparent);
+                }
+
+                .credits-info-card h3 {
+                    color: #10b981;
+                }
+
+                /* Convert Modal Styles */
+                .convert-info-box {
+                    background: var(--bg-tertiary);
+                    border-radius: var(--radius-md);
+                    padding: var(--spacing-lg);
+                    margin-bottom: var(--spacing-lg);
+                }
+
+                .convert-rate, .convert-balance {
+                    display: flex;
+                    align-items: center;
+                    gap: var(--spacing-sm);
+                    margin-bottom: var(--spacing-sm);
+                }
+
+                .convert-rate svg {
+                    color: #fbbf24;
+                }
+
+                .convert-preview {
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    gap: var(--spacing-sm);
+                    padding: var(--spacing-md);
+                    background: linear-gradient(135deg, rgba(16, 185, 129, 0.1), rgba(5, 150, 105, 0.1));
+                    border: 1px solid rgba(16, 185, 129, 0.3);
+                    border-radius: var(--radius-md);
+                    margin: var(--spacing-md) 0;
+                    color: #10b981;
+                    font-size: 1.1rem;
+                }
+
+                .convert-preview svg {
+                    color: #10b981;
+                }
+
+                .stats-cards {
+                    display: grid;
+                    grid-template-columns: repeat(3, 1fr);
                     gap: var(--spacing-md);
+                    margin-bottom: var(--spacing-lg);
+                }
+
+                @media (max-width: 768px) {
+                    .stats-cards {
+                        grid-template-columns: 1fr;
+                    }
                 }
 
                 .stat-card {
@@ -1337,6 +1679,6 @@ export default function WalletPage() {
                     color: var(--text-secondary);
                 }
             `}</style>
-        </div>
+        </div >
     )
 }

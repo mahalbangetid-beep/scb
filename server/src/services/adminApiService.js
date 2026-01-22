@@ -32,6 +32,7 @@ class AdminApiService {
 
     /**
      * Test admin API connection
+     * Supports both Perfect Panel and Rental Panel API formats
      * @param {Object} panel - Panel object with adminApiKey
      * @returns {Object} { success, message, capabilities }
      */
@@ -45,32 +46,64 @@ class AdminApiService {
                 };
             }
 
-            // Try to get a small order list to test connection
-            const response = await this.makeAdminRequest(panel, 'GET', '/orders', {
-                limit: 1
-            });
+            const isRentalPanel = panel.panelType === 'RENTAL';
+            let response;
 
-            if (response.success) {
-                return {
-                    success: true,
-                    message: 'Admin API connection successful',
-                    capabilities: [
-                        'get_orders',
-                        'get_order_details',
-                        'get_provider_info',
-                        'update_orders',
-                        'pull_orders',
-                        'cancel_orders',
-                        'refill_tasks'
-                    ]
-                };
+            if (isRentalPanel) {
+                // Rental Panel: Use getUser action to test connection
+                // Format: ?key=xxx&action=getUser&username=test
+                // We use a simple action that should work even without valid data
+                response = await this.makeAdminRequest(panel, 'GET', '', {
+                    action: 'getUser',
+                    username: 'test_connection_check'
+                });
+
+                // For Rental Panel, even if user not found, the API responding means connection works
+                // Check if we got a valid response structure (not a 500 error)
+                if (response.success ||
+                    (response.data && (response.data.status === 'success' || response.data.status === 'error'))) {
+                    return {
+                        success: true,
+                        message: 'Rental Panel Admin API connection successful',
+                        capabilities: [
+                            'get_orders',
+                            'get_order_details',
+                            'get_provider_info',
+                            'update_orders',
+                            'add_payment',
+                            'get_user',
+                            'create_ticket'
+                        ]
+                    };
+                }
             } else {
-                return {
-                    success: false,
-                    message: response.error || 'Failed to connect to Admin API',
-                    capabilities: []
-                };
+                // Perfect Panel: Use /orders endpoint
+                response = await this.makeAdminRequest(panel, 'GET', '/orders', {
+                    limit: 1
+                });
+
+                if (response.success) {
+                    return {
+                        success: true,
+                        message: 'Admin API connection successful',
+                        capabilities: [
+                            'get_orders',
+                            'get_order_details',
+                            'get_provider_info',
+                            'update_orders',
+                            'pull_orders',
+                            'cancel_orders',
+                            'refill_tasks'
+                        ]
+                    };
+                }
             }
+
+            return {
+                success: false,
+                message: response.error || 'Failed to connect to Admin API',
+                capabilities: []
+            };
         } catch (error) {
             console.error('[AdminApiService] testAdminConnection error:', error.message);
             return {
@@ -83,62 +116,120 @@ class AdminApiService {
 
     /**
      * Get order with provider information
+     * Supports both Perfect Panel and Rental Panel
      * @param {Object} panel - Panel object
      * @param {string|number} orderId - Panel order ID
      * @returns {Object} Order with provider info
      */
     async getOrderWithProvider(panel, orderId) {
         try {
-            const response = await this.makeAdminRequest(panel, 'GET', `/orders/${orderId}`);
+            const isRentalPanel = panel.panelType === 'RENTAL';
+            let response;
 
-            if (!response.success) {
+            if (isRentalPanel) {
+                // Rental Panel: action=getOrders-by-id&orders=123&provider=1
+                response = await this.makeAdminRequest(panel, 'GET', '', {
+                    action: 'getOrders-by-id',
+                    orders: orderId,
+                    provider: 1
+                });
+
+                if (!response.success) {
+                    return {
+                        success: false,
+                        error: response.error || 'Failed to fetch order'
+                    };
+                }
+
+                // Rental Panel returns { status: "success", orders: [...] }
+                const orders = response.data.orders || [];
+                if (orders.length === 0) {
+                    return {
+                        success: false,
+                        error: 'Order not found'
+                    };
+                }
+
+                const order = orders[0];
                 return {
-                    success: false,
-                    error: response.error || 'Failed to fetch order'
+                    success: true,
+                    data: {
+                        orderId: order.id,
+                        externalOrderId: String(order.id),
+                        status: this.normalizeStatus(order.order_status || order.status),
+
+                        // Provider info
+                        providerName: order.provider || null,
+                        providerOrderId: order.external_id || null,
+                        providerStatus: order.order_status || order.status,
+                        providerCharge: order.provider_charge || null,
+
+                        // Order details
+                        serviceId: order.service_id,
+                        serviceName: order.service,
+                        link: order.link,
+                        quantity: parseInt(order.quantity) || 0,
+                        charge: parseFloat(order.charge) || 0,
+                        startCount: parseInt(order.start_count) || 0,
+                        remains: parseInt(order.remains) || 0,
+
+                        // Customer info
+                        customerUsername: order.username,
+                        customerEmail: null,
+
+                        // Available actions
+                        canRefill: true,
+                        canCancel: true,
+
+                        createdAt: order.date ? new Date(order.date) : null,
+                        _raw: order
+                    }
+                };
+            } else {
+                // Perfect Panel: RESTful /orders/{id}
+                response = await this.makeAdminRequest(panel, 'GET', `/orders/${orderId}`);
+
+                if (!response.success) {
+                    return {
+                        success: false,
+                        error: response.error || 'Failed to fetch order'
+                    };
+                }
+
+                const order = response.data;
+                const actions = order.actions || {};
+
+                return {
+                    success: true,
+                    data: {
+                        orderId: order.id,
+                        externalOrderId: String(order.id),
+                        status: this.normalizeStatus(order.status),
+
+                        providerName: order.provider || null,
+                        providerOrderId: order.external_id || null,
+                        providerStatus: order.status,
+                        providerCharge: order.provider_charge || null,
+
+                        serviceId: order.service_id || order.service?.id,
+                        serviceName: order.service_name || order.service?.name,
+                        link: order.link,
+                        quantity: order.quantity,
+                        charge: order.charge,
+                        startCount: order.start_count,
+                        remains: order.remains,
+
+                        customerUsername: order.user || order.username,
+                        customerEmail: order.user_email,
+
+                        canRefill: actions.refill === true,
+                        canCancel: actions.cancel_and_refund === true || actions.request_cancel === true,
+
+                        createdAt: order.created_at ? new Date(order.created_at * 1000) : null,
+                        _raw: order
+                    }
                 };
             }
-
-            const order = response.data;
-            const actions = order.actions || {};
-
-            return {
-                success: true,
-                data: {
-                    // Panel order info
-                    orderId: order.id,
-                    externalOrderId: String(order.id),
-                    status: this.normalizeStatus(order.status),
-
-                    // Provider info (from Admin API)
-                    providerName: order.provider || null,
-                    providerOrderId: order.external_id || null,
-                    providerStatus: order.status,
-                    providerCharge: order.provider_charge || null,
-
-                    // Order details
-                    serviceId: order.service_id || order.service?.id,
-                    serviceName: order.service_name || order.service?.name,
-                    link: order.link,
-                    quantity: order.quantity,
-                    charge: order.charge,
-                    startCount: order.start_count,
-                    remains: order.remains,
-
-                    // Customer info (if available)
-                    customerUsername: order.user || order.username,
-                    customerEmail: order.user_email,
-
-                    // Available actions (for refill/cancel availability)
-                    canRefill: actions.refill === true,
-                    canCancel: actions.cancel_and_refund === true || actions.request_cancel === true,
-
-                    // Timestamps
-                    createdAt: order.created_at ? new Date(order.created_at * 1000) : null,
-
-                    // Raw data for debugging
-                    _raw: order
-                }
-            };
         } catch (error) {
             console.error('[AdminApiService] getOrderWithProvider error:', error.message);
             return {
@@ -150,6 +241,7 @@ class AdminApiService {
 
     /**
      * Get multiple orders with provider information
+     * Supports both Perfect Panel and Rental Panel
      * @param {Object} panel - Panel object
      * @param {Array<string|number>} orderIds - Array of panel order IDs
      * @returns {Object} Orders with provider info
@@ -160,45 +252,90 @@ class AdminApiService {
                 return { success: true, data: [] };
             }
 
-            // API accepts comma-separated IDs
+            const isRentalPanel = panel.panelType === 'RENTAL';
             const idsParam = orderIds.join(',');
+            let response;
 
-            const response = await this.makeAdminRequest(panel, 'GET', '/orders', {
-                ids: idsParam
-            });
+            if (isRentalPanel) {
+                // Rental Panel: action=getOrders-by-id&orders=123,456&provider=1
+                response = await this.makeAdminRequest(panel, 'GET', '', {
+                    action: 'getOrders-by-id',
+                    orders: idsParam,
+                    provider: 1
+                });
 
-            if (!response.success) {
+                if (!response.success) {
+                    return {
+                        success: false,
+                        error: response.error || 'Failed to fetch orders'
+                    };
+                }
+
+                // Rental Panel returns { status: "success", orders: [...] }
+                const orders = response.data.orders || [];
+
+                const mappedOrders = orders.map(order => ({
+                    orderId: order.id,
+                    externalOrderId: String(order.id),
+                    status: this.normalizeStatus(order.order_status || order.status),
+                    providerName: order.provider || null,
+                    providerOrderId: order.external_id || null,
+                    providerStatus: order.order_status || order.status,
+                    providerCharge: order.provider_charge || null,
+                    serviceId: order.service_id,
+                    serviceName: order.service,
+                    link: order.link,
+                    quantity: parseInt(order.quantity) || 0,
+                    charge: parseFloat(order.charge) || 0,
+                    startCount: parseInt(order.start_count) || 0,
+                    remains: parseInt(order.remains) || 0,
+                    customerUsername: order.username,
+                    customerEmail: null
+                }));
+
                 return {
-                    success: false,
-                    error: response.error || 'Failed to fetch orders'
+                    success: true,
+                    data: mappedOrders
+                };
+            } else {
+                // Perfect Panel: RESTful /orders?ids=xxx
+                response = await this.makeAdminRequest(panel, 'GET', '/orders', {
+                    ids: idsParam
+                });
+
+                if (!response.success) {
+                    return {
+                        success: false,
+                        error: response.error || 'Failed to fetch orders'
+                    };
+                }
+
+                const orders = response.data.data || response.data || [];
+
+                const mappedOrders = orders.map(order => ({
+                    orderId: order.id,
+                    externalOrderId: String(order.id),
+                    status: this.normalizeStatus(order.status),
+                    providerName: order.provider || null,
+                    providerOrderId: order.external_id || null,
+                    providerStatus: order.status,
+                    providerCharge: order.provider_charge || null,
+                    serviceId: order.service_id,
+                    serviceName: order.service_name,
+                    link: order.link,
+                    quantity: order.quantity,
+                    charge: order.charge,
+                    startCount: order.start_count,
+                    remains: order.remains,
+                    customerUsername: order.user,
+                    customerEmail: order.user_email
+                }));
+
+                return {
+                    success: true,
+                    data: mappedOrders
                 };
             }
-
-            const orders = response.data.data || response.data || [];
-
-            const mappedOrders = orders.map(order => ({
-                orderId: order.id,
-                externalOrderId: String(order.id),
-                status: this.normalizeStatus(order.status),
-                providerName: order.provider || null,
-                providerOrderId: order.external_id || null,
-                providerStatus: order.status,
-                providerCharge: order.provider_charge || null,
-                serviceId: order.service_id,
-                serviceName: order.service_name,
-                link: order.link,
-                quantity: order.quantity,
-                charge: order.charge,
-                startCount: order.start_count,
-                remains: order.remains,
-                customerUsername: order.user,
-                customerEmail: order.user_email
-            }));
-
-            return {
-                success: true,
-                data: mappedOrders
-            };
         } catch (error) {
             console.error('[AdminApiService] getOrdersWithProvider error:', error.message);
             return {
@@ -723,9 +860,10 @@ class AdminApiService {
 
     /**
      * Make request to Admin API
+     * Supports both Perfect Panel (header auth, RESTful) and Rental Panel (query param auth, action-based)
      * @param {Object} panel - Panel object with adminApiKey
      * @param {string} method - HTTP method (GET, POST)
-     * @param {string} endpoint - API endpoint (e.g., '/orders', '/orders/123')
+     * @param {string} endpoint - API endpoint (e.g., '/orders', '/orders/123') OR action for Rental Panel
      * @param {Object} params - Query params for GET, body for POST
      * @returns {Object} API response
      */
@@ -743,35 +881,84 @@ class AdminApiService {
                 };
             }
 
-            // Build URL
-            const baseUrl = panel.adminApiBaseUrl || this.getDefaultAdminApiUrl(panel.url);
-            const url = `${baseUrl}${endpoint}`;
+            const isRentalPanel = panel.panelType === 'RENTAL';
 
-            // Configure request
-            const config = {
-                method,
-                url,
-                headers: {
-                    'X-Api-Key': adminApiKey,
-                    'Content-Type': 'application/json',
-                    'Accept': 'application/json'
-                },
-                timeout: 30000 // 30 seconds
-            };
+            // Build URL based on panel type
+            const baseUrl = panel.adminApiBaseUrl || this.getDefaultAdminApiUrl(panel.url, panel.panelType);
 
-            // Add params
-            if (method === 'GET') {
-                config.params = params;
+            let url, config;
+
+            if (isRentalPanel) {
+                // Rental Panel: Query param auth + action-based API
+                // Format: /adminapi/v1?key=xxx&action=getuser&...
+                url = baseUrl;
+
+                config = {
+                    method: method,
+                    url,
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json'
+                    },
+                    timeout: 30000
+                };
+
+                // For Rental Panel, always include key as query param
+                const rentalParams = {
+                    key: adminApiKey,
+                    ...params
+                };
+
+                if (method === 'GET') {
+                    config.params = rentalParams;
+                } else {
+                    // For POST, send as form-urlencoded or body with key
+                    config.data = rentalParams;
+                }
             } else {
-                config.data = params;
+                // Perfect Panel: Header auth + RESTful API
+                url = `${baseUrl}${endpoint}`;
+
+                config = {
+                    method,
+                    url,
+                    headers: {
+                        'X-Api-Key': adminApiKey,
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json'
+                    },
+                    timeout: 30000
+                };
+
+                if (method === 'GET') {
+                    config.params = params;
+                } else {
+                    config.data = params;
+                }
             }
 
-            console.log(`[AdminApiService] ${method} ${url}`, { params: method === 'GET' ? params : '[body]' });
+            console.log(`[AdminApiService] ${method} ${url}`, {
+                panelType: panel.panelType || 'GENERIC',
+                params: method === 'GET' ? config.params : '[body]'
+            });
 
             const response = await axios(config);
 
             // Track request for rate limiting
             this.trackRequest(panel.id);
+
+            // Handle Rental Panel response format
+            if (isRentalPanel) {
+                const data = response.data;
+                // Rental Panel returns { status: "success"|"error", ... }
+                if (data.status === 'error' || data.error) {
+                    return {
+                        success: false,
+                        error: data.error || data.message || 'Rental Panel API error',
+                        data
+                    };
+                }
+            }
 
             return {
                 success: true,
@@ -807,6 +994,15 @@ class AdminApiService {
                         success: false,
                         error: 'Resource not found',
                         notFound: true
+                    };
+                }
+
+                // Check for Rental Panel error format
+                if (data?.error || data?.status === 'error') {
+                    return {
+                        success: false,
+                        error: data.error || data.message || `API error: ${status}`,
+                        status
                     };
                 }
 
@@ -859,13 +1055,19 @@ class AdminApiService {
     /**
      * Get default Admin API URL from panel URL
      * @param {string} panelUrl - Panel base URL
+     * @param {string} panelType - Panel type (PERFECT_PANEL, RENTAL, GENERIC)
      * @returns {string} Admin API base URL
      */
-    getDefaultAdminApiUrl(panelUrl) {
+    getDefaultAdminApiUrl(panelUrl, panelType = 'GENERIC') {
         // Remove trailing slash
         const baseUrl = panelUrl.replace(/\/$/, '');
 
-        // Most panels use /adminapi/v2 path
+        // Rental Panel uses /adminapi/v1
+        if (panelType === 'RENTAL') {
+            return `${baseUrl}/adminapi/v1`;
+        }
+
+        // Perfect Panel and others use /adminapi/v2
         return `${baseUrl}/adminapi/v2`;
     }
 

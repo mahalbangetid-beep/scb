@@ -66,8 +66,10 @@ backup1.zip
 wabar.zip
 penting.zip
 afterkeywordsresponses.zip
+penting.zip
 
 # Development/Internal docs (not for repo)
+*.md
 VPS-SETUP-GUIDE.md
 updatebug.md
 docs/
@@ -79,6 +81,15 @@ fulltodo.md
 todo.md
 this.md
 projectplan.md
+1.md
+apibam1.md
+clientupdate2201.md
+final.md
+how.md
+otherbug.md
+Requrements.md
+update.md
 
 # Other
 a.png 
+Admin APi v1 Documentation.html

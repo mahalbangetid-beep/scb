@@ -21,7 +21,8 @@ class CommandParserService {
         // User commands (no order ID required, just the command keyword)
         this.userCommands = {
             verify: ['verify', 'payment', 'txn', 'transaction', 'bayar', 'pembayaran'],
-            account: ['account', 'balance', 'saldo', 'me', 'myinfo', 'akun', 'profile']
+            account: ['account', 'balance', 'saldo', 'me', 'myinfo', 'akun', 'profile'],
+            ticket: ['ticket', 'tiket', 'myticket', 'ticketstatus', 'cektiket']
         };
 
         // Build reverse lookup for order commands
@@ -127,6 +128,22 @@ class CommandParserService {
                 isUserCommand: true,
                 argument: null,
                 needsArgument: true,
+                originalMessage: message
+            };
+        }
+
+        // Ticket command - can have ticket number as argument or show list if no argument
+        // Supports formats: "ticket T2501-0001" or "ticket" (shows list)
+        if (command === 'ticket') {
+            // Check if argument looks like a ticket number (T####-####)
+            const ticketMatch = argument ? argument.match(/^T\d{4}-\d{4}$/i) : null;
+            return {
+                isValid: true,
+                command,
+                isUserCommand: true,
+                argument: ticketMatch ? ticketMatch[0].toUpperCase() : null,
+                ticketNumber: ticketMatch ? ticketMatch[0].toUpperCase() : null,
+                showList: !ticketMatch, // Show list if no valid ticket number
                 originalMessage: message
             };
         }

@@ -10,6 +10,7 @@ const { encrypt, mask } = require('../utils/encryption');
 const { authLimiter } = require('../middleware/rateLimiter');
 const { logLoginActivity } = require('../middleware/logger');
 const { activityLogService, ACTIONS, CATEGORIES } = require('../services/activityLog');
+const messageCreditService = require('../services/messageCreditService');
 const crypto = require('crypto');
 
 /**
@@ -145,6 +146,8 @@ router.post('/register', authLimiter, async (req, res, next) => {
                 primaryPanelUrl: smmPanelUrl || null,
                 primaryPanelKey: encryptedPanelKey,
                 creditBalance: defaultCredit,
+                messageCredits: 0, // Will be added via messageCreditService
+                freeCreditsGiven: false,
                 registrationIp
             },
             select: {
@@ -157,6 +160,7 @@ router.post('/register', authLimiter, async (req, res, next) => {
                 whatsappNumber: true,
                 telegramUsername: true,
                 creditBalance: true,
+                messageCredits: true,
                 createdAt: true
             }
         });
@@ -186,6 +190,18 @@ router.post('/register', authLimiter, async (req, res, next) => {
                     reference: 'REGISTRATION'
                 }
             });
+        }
+
+        // Give free message credits for new users
+        try {
+            const creditResult = await messageCreditService.giveSignupCredits(user.id);
+            if (creditResult.success) {
+                user.messageCredits = creditResult.balance;
+                console.log(`[Auth] Gave ${creditResult.creditsAdded} free message credits to new user ${user.username}`);
+            }
+        } catch (creditError) {
+            console.error('[Auth] Failed to give signup credits:', creditError.message);
+            // Non-blocking - user is still created
         }
 
         // Log registration as login
@@ -281,6 +297,7 @@ router.post('/login', authLimiter, async (req, res, next) => {
                 role: user.role,
                 status: user.status,
                 creditBalance: user.creditBalance,
+                messageCredits: user.messageCredits || 0,
                 whatsappNumber: user.whatsappNumber,
                 telegramUsername: user.telegramUsername
             },
@@ -310,6 +327,7 @@ router.get('/me', authenticate, async (req, res, next) => {
                 telegramUsername: true,
                 primaryPanelUrl: true,
                 creditBalance: true,
+                messageCredits: true,
                 discountRate: true,
                 lastLoginAt: true,
                 createdAt: true,

@@ -283,7 +283,17 @@ class SmmPanelService {
             throw new Error('Panel not found');
         }
 
-        const result = await this.makeRequest(panel, 'balance');
+        console.log(`[SMM] Getting balance for panel: ${panel.alias || panel.name}`);
+
+        let result;
+        try {
+            result = await this.makeRequest(panel, 'balance');
+        } catch (requestError) {
+            console.error(`[SMM] Balance request failed for ${panel.alias}:`, requestError.message);
+            throw new Error(`Connection failed: ${requestError.message}`);
+        }
+
+        console.log(`[SMM] Balance response:`, JSON.stringify(result));
 
         // Handle various error formats
         if (result.error) {
@@ -292,19 +302,25 @@ class SmmPanelService {
         if (result.status === false) {
             throw new Error(result.msg || result.message || 'Failed to get balance');
         }
+        if (result.status === 'error') {
+            throw new Error(result.message || result.msg || 'API returned error');
+        }
 
         // Parse balance from various field names
         const balance = parseFloat(
-            result.balance ||
-            result.saldo ||
-            result.credit ||
-            result.deposit ||
-            result.data?.balance ||
-            result.data?.saldo ||
+            result.balance ??
+            result.saldo ??
+            result.credit ??
+            result.deposit ??
+            result.data?.balance ??
+            result.data?.saldo ??
+            result.user?.balance ??
             0
         );
 
         const currency = result.currency || result.mata_uang || panel.currency || 'IDR';
+
+        console.log(`[SMM] Parsed balance: ${balance} ${currency}`);
 
         // Update cached balance
         await prisma.smmPanel.update({
@@ -321,6 +337,7 @@ class SmmPanelService {
             currency: currency
         };
     }
+
 
     /**
      * Get all services from panel

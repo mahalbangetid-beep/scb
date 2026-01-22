@@ -37,6 +37,11 @@ const TEMPLATE_CATEGORIES = {
         icon: '⚡',
         templates: ['SPEEDUP_SUCCESS', 'SPEEDUP_ERROR']
     },
+    bulk: {
+        label: 'Bulk Orders (Multiple Orders)',
+        icon: '📦',
+        templates: ['BULK_HEADER', 'BULK_SUCCESS_ITEM', 'BULK_FAILED_ITEM', 'BULK_SUMMARY']
+    },
     general: {
         label: 'General Responses',
         icon: '💬',

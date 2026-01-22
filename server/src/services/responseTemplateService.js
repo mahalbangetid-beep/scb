@@ -123,6 +123,28 @@ class ResponseTemplateService {
                 template: `❌ Access denied.\n\nYou don't have permission to manage this order.`,
                 description: 'User doesn\'t have access to order',
                 variables: []
+            },
+
+            // ==================== BULK ORDER RESPONSES ====================
+            'BULK_HEADER': {
+                template: `📋 {command} Results\n━━━━━━━━━━━━━━━━`,
+                description: 'Header for bulk order responses',
+                variables: ['command']
+            },
+            'BULK_SUCCESS_ITEM': {
+                template: `• {order_id}`,
+                description: 'Each successful order in bulk response',
+                variables: ['order_id', 'status', 'service']
+            },
+            'BULK_FAILED_ITEM': {
+                template: `• {order_id}: {error}`,
+                description: 'Each failed order in bulk response',
+                variables: ['order_id', 'error', 'reason']
+            },
+            'BULK_SUMMARY': {
+                template: `━━━━━━━━━━━━━━━━\nTotal: {total} | ✅ {success_count} | ❌ {failed_count}`,
+                description: 'Summary footer for bulk responses',
+                variables: ['total', 'success_count', 'failed_count']
             }
         };
     }

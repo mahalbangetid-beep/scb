@@ -519,7 +519,7 @@ const PanelConnections = () => {
                                                                     <div className="manual-input">
                                                                         <input
                                                                             type="text"
-                                                                            placeholder="/adminapi/v2/..."
+                                                                            placeholder="/adminapi/v1 or /adminapi/v2/..."
                                                                             value={manualEndpoint}
                                                                             onChange={(e) => setManualEndpoint(e.target.value)}
                                                                         />
