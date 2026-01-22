@@ -32,8 +32,16 @@ export default function ProviderForwarding() {
     const [testing, setTesting] = useState(null)
     const [saved, setSaved] = useState(false)
     const [error, setError] = useState(null)
-    const [activeTab, setActiveTab] = useState('configs')
+    const [activeTab, setActiveTab] = useState('mapping') // Changed default to mapping
     const [expandedLogs, setExpandedLogs] = useState(null)
+
+    // NEW: Quick Mapping State
+    const [panels, setPanels] = useState([])
+    const [providers, setProviders] = useState([])
+    const [supportGroups, setSupportGroups] = useState([])
+    const [selectedPanel, setSelectedPanel] = useState('')
+    const [loadingProviders, setLoadingProviders] = useState(false)
+    const [mappings, setMappings] = useState([]) // { providerName, supportGroupId }
 
     const [formData, setFormData] = useState({
         providerName: '',
@@ -58,7 +66,88 @@ export default function ProviderForwarding() {
     useEffect(() => {
         fetchConfigs()
         fetchLogs()
+        fetchPanels()
+        fetchSupportGroups()
     }, [])
+
+    // NEW: Fetch panels
+    const fetchPanels = async () => {
+        try {
+            const res = await api.get('/panels')
+            setPanels(res.data.data || res.data || [])
+        } catch (err) {
+            console.error('Failed to fetch panels:', err)
+        }
+    }
+
+    // NEW: Fetch support groups
+    const fetchSupportGroups = async () => {
+        try {
+            const res = await api.get('/provider-groups')
+            setSupportGroups(res.data.data || res.data || [])
+        } catch (err) {
+            console.error('Failed to fetch support groups:', err)
+        }
+    }
+
+    // NEW: Fetch providers from selected panel
+    const fetchProvidersForPanel = async (panelId) => {
+        if (!panelId) {
+            setProviders([])
+            return
+        }
+        try {
+            setLoadingProviders(true)
+            const res = await api.post(`/panels/${panelId}/sync-providers`)
+            const providersList = res.data.data?.providers || res.data?.providers || []
+            setProviders(providersList)
+        } catch (err) {
+            console.error('Failed to fetch providers:', err)
+            setProviders([])
+        } finally {
+            setLoadingProviders(false)
+        }
+    }
+
+    // NEW: Handle panel selection
+    const handlePanelSelect = (panelId) => {
+        setSelectedPanel(panelId)
+        fetchProvidersForPanel(panelId)
+    }
+
+    // NEW: Save mapping (provider -> support group)
+    const saveMapping = async (providerName, supportGroupId) => {
+        try {
+            setSaving(true)
+            // Update or create config with the support group mapping
+            const existingConfig = configs.find(c => c.providerName === providerName)
+            const supportGroup = supportGroups.find(g => g.id === supportGroupId)
+
+            const mappingData = {
+                providerName,
+                alias: providerName,
+                whatsappGroupJid: supportGroup?.groupId || '',
+                forwardRefill: true,
+                forwardCancel: true,
+                forwardSpeedup: true,
+                isActive: true
+            }
+
+            if (existingConfig) {
+                await api.put(`/provider-config/${existingConfig.id}`, mappingData)
+            } else {
+                await api.post('/provider-config', mappingData)
+            }
+
+            setSaved(true)
+            setTimeout(() => setSaved(false), 3000)
+            fetchConfigs()
+        } catch (err) {
+            setError(err.response?.data?.message || 'Failed to save mapping')
+        } finally {
+            setSaving(false)
+        }
+    }
 
     const fetchConfigs = async () => {
         try {
@@ -224,7 +313,14 @@ export default function ProviderForwarding() {
             )}
 
             {/* Tabs */}
-            <div style={{ display: 'flex', gap: 'var(--spacing-sm)', marginBottom: 'var(--spacing-lg)' }}>
+            <div style={{ display: 'flex', gap: 'var(--spacing-sm)', marginBottom: 'var(--spacing-lg)', flexWrap: 'wrap' }}>
+                <button
+                    className={`btn ${activeTab === 'mapping' ? 'btn-primary' : 'btn-secondary'}`}
+                    onClick={() => setActiveTab('mapping')}
+                >
+                    <Send size={16} />
+                    Quick Mapping
+                </button>
                 <button
                     className={`btn ${activeTab === 'configs' ? 'btn-primary' : 'btn-secondary'}`}
                     onClick={() => setActiveTab('configs')}
@@ -240,6 +336,123 @@ export default function ProviderForwarding() {
                     Forwarding Logs
                 </button>
             </div>
+
+            {/* Quick Mapping Tab - NEW */}
+            {activeTab === 'mapping' && (
+                <div className="card" style={{ padding: 'var(--spacing-xl)' }}>
+                    <h3 style={{ marginBottom: 'var(--spacing-lg)' }}>
+                        <Send size={20} style={{ marginRight: 'var(--spacing-sm)' }} />
+                        Provider to Support Group Mapping
+                    </h3>
+
+                    <p style={{ color: 'var(--text-secondary)', marginBottom: 'var(--spacing-lg)' }}>
+                        Map each provider to a support group. When order action happens,
+                        the system will automatically forward the external order ID to the mapped group.
+                    </p>
+
+                    {/* Step 1: Select Panel */}
+                    <div className="form-group" style={{ marginBottom: 'var(--spacing-xl)' }}>
+                        <label className="form-label" style={{ fontSize: '1rem', fontWeight: 600 }}>
+                            1️⃣ Select Panel
+                        </label>
+                        <select
+                            className="form-select"
+                            value={selectedPanel}
+                            onChange={(e) => handlePanelSelect(e.target.value)}
+                            style={{ maxWidth: '400px' }}
+                        >
+                            <option value="">-- Select a Panel --</option>
+                            {panels.map(p => (
+                                <option key={p.id} value={p.id}>{p.alias} - {p.name}</option>
+                            ))}
+                        </select>
+                    </div>
+
+                    {/* Step 2: Provider List */}
+                    {selectedPanel && (
+                        <div style={{ marginBottom: 'var(--spacing-xl)' }}>
+                            <label className="form-label" style={{ fontSize: '1rem', fontWeight: 600 }}>
+                                2️⃣ Provider Aliases (from Admin API)
+                            </label>
+
+                            {loadingProviders ? (
+                                <div style={{ padding: 'var(--spacing-lg)', textAlign: 'center' }}>
+                                    <Loader2 size={24} className="animate-spin" style={{ color: 'var(--primary-500)' }} />
+                                    <p style={{ marginTop: 'var(--spacing-sm)', color: 'var(--text-muted)' }}>Loading providers...</p>
+                                </div>
+                            ) : providers.length === 0 ? (
+                                <div style={{ padding: 'var(--spacing-lg)', background: 'var(--bg-tertiary)', borderRadius: 'var(--radius-md)', textAlign: 'center' }}>
+                                    <AlertCircle size={32} style={{ color: 'var(--warning)', marginBottom: 'var(--spacing-sm)' }} />
+                                    <p style={{ color: 'var(--text-secondary)' }}>No providers found. Make sure Admin API is configured.</p>
+                                </div>
+                            ) : (
+                                <div style={{ display: 'grid', gap: 'var(--spacing-md)' }}>
+                                    {providers.map(provider => {
+                                        const existingConfig = configs.find(c => c.providerName === provider.name)
+                                        const mappedGroup = supportGroups.find(g => g.groupId === existingConfig?.whatsappGroupJid)
+
+                                        return (
+                                            <div key={provider.name} style={{
+                                                padding: 'var(--spacing-md)',
+                                                background: 'var(--bg-tertiary)',
+                                                borderRadius: 'var(--radius-md)',
+                                                display: 'grid',
+                                                gridTemplateColumns: '1fr 1fr auto',
+                                                gap: 'var(--spacing-md)',
+                                                alignItems: 'center'
+                                            }}>
+                                                <div>
+                                                    <strong>{provider.name}</strong>
+                                                    <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: 0 }}>
+                                                        {provider.orderCount || 0} orders
+                                                    </p>
+                                                </div>
+
+                                                <select
+                                                    className="form-select"
+                                                    value={mappedGroup?.id || ''}
+                                                    onChange={(e) => saveMapping(provider.name, e.target.value)}
+                                                    disabled={saving}
+                                                >
+                                                    <option value="">-- Select Support Group --</option>
+                                                    {supportGroups.map(g => (
+                                                        <option key={g.id} value={g.id}>
+                                                            {g.groupName || g.name} {g.panel?.alias ? `(${g.panel.alias})` : ''}
+                                                        </option>
+                                                    ))}
+                                                </select>
+
+                                                {existingConfig && (
+                                                    <span className="badge badge-success" style={{ whiteSpace: 'nowrap' }}>
+                                                        <CheckCircle size={12} /> Mapped
+                                                    </span>
+                                                )}
+                                            </div>
+                                        )
+                                    })}
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    {/* Summary */}
+                    {configs.length > 0 && (
+                        <div style={{
+                            marginTop: 'var(--spacing-xl)',
+                            padding: 'var(--spacing-md)',
+                            background: 'linear-gradient(135deg, rgba(var(--primary-rgb), 0.1), rgba(var(--success-rgb), 0.1))',
+                            borderRadius: 'var(--radius-md)'
+                        }}>
+                            <h4 style={{ marginBottom: 'var(--spacing-sm)' }}>
+                                ✅ Active Mappings ({configs.filter(c => c.isActive).length})
+                            </h4>
+                            <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', margin: 0 }}>
+                                Order actions (refill/cancel/speed up) will be automatically forwarded to the mapped support groups.
+                            </p>
+                        </div>
+                    )}
+                </div>
+            )}
 
             {/* Configurations Tab */}
             {activeTab === 'configs' && (
