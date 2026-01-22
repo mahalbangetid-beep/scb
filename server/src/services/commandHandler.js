@@ -90,6 +90,10 @@ class CommandHandlerService {
             };
         }
 
+        // ==================== COLLECT FOR BATCH FORWARDING ====================
+        // Track successful orders with their provider order IDs for batch forwarding
+        const successfulOrders = [];
+
         // Process each order ID
         for (const orderId of orderIds) {
             try {
@@ -99,7 +103,8 @@ class CommandHandlerService {
                     orderId,
                     command,
                     senderNumber,
-                    isGroup
+                    isGroup,
+                    skipIndividualForward: orderIds.length > 1  // Skip individual forward if bulk
                 });
 
                 responses.push({
@@ -111,6 +116,16 @@ class CommandHandlerService {
 
                 if (result.success) {
                     summary.success++;
+                    // Collect for batch forwarding
+                    if (result.details?.providerOrderId || result.details?.order?.providerOrderId) {
+                        successfulOrders.push({
+                            panelOrderId: orderId,
+                            providerOrderId: result.details?.providerOrderId || result.details?.order?.providerOrderId,
+                            providerName: result.details?.providerName || result.details?.order?.providerName,
+                            panelId: result.details?.order?.panelId || panelId,
+                            order: result.details?.order
+                        });
+                    }
                 } else {
                     summary.failed++;
                 }
@@ -126,12 +141,30 @@ class CommandHandlerService {
             }
         }
 
+        // ==================== BATCH FORWARD TO PROVIDER GROUP ====================
+        // If multiple orders and simple format is enabled, send batch forward
+        let batchForwardResult = null;
+        if (orderIds.length > 1 && successfulOrders.length > 0 && ['refill', 'cancel', 'speedup', 'speed_up'].includes(command.toLowerCase())) {
+            try {
+                batchForwardResult = await this.sendBatchForward({
+                    userId,
+                    command,
+                    successfulOrders,
+                    panelId
+                });
+                console.log(`[CommandHandler] Batch forward result:`, batchForwardResult);
+            } catch (batchError) {
+                console.error(`[CommandHandler] Batch forward failed:`, batchError.message);
+            }
+        }
+
         return {
             success: summary.failed === 0,
             command,
             responses,
             summary,
-            formattedResponse: this.formatResponses(command, responses)
+            formattedResponse: this.formatResponses(command, responses),
+            batchForward: batchForwardResult
         };
     }
 
@@ -726,7 +759,13 @@ class CommandHandlerService {
                     providerOrderId: order.providerOrderId,
                     providerName: order.providerName,
                     actionMode,
-                    forwarded: forwardResult?.success
+                    forwarded: forwardResult?.success,
+                    order: {
+                        id: order.id,
+                        panelId: order.panelId,
+                        providerOrderId: order.providerOrderId,
+                        providerName: order.providerName
+                    }
                 }
             };
         } catch (error) {
@@ -902,7 +941,13 @@ class CommandHandlerService {
                     providerOrderId: order.providerOrderId,
                     providerName: order.providerName,
                     actionMode,
-                    forwarded: forwardResult?.success
+                    forwarded: forwardResult?.success,
+                    order: {
+                        id: order.id,
+                        panelId: order.panelId,
+                        providerOrderId: order.providerOrderId,
+                        providerName: order.providerName
+                    }
                 }
             };
         } catch (error) {
@@ -995,7 +1040,13 @@ class CommandHandlerService {
                 providerOrderId: order.providerOrderId,
                 providerName: order.providerName,
                 actionMode,
-                forwarded: forwardResult?.success
+                forwarded: forwardResult?.success,
+                order: {
+                    id: order.id,
+                    panelId: order.panelId,
+                    providerOrderId: order.providerOrderId,
+                    providerName: order.providerName
+                }
             }
         };
     }
@@ -1583,6 +1634,156 @@ class CommandHandlerService {
                 responses: []
             };
         }
+    }
+
+    /**
+     * Send batch forward to provider groups
+     * Groups orders by provider and sends comma-separated provider order IDs
+     * Example output: "7450284,7450283,7450282 cancel"
+     */
+    async sendBatchForward(params) {
+        const { userId, command, successfulOrders, panelId } = params;
+
+        if (!successfulOrders || successfulOrders.length === 0) {
+            return { success: false, reason: 'no_orders' };
+        }
+
+        // Group orders by provider
+        const ordersByProvider = new Map();
+
+        for (const order of successfulOrders) {
+            const providerKey = order.providerName || 'default';
+            if (!ordersByProvider.has(providerKey)) {
+                ordersByProvider.set(providerKey, {
+                    providerName: order.providerName,
+                    panelId: order.panelId,
+                    orders: [],
+                    sampleOrder: order.order
+                });
+            }
+            ordersByProvider.get(providerKey).orders.push({
+                panelOrderId: order.panelOrderId,
+                providerOrderId: order.providerOrderId
+            });
+        }
+
+        const results = [];
+
+        // Send batch message for each provider
+        for (const [providerKey, providerData] of ordersByProvider) {
+            try {
+                // Find provider group for this provider
+                const providerGroup = await prisma.providerGroup.findFirst({
+                    where: {
+                        userId,
+                        panelId: providerData.panelId || panelId,
+                        OR: [
+                            { providerName: providerData.providerName },
+                            { providerName: null }  // Default group
+                        ],
+                        isActive: true
+                    },
+                    include: {
+                        device: true
+                    },
+                    orderBy: {
+                        providerName: 'desc'  // Prefer specific provider group over default
+                    }
+                });
+
+                if (!providerGroup) {
+                    console.log(`[CommandHandler] No provider group found for ${providerKey}`);
+                    results.push({
+                        provider: providerKey,
+                        success: false,
+                        reason: 'no_group'
+                    });
+                    continue;
+                }
+
+                // Build batch message
+                // Format: "7450284,7450283,7450282 cancel"
+                const providerOrderIds = providerData.orders
+                    .map(o => o.providerOrderId)
+                    .filter(id => id)  // Filter out null/undefined
+                    .join(',');
+
+                if (!providerOrderIds) {
+                    console.log(`[CommandHandler] No provider order IDs for ${providerKey}`);
+                    results.push({
+                        provider: providerKey,
+                        success: false,
+                        reason: 'no_provider_ids'
+                    });
+                    continue;
+                }
+
+                // Format command for message
+                const commandMap = {
+                    'refill': 'refill',
+                    'cancel': 'cancel',
+                    'speedup': 'speed up',
+                    'speed_up': 'speed up'
+                };
+                const cmdText = commandMap[command.toLowerCase()] || command.toLowerCase();
+
+                // Build batch message
+                const batchMessage = `${providerOrderIds} ${cmdText}`;
+
+                console.log(`[CommandHandler] Sending batch forward to ${providerGroup.groupName}: ${batchMessage}`);
+
+                // Send via WhatsApp
+                if (!groupForwardingService.whatsappService) {
+                    results.push({
+                        provider: providerKey,
+                        success: false,
+                        reason: 'no_whatsapp_service'
+                    });
+                    continue;
+                }
+
+                const deviceId = providerGroup.deviceId || providerGroup.device?.id;
+                if (!deviceId) {
+                    results.push({
+                        provider: providerKey,
+                        success: false,
+                        reason: 'no_device'
+                    });
+                    continue;
+                }
+
+                // Format JID
+                const targetJid = providerGroup.groupId.includes('@')
+                    ? providerGroup.groupId
+                    : `${providerGroup.groupId.replace(/\D/g, '')}@s.whatsapp.net`;
+
+                await groupForwardingService.whatsappService.sendMessage(deviceId, targetJid, batchMessage);
+
+                results.push({
+                    provider: providerKey,
+                    success: true,
+                    groupName: providerGroup.groupName,
+                    message: batchMessage,
+                    orderCount: providerData.orders.length
+                });
+
+                console.log(`[CommandHandler] ✅ Batch forward sent: ${providerData.orders.length} orders to ${providerGroup.groupName}`);
+
+            } catch (error) {
+                console.error(`[CommandHandler] Batch forward error for ${providerKey}:`, error.message);
+                results.push({
+                    provider: providerKey,
+                    success: false,
+                    error: error.message
+                });
+            }
+        }
+
+        return {
+            success: results.some(r => r.success),
+            totalProviders: ordersByProvider.size,
+            results
+        };
     }
 }
 
