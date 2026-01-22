@@ -489,52 +489,43 @@ router.put('/:id', async (req, res, next) => {
         }
 
         const {
-            name,
-            deviceId,
-            groupType,
-            groupJid,
-            targetNumber,
-            refillTemplate,
+            name,           // Will map to groupName
+            panelId,
+            providerName,
+            type,           // WHATSAPP, TELEGRAM
+            groupJid,       // Will map to groupId
+            targetNumber,   // Alternative to groupJid
+            messageTemplate,
+            refillTemplate, // Legacy - use messageTemplate
             cancelTemplate,
             speedUpTemplate,
             isActive,
-            serviceIdRules,  // JSON object mapping serviceId -> targetJid
-            isManualServiceGroup  // Boolean flag for manual service groups
+            serviceIdRules,
+            isManualServiceGroup
         } = req.body;
 
-        // Verify device if changed
-        if (deviceId && deviceId !== existing.deviceId) {
-            const device = await prisma.device.findFirst({
-                where: {
-                    id: deviceId,
-                    userId: req.user.id
-                }
-            });
+        // Build update data with correct field names from schema
+        const updateData = {};
 
-            if (!device) {
-                throw new AppError('Device not found', 404);
-            }
-        }
+        if (name) updateData.groupName = name;
+        if (panelId !== undefined) updateData.panelId = panelId || null;
+        if (providerName !== undefined) updateData.providerName = providerName || null;
+        if (type) updateData.type = type;
+        if (groupJid || targetNumber) updateData.groupId = groupJid || targetNumber;
+        if (messageTemplate !== undefined) updateData.messageTemplate = messageTemplate;
+        if (refillTemplate !== undefined) updateData.messageTemplate = refillTemplate; // Legacy support
+        if (isActive !== undefined) updateData.isActive = isActive;
+        if (serviceIdRules !== undefined) updateData.serviceIdRules = serviceIdRules;
+        if (isManualServiceGroup !== undefined) updateData.isManualServiceGroup = isManualServiceGroup;
 
         const group = await prisma.providerGroup.update({
             where: { id: req.params.id },
-            data: {
-                ...(name && { name }),
-                ...(deviceId && { deviceId }),
-                ...(groupType && { groupType }),
-                ...(groupJid !== undefined && { groupJid }),
-                ...(targetNumber !== undefined && { targetNumber }),
-                ...(refillTemplate !== undefined && { refillTemplate }),
-                ...(cancelTemplate !== undefined && { cancelTemplate }),
-                ...(speedUpTemplate !== undefined && { speedUpTemplate }),
-                ...(isActive !== undefined && { isActive }),
-                ...(serviceIdRules !== undefined && { serviceIdRules }),
-                ...(isManualServiceGroup !== undefined && { isManualServiceGroup })
-            },
+            data: updateData,
             include: {
                 panel: {
                     select: {
-                        alias: true
+                        alias: true,
+                        name: true
                     }
                 }
             }
