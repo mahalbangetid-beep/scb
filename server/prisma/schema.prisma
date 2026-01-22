@@ -311,7 +311,7 @@ model MessageCreditTransaction {
 
 model ProviderGroup {
   id           String  @id @default(cuid())
-  userId       String  // Owner of this group
+  userId       String? // TEMP: Optional to allow migration, will be required after fix
   panelId      String? // Optional - can work without linked panel for manual services
   providerName String? // Provider name to match with Order.providerName (null = default group)
   type         String // WHATSAPP, TELEGRAM
@@ -335,7 +335,7 @@ model ProviderGroup {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  user  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user  User?     @relation(fields: [userId], references: [id], onDelete: Cascade)
   panel SmmPanel? @relation(fields: [panelId], references: [id], onDelete: Cascade)
 
   @@unique([panelId, providerName, type]) // One group per panel+provider+type
