@@ -112,7 +112,7 @@ export default function ProviderGroups() {
     const fetchDevices = async () => {
         try {
             const res = await api.get('/devices')
-            setDevices(res.data?.devices || res.data || [])
+            setDevices(res.data?.data?.devices || res.data?.devices || res.data?.data || res.data || [])
         } catch (err) {
             console.error('Failed to fetch devices:', err)
         }
