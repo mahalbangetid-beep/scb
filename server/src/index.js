@@ -78,6 +78,10 @@ botMessageHandler.setDependencies(io, whatsappService);
 commandHandler.setDependencies(io, whatsappService);
 groupForwardingService.setDependencies(io, whatsappService);
 
+// Initialize ProviderForwardingService
+const providerForwardingService = require('./services/providerForwardingService');
+providerForwardingService.setWhatsAppService(whatsappService);
+
 // Security Middleware
 app.use(helmet());
 app.use(securityHeaders());

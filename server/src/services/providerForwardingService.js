@@ -23,7 +23,15 @@ class ProviderForwardingService {
             speedup: '⚡ *Speed Up Request*\n\nOrder: #{orderId}\nProvider Order: {providerOrderId}\nService: {serviceName}\nStart Count: {startCount}\nRemains: {remains}\n\nUsername: {username}'
         };
     }
+        this.whatsappService = null;
 
+
+    /**
+     * Set WhatsApp service reference
+     */
+    setWhatsAppService(whatsappService) {
+        this.whatsappService = whatsappService;
+    }
     /**
      * Get forwarding destinations for a provider
      */
@@ -464,6 +472,68 @@ class ProviderForwardingService {
             return JSON.parse(str || '{}');
         } catch {
             return defaultValue;
+        }
+    }
+
+    /**
+     * Test forwarding to a destination
+     * Used by the Provider Forwarding page test button
+     */
+    async testForward(params) {
+        const { userId, deviceId, platform, destination, message } = params;
+
+        if (!destination) {
+            return { success: false, error: 'No destination configured' };
+        }
+
+        try {
+            if (platform === 'whatsapp') {
+                // Check if whatsappService is available
+                if (!this.whatsappService) {
+                    return { success: false, error: 'WhatsApp service not initialized' };
+                }
+
+                // Get connected device
+                let useDeviceId = deviceId;
+                if (!useDeviceId) {
+                    const device = await prisma.device.findFirst({
+                        where: {
+                            userId,
+                            status: 'connected'
+                        }
+                    });
+
+                    if (!device) {
+                        return { success: false, error: 'No connected WhatsApp device found' };
+                    }
+                    useDeviceId = device.id;
+                }
+
+                // Format JID - preserve if already has @
+                let targetJid = destination;
+                if (!targetJid.includes('@')) {
+                    const cleanNumber = targetJid.replace(/\D/g, '');
+                    targetJid = `${cleanNumber}@s.whatsapp.net`;
+                }
+
+                console.log(`[ProviderForwarding] Test message to ${targetJid} via device ${useDeviceId}`);
+
+                // Send via whatsappService
+                await this.whatsappService.sendMessage(useDeviceId, targetJid, message);
+
+                return { success: true, message: 'Test message sent successfully' };
+            } else if (platform === 'telegram') {
+                // Telegram test
+                const telegramService = require('./telegram');
+                await telegramService.sendMessage(null, destination, message);
+
+                return { success: true, message: 'Telegram test message sent' };
+            } else {
+                return { success: false, error: `Unknown platform: ${platform}` };
+            }
+        } catch (error) {
+            console.error('[ProviderForwarding] Test forward error:', error.message);
+            return { success: false, error: error.message };
         }
     }
 }
