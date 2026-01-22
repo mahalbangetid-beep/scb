@@ -147,9 +147,9 @@ class CommandHandlerService {
         }
 
         // ==================== BATCH FORWARD TO PROVIDER GROUP ====================
-        // If multiple orders and simple format is enabled, send batch forward
+        // Forward successful orders to provider support group (works for single and bulk orders)
         let batchForwardResult = null;
-        if (orderIds.length > 1 && successfulOrders.length > 0 && ['refill', 'cancel', 'speedup', 'speed_up'].includes(command.toLowerCase())) {
+        if (successfulOrders.length > 0 && ['refill', 'cancel', 'speedup', 'speed_up'].includes(command.toLowerCase())) {
             try {
                 batchForwardResult = await this.sendBatchForward({
                     userId,
