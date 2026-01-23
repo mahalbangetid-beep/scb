@@ -569,19 +569,30 @@ class SecurityService {
             }
 
             // If mapping has panelUsername, verify order ownership
-            if (mapping.panelUsername && order.customerUsername) {
+            if (mapping.panelUsername) {
+                // Mapping requires username validation
+                if (!order.customerUsername) {
+                    // Order doesn't have customerUsername - need to sync from panel first
+                    console.log(`[Security] Order ${order.externalOrderId} has no customerUsername, skipping ownership check (will attempt to sync)`);
+                    // Allow but log warning - next sync will populate customerUsername
+                    return { allowed: true, mapping, needsSync: true };
+                }
+
                 const mappedUsername = mapping.panelUsername.toLowerCase().trim();
                 const orderUsername = order.customerUsername.toLowerCase().trim();
 
                 if (mappedUsername !== orderUsername) {
-                    console.log(`[Security] Order ownership mismatch: mapping=${mappedUsername}, order=${orderUsername}`);
+                    console.log(`[Security] Order ownership DENIED: mapping=${mappedUsername}, order=${orderUsername}`);
                     return {
                         allowed: false,
                         message: '❌ Order ID does not belong to you.\n\nThis order is registered to a different account.'
                     };
                 }
 
-                console.log(`[Security] Order ownership verified: ${mappedUsername} = ${orderUsername}`);
+                console.log(`[Security] Order ownership VERIFIED: ${mappedUsername} = ${orderUsername}`);
+            } else {
+                // Mapping exists but no panelUsername - allow (user not fully configured)
+                console.log(`[Security] Mapping exists but no panelUsername set, allowing`);
             }
 
             // Record activity
