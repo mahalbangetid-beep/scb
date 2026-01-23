@@ -13,6 +13,7 @@ const securityService = require('./securityService');
 const commandTemplateService = require('./commandTemplateService');
 const responseTemplateService = require('./responseTemplateService');
 const botFeatureService = require('./botFeatureService');
+const userMappingService = require('./userMappingService');
 
 class CommandHandlerService {
     constructor() {

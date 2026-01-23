@@ -516,11 +516,83 @@ class SecurityService {
             }
         }
 
+        // 6. Check User Mapping - verify order belongs to sender's panel username
+        if (settings.userMappingEnabled !== false) { // Default enabled
+            const userMappingCheck = await this.checkUserMappingOwnership(order, senderNumber, userId, isGroup);
+            if (!userMappingCheck.allowed) {
+                return { allowed: false, message: userMappingCheck.message, settings };
+            }
+        }
+
         return {
             allowed: true,
             shouldClaim: claimCheck.shouldClaim,
             settings
         };
+    }
+
+    /**
+     * Check if order belongs to the sender based on User Mapping
+     * @param {Object} order - Order object
+     * @param {string} senderNumber - Sender's WhatsApp number
+     * @param {string} userId - Panel owner's user ID
+     * @param {boolean} isGroup - Whether message is from a group
+     * @returns {Object} { allowed, message }
+     */
+    async checkUserMappingOwnership(order, senderNumber, userId, isGroup) {
+        try {
+            const userMappingService = require('./userMappingService');
+
+            // Find mapping for this sender
+            const mapping = await userMappingService.findByPhone(userId, senderNumber);
+
+            // If no mapping exists, allow (backwards compatible - unregistered users)
+            if (!mapping) {
+                console.log(`[Security] No user mapping for ${senderNumber}, allowing (unregistered user)`);
+                return { allowed: true };
+            }
+
+            // Check if bot is enabled for this mapping
+            if (!mapping.isBotEnabled) {
+                return {
+                    allowed: false,
+                    message: '🔒 Bot is disabled for your account. Please contact admin.'
+                };
+            }
+
+            // Check if mapping is suspended
+            if (mapping.isAutoSuspended) {
+                return {
+                    allowed: false,
+                    message: '⛔ Your account has been suspended due to too many violations.'
+                };
+            }
+
+            // If mapping has panelUsername, verify order ownership
+            if (mapping.panelUsername && order.customerUsername) {
+                const mappedUsername = mapping.panelUsername.toLowerCase().trim();
+                const orderUsername = order.customerUsername.toLowerCase().trim();
+
+                if (mappedUsername !== orderUsername) {
+                    console.log(`[Security] Order ownership mismatch: mapping=${mappedUsername}, order=${orderUsername}`);
+                    return {
+                        allowed: false,
+                        message: '❌ Order ID does not belong to you.\n\nThis order is registered to a different account.'
+                    };
+                }
+
+                console.log(`[Security] Order ownership verified: ${mappedUsername} = ${orderUsername}`);
+            }
+
+            // Record activity
+            await userMappingService.recordActivity(mapping.id);
+
+            return { allowed: true, mapping };
+        } catch (error) {
+            console.error(`[Security] User mapping check error:`, error.message);
+            // On error, allow (fail open for better UX, can be changed to fail close if needed)
+            return { allowed: true };
+        }
     }
 
 
