@@ -52,6 +52,7 @@ const smmNavigation = [
 const automationNavigation = [
     // { name: 'Auto Reply', icon: Bot, path: '/auto-reply' }, // Hidden for now
     { name: 'Response Templates', icon: FileText, path: '/response-templates' },
+    { name: 'Command Templates', icon: MessageCircle, path: '/command-templates' },
     { name: 'Provider Forwarding', icon: Send, path: '/provider-forwarding' },
     { name: 'Keyword Responses', icon: MessageCircle, path: '/keyword-responses' },
     { name: 'User Mappings', icon: Users, path: '/user-mappings' },
