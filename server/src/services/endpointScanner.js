@@ -19,6 +19,11 @@ class EndpointScanner {
             // ==================== ORDERS ====================
             // Pull orders (for manual processing)
             ordersPull: [
+                // ========== RENTAL PANEL V1 (ACTION-BASED) ==========
+                { method: 'GET', endpoint: '/adminapi/v1', params: { action: 'pullOrders', limit: 1 }, isV1: true, keyParam: 'key' },
+                { method: 'POST', endpoint: '/adminapi/v1', body: { action: 'pullOrders', limit: 1 }, isV1: true, keyParam: 'key' },
+
+                // ========== PERFECT PANEL V2 (RESTFUL) ==========
                 { method: 'POST', endpoint: '/adminapi/v2/orders/pull', body: { limit: 1 } },
                 { method: 'POST', endpoint: '/adminapi/v1/orders/pull', body: { limit: 1 } },
                 { method: 'POST', endpoint: '/api/admin/v2/orders/pull', body: { limit: 1 } },
@@ -76,6 +81,11 @@ class EndpointScanner {
             ],
             // Update orders - /orders/update
             ordersUpdate: [
+                // ========== RENTAL PANEL V1 (ACTION-BASED) ==========
+                { method: 'POST', endpoint: '/adminapi/v1', body: { action: 'updateOrders' }, isV1: true, keyParam: 'key', testMode: true },
+                { method: 'POST', endpoint: '/adminapi/v1', body: { action: 'updateOrders-cost' }, isV1: true, keyParam: 'key', testMode: true },
+
+                // ========== PERFECT PANEL V2 (RESTFUL) ==========
                 { method: 'POST', endpoint: '/adminapi/v2/orders/update', testMode: true },
                 { method: 'POST', endpoint: '/adminapi/v1/orders/update', testMode: true },
                 { method: 'POST', endpoint: '/api/admin/v2/orders/update', testMode: true },
@@ -91,6 +101,14 @@ class EndpointScanner {
             ],
             // Resend order (refill) - /orders/resend
             refill: [
+                // ========== RENTAL PANEL V1 (ACTION-BASED, KEY IN QUERY/BODY) ==========
+                { method: 'POST', endpoint: '/adminapi/v1', body: { action: 'refill' }, isV1: true, keyParam: 'key', testMode: true },
+                { method: 'POST', endpoint: '/adminapi/v1', body: { action: 'resendOrder' }, isV1: true, keyParam: 'key', testMode: true },
+                { method: 'POST', endpoint: '/adminapi/v1', body: { action: 'resend' }, isV1: true, keyParam: 'key', testMode: true },
+                { method: 'GET', endpoint: '/adminapi/v1', params: { action: 'getRefills', limit: 1 }, isV1: true, keyParam: 'key' },
+                { method: 'GET', endpoint: '/adminapi/v1', params: { action: 'refills', limit: 1 }, isV1: true, keyParam: 'key' },
+
+                // ========== PERFECT PANEL V2 (RESTFUL, KEY IN HEADER) ==========
                 { method: 'POST', endpoint: '/adminapi/v2/orders/resend', testMode: true },
                 { method: 'POST', endpoint: '/adminapi/v1/orders/resend', testMode: true },
                 { method: 'POST', endpoint: '/api/admin/v2/orders/resend', testMode: true },
@@ -112,6 +130,14 @@ class EndpointScanner {
             ],
             // Change order status - /orders/change-status
             ordersChangeStatus: [
+                // ========== RENTAL PANEL V1 (ACTION-BASED) ==========
+                { method: 'POST', endpoint: '/adminapi/v1', body: { action: 'setCompleted' }, isV1: true, keyParam: 'key', testMode: true },
+                { method: 'POST', endpoint: '/adminapi/v1', body: { action: 'setcompleted' }, isV1: true, keyParam: 'key', testMode: true },
+                { method: 'POST', endpoint: '/adminapi/v1', body: { action: 'setCanceled' }, isV1: true, keyParam: 'key', testMode: true },
+                { method: 'POST', endpoint: '/adminapi/v1', body: { action: 'setcanceled' }, isV1: true, keyParam: 'key', testMode: true },
+                { method: 'POST', endpoint: '/adminapi/v1', body: { action: 'setInprogress' }, isV1: true, keyParam: 'key', testMode: true },
+
+                // ========== PERFECT PANEL V2 (RESTFUL) ==========
                 { method: 'POST', endpoint: '/adminapi/v2/orders/change-status', testMode: true },
                 { method: 'POST', endpoint: '/adminapi/v1/orders/change-status', testMode: true },
                 { method: 'POST', endpoint: '/api/admin/orders/change-status', testMode: true },
@@ -119,6 +145,11 @@ class EndpointScanner {
             ],
             // Set partial - /orders/{id}/set-partial
             ordersSetPartial: [
+                // ========== RENTAL PANEL V1 (ACTION-BASED) ==========
+                { method: 'POST', endpoint: '/adminapi/v1', body: { action: 'setPartial' }, isV1: true, keyParam: 'key', testMode: true },
+                { method: 'POST', endpoint: '/adminapi/v1', body: { action: 'setpartial' }, isV1: true, keyParam: 'key', testMode: true },
+
+                // ========== PERFECT PANEL V2 (RESTFUL) ==========
                 { method: 'POST', endpoint: '/adminapi/v2/orders/{id}/set-partial', testMode: true },
                 { method: 'POST', endpoint: '/adminapi/v1/orders/{id}/set-partial', testMode: true },
                 { method: 'POST', endpoint: '/api/admin/orders/{id}/set-partial', testMode: true },
@@ -126,6 +157,11 @@ class EndpointScanner {
             ],
             // Request cancel - /orders/request-cancel
             ordersRequestCancel: [
+                // ========== RENTAL PANEL V1 (ACTION-BASED) ==========
+                // Note: V1 uses the same cancel action for request cancel
+                { method: 'POST', endpoint: '/adminapi/v1', body: { action: 'requestCancel' }, isV1: true, keyParam: 'key', testMode: true },
+
+                // ========== PERFECT PANEL V2 (RESTFUL) ==========
                 { method: 'POST', endpoint: '/adminapi/v2/orders/request-cancel', testMode: true },
                 { method: 'POST', endpoint: '/adminapi/v1/orders/request-cancel', testMode: true },
                 { method: 'POST', endpoint: '/api/admin/orders/request-cancel', testMode: true },
@@ -133,6 +169,14 @@ class EndpointScanner {
             ],
             // Cancel and refund - /orders/cancel
             cancel: [
+                // ========== RENTAL PANEL V1 (ACTION-BASED, KEY IN QUERY/BODY) ==========
+                { method: 'POST', endpoint: '/adminapi/v1', body: { action: 'cancel' }, isV1: true, keyParam: 'key', testMode: true },
+                { method: 'POST', endpoint: '/adminapi/v1', body: { action: 'cancelOrder' }, isV1: true, keyParam: 'key', testMode: true },
+                { method: 'POST', endpoint: '/adminapi/v1', body: { action: 'requestCancel' }, isV1: true, keyParam: 'key', testMode: true },
+                { method: 'GET', endpoint: '/adminapi/v1', params: { action: 'getCancels', limit: 1 }, isV1: true, keyParam: 'key' },
+                { method: 'GET', endpoint: '/adminapi/v1', params: { action: 'cancels', limit: 1 }, isV1: true, keyParam: 'key' },
+
+                // ========== PERFECT PANEL V2 (RESTFUL, KEY IN HEADER) ==========
                 { method: 'POST', endpoint: '/adminapi/v2/orders/cancel', testMode: true },
                 { method: 'POST', endpoint: '/adminapi/v1/orders/cancel', testMode: true },
                 { method: 'POST', endpoint: '/api/admin/v2/orders/cancel', testMode: true },
@@ -201,6 +245,9 @@ class EndpointScanner {
             paymentsAdd: [
                 // ========== RENTAL PANEL V1 (ACTION-BASED) ==========
                 { method: 'POST', endpoint: '/adminapi/v1', body: { action: 'addPayment' }, isV1: true, keyParam: 'key', testMode: true },
+                { method: 'POST', endpoint: '/adminapi/v1', body: { action: 'addpayment' }, isV1: true, keyParam: 'key', testMode: true },
+                { method: 'POST', endpoint: '/adminapi/v1', body: { action: 'deductPayment' }, isV1: true, keyParam: 'key', testMode: true },
+                { method: 'POST', endpoint: '/adminapi/v1', body: { action: 'deductpayment' }, isV1: true, keyParam: 'key', testMode: true },
 
                 // ========== PERFECT PANEL V2 (RESTFUL) ==========
                 { method: 'POST', endpoint: '/adminapi/v2/payments/add', testMode: true },
@@ -234,6 +281,10 @@ class EndpointScanner {
             // ==================== TICKETS ====================
             // Get ticket list - /tickets
             tickets: [
+                // ========== RENTAL PANEL V1 (ACTION-BASED) ==========
+                { method: 'GET', endpoint: '/adminapi/v1', params: { action: 'getTickets', limit: 1 }, isV1: true, keyParam: 'key' },
+
+                // ========== PERFECT PANEL V2 (RESTFUL) ==========
                 { method: 'GET', endpoint: '/adminapi/v2/tickets', params: { limit: 1 } },
                 { method: 'GET', endpoint: '/adminapi/v1/tickets', params: { limit: 1 } },
                 { method: 'GET', endpoint: '/api/admin/v2/tickets', params: { limit: 1 } },
@@ -257,6 +308,10 @@ class EndpointScanner {
             ],
             // Add ticket - /tickets/add
             ticketsAdd: [
+                // ========== RENTAL PANEL V1 (ACTION-BASED) ==========
+                { method: 'POST', endpoint: '/adminapi/v1', body: { action: 'addTicket' }, isV1: true, keyParam: 'key', testMode: true },
+
+                // ========== PERFECT PANEL V2 (RESTFUL) ==========
                 { method: 'POST', endpoint: '/adminapi/v2/tickets/add', testMode: true },
                 { method: 'POST', endpoint: '/adminapi/v1/tickets/add', testMode: true },
                 { method: 'POST', endpoint: '/api/admin/tickets/add', testMode: true },
@@ -266,6 +321,13 @@ class EndpointScanner {
             // ==================== PROVIDER INFO ====================
             // Get order with provider info
             providerInfo: [
+                // ========== RENTAL PANEL V1 (ACTION-BASED) ==========
+                // V1 uses getOrders-by-id with provider=1 to get provider info
+                { method: 'GET', endpoint: '/adminapi/v1', params: { action: 'getOrders-by-id', orders: '{id}', provider: 1 }, isV1: true, keyParam: 'key' },
+                { method: 'GET', endpoint: '/adminapi/v1', params: { action: 'getMassProviderData', orders: '{id}' }, isV1: true, keyParam: 'key' },
+                { method: 'GET', endpoint: '/adminapi/v1', params: { action: 'getmassproviderdata', orders: '{id}' }, isV1: true, keyParam: 'key' },
+
+                // ========== PERFECT PANEL V2 (RESTFUL) ==========
                 { method: 'GET', endpoint: '/adminapi/v2/orders/{id}', params: { include: 'provider' } },
                 { method: 'GET', endpoint: '/adminapi/v2/orders/{id}', params: { with_provider: 1 } },
                 { method: 'GET', endpoint: '/adminapi/v2/orders/{id}', params: { expand: 'provider' } },
