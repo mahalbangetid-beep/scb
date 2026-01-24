@@ -447,12 +447,15 @@ class EndpointScanner {
                 if (pattern.testMode) {
                     // For test mode, we just check if endpoint returns 400/422 (bad request but endpoint exists)
                     // rather than 404 (not found)
-                    const response = await this.makeRequest(panel, pattern.method, endpoint, {}, true, pattern);
+                    // IMPORTANT: For V1 patterns, we need to send the action in the body/params
+                    const testParams = pattern.params || pattern.body || {};
+                    const response = await this.makeRequest(panel, pattern.method, endpoint, testParams, true, pattern);
 
                     if (response.exists) {
                         // For V1 patterns, include the action in the endpoint display
-                        if (pattern.isV1 && pattern.params?.action) {
-                            detectedEndpoint = `${pattern.endpoint}?action=${pattern.params.action}`;
+                        const actionName = pattern.params?.action || pattern.body?.action;
+                        if (pattern.isV1 && actionName) {
+                            detectedEndpoint = `${pattern.endpoint}?action=${actionName}`;
                         } else {
                             detectedEndpoint = pattern.endpoint;
                         }
@@ -478,8 +481,9 @@ class EndpointScanner {
 
                     if (response.success) {
                         // For V1 patterns, include the action in the endpoint display
-                        if (pattern.isV1 && pattern.params?.action) {
-                            detectedEndpoint = `${pattern.endpoint}?action=${pattern.params.action}`;
+                        const actionName = pattern.params?.action || pattern.body?.action;
+                        if (pattern.isV1 && actionName) {
+                            detectedEndpoint = `${pattern.endpoint}?action=${actionName}`;
                         } else {
                             detectedEndpoint = pattern.endpoint;
                         }
