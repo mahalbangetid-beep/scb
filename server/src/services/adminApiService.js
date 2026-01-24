@@ -199,6 +199,11 @@ class AdminApiService {
                 const order = response.data;
                 const actions = order.actions || {};
 
+                // DEBUG: Log raw response to see all available fields
+                console.log(`[AdminAPI] Raw order response for ${orderId}:`, JSON.stringify(order).substring(0, 500));
+                console.log(`[AdminAPI] Available fields: ${Object.keys(order).join(', ')}`);
+                console.log(`[AdminAPI] User field check: order.user=${order.user}, order.username=${order.username}, order.user_id=${order.user_id}`);
+
                 return {
                     success: true,
                     data: {
