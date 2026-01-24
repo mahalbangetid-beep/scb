@@ -575,6 +575,14 @@ class EndpointScanner {
 
             const response = await axios(config);
 
+            // For debugging V1 responses
+            if (isV1Pattern) {
+                console.log(`[EndpointScanner] V1 Response for ${url}:`, {
+                    status: response.status,
+                    data: JSON.stringify(response.data).substring(0, 200)
+                });
+            }
+
             // Check response
             if (response.status === 404) {
                 return { success: false, exists: false, error: 'Not found' };
@@ -589,8 +597,55 @@ class EndpointScanner {
                 return { success: false, exists: true, error: 'Requires params' };
             }
 
+            // Handle V1 API responses (they often return 200 with error in body)
             if (response.status >= 200 && response.status < 300) {
-                return { success: true, data: response.data };
+                const data = response.data;
+
+                // V1 panels return errors in body with HTTP 200
+                // Check for various error indicators
+                const hasError =
+                    data?.status === 'error' ||
+                    data?.error === true ||
+                    typeof data?.error === 'string' ||
+                    data?.success === false;
+
+                // Check for specific V1 error messages that indicate endpoint EXISTS
+                const errorMessage = data?.error || data?.message || '';
+                const endpointExistsErrors = [
+                    'bad_action',      // Invalid action name
+                    'missing',         // Missing parameter
+                    'required',        // Required parameter
+                    'invalid',         // Invalid parameter
+                    'order',           // Order related error
+                    'not found',       // Order/item not found (endpoint exists, data doesn't)
+                ];
+
+                const isEndpointExistsError = endpointExistsErrors.some(
+                    err => errorMessage.toLowerCase().includes(err)
+                );
+
+                if (testMode && isV1Pattern) {
+                    // For V1 testMode: if we get a response (not bad_auth), endpoint exists
+                    if (hasError) {
+                        // Check if it's an auth error
+                        if (errorMessage.toLowerCase().includes('auth') ||
+                            errorMessage.toLowerCase().includes('key') ||
+                            errorMessage === 'bad_auth') {
+                            return { success: false, exists: false, error: 'Auth failed' };
+                        }
+                        // Any other error means endpoint exists
+                        return { success: false, exists: true, error: errorMessage || 'V1 error (endpoint exists)' };
+                    }
+                    // Success response in testMode
+                    return { success: true, exists: true, data };
+                }
+
+                // Normal mode
+                if (hasError) {
+                    return { success: false, exists: isEndpointExistsError, error: errorMessage };
+                }
+
+                return { success: true, data };
             }
 
             // 500 errors might mean endpoint exists but has issues
