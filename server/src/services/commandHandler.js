@@ -279,6 +279,8 @@ class CommandHandlerService {
                             remains: orderData.remains,
                             serviceName: orderData.serviceName,
                             link: orderData.link,
+                            // Customer info - CRITICAL for User Mapping validation
+                            customerUsername: orderData.customerUsername || null,
                             // Provider info from Admin API - critical for auto-forwarding
                             providerName: orderData.providerName || null,
                             providerOrderId: orderData.providerOrderId || null,

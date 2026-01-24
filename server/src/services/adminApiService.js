@@ -746,6 +746,8 @@ class AdminApiService {
                 quantity: orderData.quantity ? parseInt(orderData.quantity) : null,
                 link: orderData.link,
                 serviceName: orderData.service_name,
+                // Customer info - CRITICAL for User Mapping validation
+                customerUsername: orderData.user || orderData.username || null,
                 providerName: typeof orderData.provider === 'string' ? orderData.provider : orderData.provider?.name,
                 providerOrderId: orderData.external_id || orderData.provider_order_id,
                 providerStatus: orderData.status,
