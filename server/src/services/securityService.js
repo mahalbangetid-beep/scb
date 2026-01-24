@@ -561,11 +561,43 @@ class SecurityService {
             console.log(`[Security] STRICT MODE - Checking order ownership for sender: ${normalizedSender}`);
 
             // Step 1: Get username from order
-            const orderUsername = order.customerUsername;
+            let orderUsername = order.customerUsername;
 
+            // If customerUsername is missing, try to fetch from Admin API
             if (!orderUsername) {
-                // Order doesn't have customerUsername - need to sync from panel first
-                console.log(`[Security] Order ${order.externalOrderId} has no customerUsername, need to fetch from panel`);
+                console.log(`[Security] Order ${order.externalOrderId} has no customerUsername, attempting to fetch from Admin API...`);
+
+                try {
+                    const adminApiService = require('./adminApiService');
+
+                    // Get panel info
+                    const panel = order.panel || await prisma.panel.findUnique({
+                        where: { id: order.panelId }
+                    });
+
+                    if (panel && panel.adminApiKey) {
+                        const orderData = await adminApiService.getOrderWithProvider(panel, order.externalOrderId);
+
+                        if (orderData.success && orderData.data?.customerUsername) {
+                            orderUsername = orderData.data.customerUsername;
+
+                            // Update order in database with customerUsername
+                            await prisma.order.update({
+                                where: { id: order.id },
+                                data: { customerUsername: orderUsername }
+                            });
+
+                            console.log(`[Security] Fetched and saved customerUsername: ${orderUsername}`);
+                        }
+                    }
+                } catch (fetchError) {
+                    console.error(`[Security] Failed to fetch customerUsername:`, fetchError.message);
+                }
+            }
+
+            // If still no username, return error
+            if (!orderUsername) {
+                console.log(`[Security] Order ${order.externalOrderId} still has no customerUsername after fetch attempt`);
                 return {
                     allowed: false,
                     message: '⚠️ Unable to verify order ownership. Please try again later.',
