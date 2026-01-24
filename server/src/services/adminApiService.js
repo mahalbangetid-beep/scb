@@ -196,7 +196,12 @@ class AdminApiService {
                     };
                 }
 
-                const order = response.data;
+                // Perfect Panel response is wrapped: { data: { id, user, ... }, error_message, error_code }
+                // Need to unwrap the inner 'data' object
+                let order = response.data;
+                if (order.data && typeof order.data === 'object' && order.data.id) {
+                    order = order.data;  // Unwrap nested data
+                }
                 const actions = order.actions || {};
 
                 // DEBUG: Log raw response to see all available fields
