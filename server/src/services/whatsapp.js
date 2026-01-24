@@ -314,9 +314,11 @@ class WhatsAppService {
 
                 console.log(`[WA:${deviceId}] Message received from ${messageData.from}${isGroup ? ' (group)' : ''}`);
 
-                // Save to database
-                const savedMessage = await prisma.message.create({
-                    data: {
+                // Save to database (use upsert to handle duplicate message IDs)
+                const savedMessage = await prisma.message.upsert({
+                    where: { id: messageData.messageId },
+                    update: {}, // Don't update if already exists
+                    create: {
                         id: messageData.messageId,
                         deviceId: deviceId,
                         from: messageData.from,
