@@ -314,22 +314,29 @@ class WhatsAppService {
 
                 console.log(`[WA:${deviceId}] Message received from ${messageData.from}${isGroup ? ' (group)' : ''}`);
 
-                // Save to database (use upsert to handle duplicate message IDs)
-                const savedMessage = await prisma.message.upsert({
-                    where: { id: messageData.messageId },
-                    update: {}, // Don't update if already exists
-                    create: {
-                        id: messageData.messageId,
-                        deviceId: deviceId,
-                        from: messageData.from,
-                        to: socket.user.id?.split(':')[0] || socket.user.id?.split('@')[0],
-                        message: messageData.content,  // Schema uses 'message' field
-                        mediaType: messageData.type,   // text, image, video, etc.
-                        type: messageData.fromMe ? 'outgoing' : 'incoming',  // incoming/outgoing
-                        status: messageData.status,
-                        createdAt: messageData.timestamp
+                // Save to database (use try-catch to handle race condition with duplicate IDs)
+                try {
+                    await prisma.message.upsert({
+                        where: { id: messageData.messageId },
+                        update: {}, // Don't update if already exists
+                        create: {
+                            id: messageData.messageId,
+                            deviceId: deviceId,
+                            from: messageData.from,
+                            to: socket.user.id?.split(':')[0] || socket.user.id?.split('@')[0],
+                            message: messageData.content,  // Schema uses 'message' field
+                            mediaType: messageData.type,   // text, image, video, etc.
+                            type: messageData.fromMe ? 'outgoing' : 'incoming',  // incoming/outgoing
+                            status: messageData.status,
+                            createdAt: messageData.timestamp
+                        }
+                    });
+                } catch (err) {
+                    // Ignore unique constraint errors (race condition with multiple devices)
+                    if (err.code !== 'P2002') {
+                        console.error(`[WA:${deviceId}] Error saving message:`, err);
                     }
-                }).catch(err => console.error(`[WA:${deviceId}] Error saving message:`, err));
+                }
 
                 // Process incoming message through botMessageHandler
                 // This handles: SMM commands, auto-reply, and other workflows
