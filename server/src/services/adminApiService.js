@@ -718,7 +718,11 @@ class AdminApiService {
 
             // Use detected endpoint if available
             if (panel.detectedStatusEndpoint) {
-                const endpoint = panel.detectedStatusEndpoint.replace('{id}', orderId);
+                let endpoint = panel.detectedStatusEndpoint.replace('{id}', orderId);
+
+                // Fix: Remove /adminapi/v2 prefix from endpoint if present (baseUrl already has it)
+                endpoint = endpoint.replace(/^\/adminapi\/v[12]/, '');
+
                 console.log(`[AdminAPI] Using detected endpoint: ${endpoint}`);
                 response = await this.makeAdminRequest(panel, 'GET', endpoint);
             } else {
