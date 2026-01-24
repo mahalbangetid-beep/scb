@@ -29,13 +29,28 @@ class BotMessageHandler {
 
     /**
      * Handle incoming message
-     * @param {Object} params - { deviceId, userId, panelId, panel, message, senderNumber, senderName, isGroup, platform }
+     * @param {Object} params - { deviceId, userId, panelId, panel, message, senderNumber, senderName, isGroup, groupJid, platform }
      * @returns {Object} - { handled, response, type }
      */
     async handleMessage(params) {
-        const { deviceId, userId, panelId, panel, message, senderNumber, senderName, isGroup, platform = 'WHATSAPP' } = params;
+        const { deviceId, userId, panelId, panel, message, senderNumber, senderName, isGroup, groupJid, platform = 'WHATSAPP' } = params;
 
         console.log(`[BotHandler] Processing message from ${senderNumber}${panelId ? ` (Panel: ${panel?.alias || panel?.name || panelId})` : ''}: ${message.substring(0, 50)}...`);
+
+        // ==================== CHECK IF FROM PROVIDER SUPPORT GROUP ====================
+        // Skip processing for Provider Support Groups (forward-only mode)
+        // Bot should NOT reply to messages in support groups to avoid spam
+        if (isGroup && groupJid) {
+            const isProviderGroup = await this.isProviderSupportGroup(userId, groupJid);
+            if (isProviderGroup) {
+                console.log(`[BotHandler] Skipping message from Provider Support Group: ${groupJid}`);
+                return {
+                    handled: false,
+                    reason: 'provider_support_group',
+                    message: 'Messages from provider support groups are not processed'
+                };
+            }
+        }
 
         // Get user details
         const user = await prisma.user.findUnique({
@@ -551,6 +566,33 @@ class BotMessageHandler {
             return true;
         } catch (error) {
             console.error(`[BotHandler] Failed to send response:`, error);
+            return false;
+        }
+    }
+
+    /**
+     * Check if a group is a Provider Support Group (forward-only, no replies)
+     * @param {string} userId - User ID
+     * @param {string} groupJid - WhatsApp group JID
+     * @returns {boolean} - True if this is a provider support group
+     */
+    async isProviderSupportGroup(userId, groupJid) {
+        try {
+            // Check if this groupJid is configured as a provider support group
+            const providerConfig = await prisma.providerConfig.findFirst({
+                where: {
+                    userId,
+                    OR: [
+                        { whatsappGroupJid: groupJid },
+                        { errorGroupJid: groupJid }
+                    ],
+                    isActive: true
+                }
+            });
+
+            return !!providerConfig;
+        } catch (error) {
+            console.error(`[BotHandler] Error checking provider support group:`, error.message);
             return false;
         }
     }
