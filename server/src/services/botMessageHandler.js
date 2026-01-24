@@ -314,7 +314,7 @@ class BotMessageHandler {
      * Handle SMM command
      */
     async handleSmmCommand(params) {
-        const { userId, user, message, senderNumber, deviceId, panelId, platform, isGroup } = params;
+        const { userId, user, message, senderNumber, deviceId, panelId, platform = 'WHATSAPP', isGroup = false } = params;
 
         // Check billing mode
         const isCreditsMode = await billingModeService.isCreditsMode();
@@ -415,7 +415,7 @@ class BotMessageHandler {
      * Handle auto-reply rules
      */
     async handleAutoReply(params) {
-        const { userId, message, senderNumber, senderName, deviceId, platform, isGroup } = params;
+        const { userId, message, senderNumber, senderName, deviceId, platform = 'WHATSAPP', isGroup = false } = params;
 
         // Get active auto-reply rules for this user
         const rules = await prisma.autoReplyRule.findMany({
