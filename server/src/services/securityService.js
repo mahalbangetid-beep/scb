@@ -570,13 +570,19 @@ class SecurityService {
                 try {
                     const adminApiService = require('./adminApiService');
 
-                    // Get panel info
-                    const panel = order.panel || await prisma.panel.findUnique({
-                        where: { id: order.panelId }
-                    });
+                    // Get panel info - make sure to include adminApiKey
+                    let panel = order.panel;
+                    if (!panel || !panel.adminApiKey) {
+                        panel = await prisma.panel.findUnique({
+                            where: { id: order.panelId }
+                        });
+                        console.log(`[Security] Loaded panel: ${panel?.alias || panel?.name}, hasAdminApiKey: ${!!panel?.adminApiKey}`);
+                    }
 
                     if (panel && panel.adminApiKey) {
+                        console.log(`[Security] Fetching from Admin API for order ${order.externalOrderId}...`);
                         const orderData = await adminApiService.getOrderWithProvider(panel, order.externalOrderId);
+                        console.log(`[Security] Admin API response: success=${orderData.success}, customerUsername=${orderData.data?.customerUsername}`);
 
                         if (orderData.success && orderData.data?.customerUsername) {
                             orderUsername = orderData.data.customerUsername;
@@ -588,21 +594,28 @@ class SecurityService {
                             });
 
                             console.log(`[Security] Fetched and saved customerUsername: ${orderUsername}`);
+                        } else {
+                            console.log(`[Security] Admin API did not return customerUsername. Response:`, JSON.stringify(orderData).substring(0, 200));
                         }
+                    } else {
+                        console.log(`[Security] Panel has no Admin API key configured, cannot fetch customerUsername`);
                     }
                 } catch (fetchError) {
                     console.error(`[Security] Failed to fetch customerUsername:`, fetchError.message);
                 }
             }
 
-            // If still no username, return error
+            // If still no username after fetch attempt
             if (!orderUsername) {
                 console.log(`[Security] Order ${order.externalOrderId} still has no customerUsername after fetch attempt`);
+
+                // FALLBACK: Allow command but log warning (temporary until Admin API is configured)
+                // This can be changed to block if strict mode is required
+                console.warn(`[Security] WARNING: Allowing command without customerUsername validation (fallback mode)`);
                 return {
-                    allowed: false,
-                    message: '⚠️ Unable to verify order ownership. Please try again later.',
-                    case: 'NO_USERNAME_IN_ORDER',
-                    needsSync: true
+                    allowed: true,
+                    case: 'FALLBACK_NO_USERNAME',
+                    warning: 'customerUsername not available for validation'
                 };
             }
 
