@@ -532,31 +532,71 @@ class SecurityService {
     }
 
     /**
-     * Check if order belongs to the sender based on User Mapping
-     * @param {Object} order - Order object
-     * @param {string} senderNumber - Sender's WhatsApp number
+     * STRICT MODE: Check order ownership via Order → Username → Mapping → WA Number
+     * 
+     * Flow:
+     * 1. Get username from order (customerUsername)
+     * 2. Find mapping by username
+     * 3. Check if sender's WA number matches mapped WA numbers
+     * 
+     * Cases:
+     * - Case 1: Username in mapping + WA matches → ALLOWED
+     * - Case 2: Username in mapping + WA doesn't match → BLOCKED
+     * - Case 3: Username NOT in mapping → BLOCKED (not registered)
+     * - Case 4: Order not found (handled elsewhere)
+     * 
+     * @param {Object} order - Order object with customerUsername
+     * @param {string} senderNumber - Sender's WhatsApp number  
      * @param {string} userId - Panel owner's user ID
      * @param {boolean} isGroup - Whether message is from a group
-     * @returns {Object} { allowed, message }
+     * @returns {Object} { allowed, message, case }
      */
     async checkUserMappingOwnership(order, senderNumber, userId, isGroup) {
         try {
             const userMappingService = require('./userMappingService');
 
-            // Find mapping for this sender
-            const mapping = await userMappingService.findByPhone(userId, senderNumber);
+            // Normalize sender's phone number
+            const normalizedSender = userMappingService.normalizePhone(senderNumber);
 
-            // If no mapping exists, allow (backwards compatible - unregistered users)
-            if (!mapping) {
-                console.log(`[Security] No user mapping for ${senderNumber}, allowing (unregistered user)`);
-                return { allowed: true };
+            console.log(`[Security] STRICT MODE - Checking order ownership for sender: ${normalizedSender}`);
+
+            // Step 1: Get username from order
+            const orderUsername = order.customerUsername;
+
+            if (!orderUsername) {
+                // Order doesn't have customerUsername - need to sync from panel first
+                console.log(`[Security] Order ${order.externalOrderId} has no customerUsername, need to fetch from panel`);
+                return {
+                    allowed: false,
+                    message: '⚠️ Unable to verify order ownership. Please try again later.',
+                    case: 'NO_USERNAME_IN_ORDER',
+                    needsSync: true
+                };
             }
+
+            console.log(`[Security] Order ${order.externalOrderId} belongs to username: ${orderUsername}`);
+
+            // Step 2: Find mapping by username (not by phone!)
+            const mapping = await userMappingService.findByUsername(userId, orderUsername);
+
+            // Case 3: Username NOT in mapping (user not registered)
+            if (!mapping) {
+                console.log(`[Security] CASE 3: Username "${orderUsername}" not found in User Mapping`);
+                return {
+                    allowed: false,
+                    message: '❌ Your account is not registered with the bot.\nPlease contact WhatsApp support team to register.',
+                    case: 'USER_NOT_REGISTERED'
+                };
+            }
+
+            console.log(`[Security] Found mapping for username "${orderUsername}", ID: ${mapping.id}`);
 
             // Check if bot is enabled for this mapping
             if (!mapping.isBotEnabled) {
                 return {
                     allowed: false,
-                    message: '🔒 Bot is disabled for your account. Please contact admin.'
+                    message: '🔒 Bot is disabled for your account. Please contact admin.',
+                    case: 'BOT_DISABLED'
                 };
             }
 
@@ -564,45 +604,48 @@ class SecurityService {
             if (mapping.isAutoSuspended) {
                 return {
                     allowed: false,
-                    message: '⛔ Your account has been suspended due to too many violations.'
+                    message: '⛔ Your account has been suspended due to too many violations.',
+                    case: 'SUSPENDED'
                 };
             }
 
-            // If mapping has panelUsername, verify order ownership
-            if (mapping.panelUsername) {
-                // Mapping requires username validation
-                if (!order.customerUsername) {
-                    // Order doesn't have customerUsername - need to sync from panel first
-                    console.log(`[Security] Order ${order.externalOrderId} has no customerUsername, skipping ownership check (will attempt to sync)`);
-                    // Allow but log warning - next sync will populate customerUsername
-                    return { allowed: true, mapping, needsSync: true };
-                }
+            // Step 3: Check if sender's WA number is in the mapped WA numbers
+            const mappedNumbers = mapping.whatsappNumbers || [];
+            const normalizedMappedNumbers = mappedNumbers.map(n => userMappingService.normalizePhone(n));
 
-                const mappedUsername = mapping.panelUsername.toLowerCase().trim();
-                const orderUsername = order.customerUsername.toLowerCase().trim();
+            console.log(`[Security] Mapped WA numbers: ${JSON.stringify(normalizedMappedNumbers)}`);
+            console.log(`[Security] Sender WA number: ${normalizedSender}`);
 
-                if (mappedUsername !== orderUsername) {
-                    console.log(`[Security] Order ownership DENIED: mapping=${mappedUsername}, order=${orderUsername}`);
-                    return {
-                        allowed: false,
-                        message: '❌ Order ID does not belong to you.\n\nThis order is registered to a different account.'
-                    };
-                }
-
-                console.log(`[Security] Order ownership VERIFIED: ${mappedUsername} = ${orderUsername}`);
-            } else {
-                // Mapping exists but no panelUsername - allow (user not fully configured)
-                console.log(`[Security] Mapping exists but no panelUsername set, allowing`);
+            // Case 2: Username in mapping but WA number doesn't match
+            if (!normalizedMappedNumbers.includes(normalizedSender)) {
+                console.log(`[Security] CASE 2: WA number ${normalizedSender} NOT in mapped numbers`);
+                return {
+                    allowed: false,
+                    message: '❌ Order ID does not belong to you.',
+                    case: 'WA_NOT_MATCH'
+                };
             }
+
+            // Case 1: Username in mapping AND WA matches - ALLOWED!
+            console.log(`[Security] CASE 1: Order ownership VERIFIED - Username: ${orderUsername}, WA: ${normalizedSender}`);
 
             // Record activity
             await userMappingService.recordActivity(mapping.id);
 
-            return { allowed: true, mapping };
+            return {
+                allowed: true,
+                mapping,
+                case: 'VERIFIED'
+            };
+
         } catch (error) {
             console.error(`[Security] User mapping check error:`, error.message);
-            // On error, allow (fail open for better UX, can be changed to fail close if needed)
-            return { allowed: true };
+            // STRICT MODE: On error, DENY access (fail close)
+            return {
+                allowed: false,
+                message: '⚠️ Unable to verify your account. Please try again later.',
+                case: 'ERROR'
+            };
         }
     }
 

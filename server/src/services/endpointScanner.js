@@ -419,9 +419,14 @@ class EndpointScanner {
         let detectedEndpoint = null;
         let detectedMethod = null;
 
+        // Delay between requests to avoid rate limiting (ms)
+        const REQUEST_DELAY = 500;
+        const RATE_LIMIT_DELAY = 2000;
+
         console.log(`[EndpointScanner] Scanning ${serviceType} with ${patterns.length} patterns...`);
 
-        for (const pattern of patterns) {
+        for (let i = 0; i < patterns.length; i++) {
+            const pattern = patterns[i];
             const patternResult = {
                 endpoint: pattern.endpoint,
                 method: pattern.method,
@@ -503,6 +508,11 @@ class EndpointScanner {
             }
 
             testedPatterns.push(patternResult);
+
+            // Add delay between requests to avoid rate limiting
+            if (i < patterns.length - 1 && !detectedEndpoint) {
+                await new Promise(resolve => setTimeout(resolve, REQUEST_DELAY));
+            }
         }
 
         return {
