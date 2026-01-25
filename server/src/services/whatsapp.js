@@ -312,9 +312,9 @@ class WhatsAppService {
 
                 const senderNumber = senderJid?.split('@')[0];
 
-                // DEBUG: Log for troubleshooting LID resolution
-                if (msg.key.remoteJid?.endsWith('@lid') || msg.key.participant?.endsWith('@lid')) {
-                    console.log(`[WA:${deviceId}] LID detected! remoteJid=${msg.key.remoteJid}, remoteJidAlt=${msg.key.remoteJidAlt}, resolved=${senderNumber}`);
+                // Log only if LID couldn't be resolved (fallback case)
+                if ((msg.key.remoteJid?.endsWith('@lid') || msg.key.participant?.endsWith('@lid')) && !msg.key.remoteJidAlt && !msg.key.participantAlt) {
+                    console.warn(`[WA:${deviceId}] LID detected but no Alt available! remoteJid=${msg.key.remoteJid}`);
                 }
 
                 const messageData = {
