@@ -299,7 +299,13 @@ class WhatsAppService {
                     : msg.key.remoteJid?.split('@')[0];
 
                 // DEBUG: Log raw remoteJid for troubleshooting
-                console.log(`[WA:${deviceId}] DEBUG remoteJid=${msg.key.remoteJid}, participant=${msg.key.participant}, isGroup=${isGroup}, sender=${senderNumber}`);
+                console.log(`[WA:${deviceId}] DEBUG remoteJid=${msg.key.remoteJid}, isGroup=${isGroup}, sender=${senderNumber}`);
+                console.log(`[WA:${deviceId}] DEBUG msg.pushName=${msg.pushName}, verifiedBizName=${msg.verifiedBizName}`);
+
+                // If LID format detected, try to get phone from contacts store
+                if (msg.key.remoteJid?.endsWith('@lid')) {
+                    console.log(`[WA:${deviceId}] LID detected! Need phone lookup for: ${msg.key.remoteJid}`);
+                }
 
                 const messageData = {
                     deviceId,
