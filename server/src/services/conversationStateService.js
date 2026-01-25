@@ -204,6 +204,14 @@ class ConversationStateService {
         const normalizedProvided = (providedUsername || '').trim().toLowerCase();
         const normalizedExpected = (expectedUsername || '').trim().toLowerCase();
 
+        // DEBUG: Log what's being compared
+        console.log(`[UsernameVerification] Order: ${context.orderId}`);
+        console.log(`[UsernameVerification] Expected username (raw): "${expectedUsername}"`);
+        console.log(`[UsernameVerification] Provided username (raw): "${providedUsername}"`);
+        console.log(`[UsernameVerification] Expected (normalized): "${normalizedExpected}"`);
+        console.log(`[UsernameVerification] Provided (normalized): "${normalizedProvided}"`);
+        console.log(`[UsernameVerification] Match: ${normalizedProvided === normalizedExpected}`);
+
         context.attempts = (context.attempts || 0) + 1;
 
         // Check if username matches
