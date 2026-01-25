@@ -294,17 +294,27 @@ class WhatsAppService {
 
                 // Detect if message is from a group
                 const isGroup = msg.key.remoteJid?.endsWith('@g.us') || false;
-                const senderNumber = isGroup
-                    ? msg.key.participant?.split('@')[0]
-                    : msg.key.remoteJid?.split('@')[0];
 
-                // DEBUG: Log raw remoteJid for troubleshooting
-                console.log(`[WA:${deviceId}] DEBUG remoteJid=${msg.key.remoteJid}, isGroup=${isGroup}, sender=${senderNumber}`);
-                console.log(`[WA:${deviceId}] DEBUG msg.pushName=${msg.pushName}, verifiedBizName=${msg.verifiedBizName}`);
+                // Handle LID format (Baileys v6.8.0+)
+                // When remoteJid is @lid format, remoteJidAlt contains the real phone number
+                let senderJid;
+                if (isGroup) {
+                    // For groups: use participantAlt if participant is LID, otherwise use participant
+                    senderJid = msg.key.participant?.endsWith('@lid')
+                        ? (msg.key.participantAlt || msg.key.participant)
+                        : msg.key.participant;
+                } else {
+                    // For DMs: use remoteJidAlt if remoteJid is LID, otherwise use remoteJid
+                    senderJid = msg.key.remoteJid?.endsWith('@lid')
+                        ? (msg.key.remoteJidAlt || msg.key.remoteJid)
+                        : msg.key.remoteJid;
+                }
 
-                // If LID format detected, try to get phone from contacts store
-                if (msg.key.remoteJid?.endsWith('@lid')) {
-                    console.log(`[WA:${deviceId}] LID detected! Need phone lookup for: ${msg.key.remoteJid}`);
+                const senderNumber = senderJid?.split('@')[0];
+
+                // DEBUG: Log for troubleshooting LID resolution
+                if (msg.key.remoteJid?.endsWith('@lid') || msg.key.participant?.endsWith('@lid')) {
+                    console.log(`[WA:${deviceId}] LID detected! remoteJid=${msg.key.remoteJid}, remoteJidAlt=${msg.key.remoteJidAlt}, resolved=${senderNumber}`);
                 }
 
                 const messageData = {
