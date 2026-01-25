@@ -160,9 +160,11 @@ router.get('/:id', async (req, res, next) => {
  */
 router.post('/', async (req, res, next) => {
     try {
+        console.log('[UserMapping] Creating mapping with data:', JSON.stringify(req.body));
         const mapping = await userMappingService.createMapping(req.user.id, req.body);
         createdResponse(res, userMappingService.parseMapping(mapping), 'Mapping created successfully');
     } catch (error) {
+        console.error('[UserMapping] Create mapping error:', error.message, error.stack);
         next(error);
     }
 });
