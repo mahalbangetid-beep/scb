@@ -298,6 +298,14 @@ class WhatsAppService {
                     ? msg.key.participant?.split('@')[0]
                     : msg.key.remoteJid?.split('@')[0];
 
+                // DEBUG: Log raw remoteJid for troubleshooting
+                console.log(`[WA:${deviceId}] DEBUG msg.key:`, {
+                    remoteJid: msg.key.remoteJid,
+                    participant: msg.key.participant,
+                    isGroup,
+                    extractedSender: senderNumber
+                });
+
                 const messageData = {
                     deviceId,
                     messageId: msg.key.id,
