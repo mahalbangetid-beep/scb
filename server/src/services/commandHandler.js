@@ -104,6 +104,7 @@ class CommandHandlerService {
                     orderId,
                     command,
                     senderNumber,
+                    platform,   // Pass platform for conversation state
                     isGroup,
                     skipIndividualForward: orderIds.length > 1  // Skip individual forward if bulk
                 });
@@ -178,7 +179,7 @@ class CommandHandlerService {
      * Process a single order command
      */
     async processOrderCommand(params) {
-        const { userId, panelId, orderId, command, senderNumber, isGroup = false } = params;
+        const { userId, panelId, orderId, command, senderNumber, platform = 'WHATSAPP', isGroup = false } = params;
 
         // Build order query - filter by panelId if provided
         const whereClause = {
