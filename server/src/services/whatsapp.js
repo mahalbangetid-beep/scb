@@ -299,12 +299,7 @@ class WhatsAppService {
                     : msg.key.remoteJid?.split('@')[0];
 
                 // DEBUG: Log raw remoteJid for troubleshooting
-                console.log(`[WA:${deviceId}] DEBUG msg.key:`, {
-                    remoteJid: msg.key.remoteJid,
-                    participant: msg.key.participant,
-                    isGroup,
-                    extractedSender: senderNumber
-                });
+                console.log(`[WA:${deviceId}] DEBUG remoteJid=${msg.key.remoteJid}, participant=${msg.key.participant}, isGroup=${isGroup}, sender=${senderNumber}`);
 
                 const messageData = {
                     deviceId,
