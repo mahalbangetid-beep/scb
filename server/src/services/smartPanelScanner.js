@@ -415,8 +415,40 @@ class SmartPanelScanner {
 
         // ========== ERROR RESPONSES ==========
 
-        const errorMsg = data.error || data.message || data.msg || '';
+        const errorMsg = data.error || data.message || data.msg || data.error_message || '';
         const errorLower = (typeof errorMsg === 'string' ? errorMsg : '').toLowerCase();
+
+        // ========== ADMIN API V1 ERROR CODES ==========
+        // These are specific error codes from Admin API v1 documentation
+
+        // bad_auth - Invalid API key (STOP scanning, key is wrong)
+        if (errorMsg === 'bad_auth' || errorLower.includes('bad_auth')) {
+            return {
+                success: false,
+                errorType: 'INVALID_API_KEY',
+                error: 'Invalid Admin API Key (bad_auth)'
+            };
+        }
+
+        // bad_action - Invalid action (means API is responding, just wrong action)
+        // This is actually a SUCCESS indicator - API is working!
+        if (errorMsg === 'bad_action' || errorLower.includes('bad_action')) {
+            console.log(`[SmartScanner] Admin API detected via bad_action response`);
+            return this.buildSuccessResponse(pattern);
+        }
+
+        // These V1 errors indicate the API is working, just no data found
+        const validV1Errors = [
+            'order_not_found', 'no_orders', 'orders_not_found',
+            'bad_username', 'user_not_found',
+            'service_not_found', 'bad_service',
+            'bad_amount', 'no_data', 'empty'
+        ];
+
+        if (validV1Errors.some(e => errorMsg === e || errorLower.includes(e))) {
+            console.log(`[SmartScanner] Admin API detected via V1 error: ${errorMsg}`);
+            return this.buildSuccessResponse(pattern);
+        }
 
         // Invalid API key errors
         if (errorLower.includes('invalid') && (errorLower.includes('key') || errorLower.includes('api'))) {
@@ -483,11 +515,16 @@ class SmartPanelScanner {
             authType = 'param';
         }
 
+        // Set correct panelType based on API version
+        // V1 (action-based, key param) = RENTAL
+        // V2 (RESTful, header auth) = PERFECT_PANEL
+        const panelType = isV1 ? 'RENTAL' : 'PERFECT_PANEL';
+
         return {
             success: true,
             balance: 0, // Admin API doesn't return balance directly
             currency: 'USD',
-            panelType: 'ADMIN_API',
+            panelType: panelType,
             detectedConfig: {
                 endpoint: baseEndpoint,
                 method: pattern.method,
@@ -496,6 +533,7 @@ class SmartPanelScanner {
                 authType: authType,
                 apiVersion: apiVersion,
                 isAdminApi: true,
+                isV1: isV1,
                 patternName: pattern.name || 'Unknown',
                 checkType: pattern.checkType || 'orders'
             }

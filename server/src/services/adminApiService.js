@@ -50,18 +50,39 @@ class AdminApiService {
             let response;
 
             if (isRentalPanel) {
-                // Rental Panel: Use getUser action to test connection
-                // Format: ?key=xxx&action=getUser&username=test
-                // We use a simple action that should work even without valid data
+                // Rental Panel: Use getOrders action to test connection
+                // Format: ?key=xxx&action=getOrders&limit=1
+                // This returns valid response even with empty orders
                 response = await this.makeAdminRequest(panel, 'GET', '', {
-                    action: 'getUser',
-                    username: 'test_connection_check'
+                    action: 'getOrders',
+                    limit: 1
                 });
 
-                // For Rental Panel, even if user not found, the API responding means connection works
-                // Check if we got a valid response structure (not a 500 error)
-                if (response.success ||
-                    (response.data && (response.data.status === 'success' || response.data.status === 'error'))) {
+                // For Rental Panel, check if we got a valid response structure
+                // Valid responses:
+                // - { status: "success", orders: [...] }
+                // - { status: "error", error: "..." } (API is working, just error message)
+                // - { data: [...] } or { orders: [...] }
+                const data = response.data || {};
+                const isValidResponse = response.success ||
+                    data.status === 'success' ||
+                    data.status === 'error' ||
+                    data.error === 'bad_auth' ||
+                    data.error === 'bad_action' ||
+                    Array.isArray(data.orders) ||
+                    Array.isArray(data.data) ||
+                    Array.isArray(data);
+
+                if (isValidResponse) {
+                    // Check if it's an auth error
+                    if (data.error === 'bad_auth' || data.status === 'error' && data.error?.includes?.('auth')) {
+                        return {
+                            success: false,
+                            message: 'Invalid Admin API Key',
+                            capabilities: []
+                        };
+                    }
+
                     return {
                         success: true,
                         message: 'Rental Panel Admin API connection successful',
@@ -967,7 +988,33 @@ class AdminApiService {
             // Handle Rental Panel response format
             if (isRentalPanel) {
                 const data = response.data;
-                // Rental Panel returns { status: "success"|"error", ... }
+
+                // Format 1: { status: "error", error: "..." }
+                // Format 2: { error: "bad_auth" }
+                // Format 3: { data: [], error_message: "...", error_code: 100 }
+
+                // Check for bad_auth specifically
+                if (data.error === 'bad_auth') {
+                    return {
+                        success: false,
+                        error: 'Invalid Admin API Key (bad_auth)',
+                        unauthorized: true,
+                        data
+                    };
+                }
+
+                // Check for error_message format (e.g., from SMM API errors)
+                if (data.error_message && data.error_code) {
+                    console.log(`[AdminApiService] Rental API error: ${data.error_message} (code: ${data.error_code})`);
+                    return {
+                        success: false,
+                        error: data.error_message,
+                        errorCode: data.error_code,
+                        data
+                    };
+                }
+
+                // Check for status: error format
                 if (data.status === 'error' || data.error) {
                     return {
                         success: false,

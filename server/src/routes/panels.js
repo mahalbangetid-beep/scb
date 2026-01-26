@@ -117,6 +117,10 @@ router.post('/detect-and-add', async (req, res, next) => {
         // Get detected config
         const config = scanResult.detectedConfig;
 
+        // Use detected panel type (RENTAL for V1, PERFECT_PANEL for V2)
+        const detectedPanelType = scanResult.panelType || 'PERFECT_PANEL';
+        const defaultEndpoint = config.isV1 ? '/adminapi/v1' : '/adminapi/v2';
+
         // Create panel with Admin API configuration
         const panel = await prisma.smmPanel.create({
             data: {
@@ -126,15 +130,16 @@ router.post('/detect-and-add', async (req, res, next) => {
                 apiKey: encryptedAdminApiKey, // Store Admin API Key as main key
                 adminApiKey: encryptedAdminApiKey,
                 supportsAdminApi: true,
-                panelType: 'ADMIN_API',
-                apiFormat: 'ADMIN_API',
+                panelType: detectedPanelType,
+                apiFormat: config.isV1 ? 'RENTAL_V1' : 'ADMIN_API',
                 httpMethod: config.method || 'GET',
-                endpointBalance: config.endpoint || '/adminapi/v2',
-                endpointServices: config.endpoint || '/adminapi/v2',
-                endpointAddOrder: config.endpoint || '/adminapi/v2',
-                endpointOrderStatus: config.endpoint || '/adminapi/v2',
-                endpointRefill: config.endpoint || '/adminapi/v2',
-                endpointCancel: config.endpoint || '/adminapi/v2',
+                endpointBalance: config.endpoint || defaultEndpoint,
+                endpointServices: config.endpoint || defaultEndpoint,
+                endpointAddOrder: config.endpoint || defaultEndpoint,
+                endpointOrderStatus: config.endpoint || defaultEndpoint,
+                endpointRefill: config.endpoint || defaultEndpoint,
+                endpointCancel: config.endpoint || defaultEndpoint,
+                adminApiBaseUrl: `${url.trim()}${config.endpoint || defaultEndpoint}`,
                 currency: 'USD',
                 isPrimary: isPrimary || false,
                 isActive: true,
