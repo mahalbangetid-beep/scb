@@ -75,7 +75,7 @@ class AdminApiService {
 
                 if (isValidResponse) {
                     // Check if it's an auth error
-                    if (data.error === 'bad_auth' || data.status === 'error' && data.error?.includes?.('auth')) {
+                    if (data.error === 'bad_auth' || (data.status === 'error' && data.error?.includes?.('auth'))) {
                         return {
                             success: false,
                             message: 'Invalid Admin API Key',
