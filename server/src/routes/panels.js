@@ -787,6 +787,14 @@ router.post('/:id/scan-section', async (req, res, next) => {
             }
         }
 
+        // Debug: log what we're returning
+        console.log(`[SectionScan] Response data:`, {
+            section: result.section,
+            detectedEndpoints: detectedEndpoints,
+            detectedCount: result.detected,
+            resultsKeys: Object.keys(processedResults)
+        });
+
         successResponse(res, {
             section: result.section,
             results: processedResults,
