@@ -243,6 +243,11 @@ const PanelConnections = () => {
 
             if (data?.panelType) {
                 alert(`✅ Panel Type Detected!\n\nType: ${data.panelType.toUpperCase()}\nEndpoints configured: ${data.detectedCount}\n\n${data.message}`);
+
+                // Set scan results directly from response
+                if (data?.scanResults) {
+                    setScanResults(data.scanResults);
+                }
             } else {
                 alert(`⚠️ Could not auto-detect panel type.\n\nPlease scan endpoints manually.`);
             }
