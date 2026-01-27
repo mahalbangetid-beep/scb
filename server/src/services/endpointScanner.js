@@ -198,6 +198,13 @@ class EndpointScanner {
             // ==================== CANCEL TASKS ====================
             // Pull cancel tasks - /cancel/pull
             cancelPull: [
+                // ========== RENTAL PANEL V1 (ACTION-BASED) ==========
+                { method: 'GET', endpoint: '/adminapi/v1', params: { action: 'getCancels', limit: 1 }, isV1: true, keyParam: 'key' },
+                { method: 'GET', endpoint: '/adminapi/v1', params: { action: 'cancels', limit: 1 }, isV1: true, keyParam: 'key' },
+                { method: 'GET', endpoint: '/adminapi/v1', params: { action: 'pullCancels', limit: 1 }, isV1: true, keyParam: 'key' },
+                { method: 'POST', endpoint: '/adminapi/v1', body: { action: 'getCancels', limit: 1 }, isV1: true, keyParam: 'key' },
+
+                // ========== PERFECT PANEL V2 (RESTFUL) ==========
                 { method: 'POST', endpoint: '/adminapi/v2/cancel/pull', body: { limit: 1 } },
                 { method: 'POST', endpoint: '/adminapi/v1/cancel/pull', body: { limit: 1 } },
                 { method: 'POST', endpoint: '/api/admin/cancel/pull', body: { limit: 1 } },
@@ -205,6 +212,12 @@ class EndpointScanner {
             ],
             // Reject cancel - /cancel/reject
             cancelReject: [
+                // ========== RENTAL PANEL V1 (ACTION-BASED) ==========
+                { method: 'POST', endpoint: '/adminapi/v1', body: { action: 'rejectCancel' }, isV1: true, keyParam: 'key', testMode: true },
+                { method: 'POST', endpoint: '/adminapi/v1', body: { action: 'cancelReject' }, isV1: true, keyParam: 'key', testMode: true },
+                { method: 'POST', endpoint: '/adminapi/v1', body: { action: 'cancel-reject' }, isV1: true, keyParam: 'key', testMode: true },
+
+                // ========== PERFECT PANEL V2 (RESTFUL) ==========
                 { method: 'POST', endpoint: '/adminapi/v2/cancel/reject', testMode: true },
                 { method: 'POST', endpoint: '/adminapi/v1/cancel/reject', testMode: true },
                 { method: 'POST', endpoint: '/api/admin/cancel/reject', testMode: true },
