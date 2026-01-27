@@ -757,7 +757,58 @@ router.post('/:id/scan-endpoint', async (req, res, next) => {
     }
 });
 
-// POST /api/panels/:id/scan-section - Scan specific section only
+// POST /api/panels/:id/auto-detect - Auto-detect panel type and apply predefined endpoints
+router.post('/:id/auto-detect', async (req, res, next) => {
+    try {
+        const panel = await prisma.smmPanel.findFirst({
+            where: {
+                id: req.params.id,
+                userId: req.user.id
+            }
+        });
+
+        if (!panel) {
+            throw new AppError('Panel not found', 404);
+        }
+
+        if (!panel.supportsAdminApi || !panel.adminApiKey) {
+            throw new AppError('Admin API not configured for this panel', 400);
+        }
+
+        const PanelTypeDetector = require('../services/panelTypeDetector');
+
+        console.log(`[AutoDetect] Starting detection for panel: ${panel.alias}`);
+
+        const result = await PanelTypeDetector.detectAndGenerateEndpoints(panel);
+
+        console.log(`[AutoDetect] Result:`, {
+            panelType: result.panelType,
+            endpointsCount: Object.keys(result.scanResults).filter(k => result.scanResults[k]?.detected).length
+        });
+
+        // Save the detected type and endpoints to database
+        if (result.panelType) {
+            await prisma.smmPanel.update({
+                where: { id: panel.id },
+                data: {
+                    panelType: result.panelType.toUpperCase(), // V1 or V2
+                    endpointScanResults: JSON.stringify(result.scanResults),
+                    lastSyncAt: new Date()
+                }
+            });
+        }
+
+        successResponse(res, {
+            panelType: result.panelType,
+            scanResults: result.scanResults,
+            detectedCount: Object.keys(result.scanResults).filter(k => result.scanResults[k]?.detected).length,
+            message: result.message
+        }, result.message);
+
+    } catch (error) {
+        next(error);
+    }
+});
 router.post('/:id/scan-section', async (req, res, next) => {
     try {
         const { section, testOrderId, testTicketId } = req.body;

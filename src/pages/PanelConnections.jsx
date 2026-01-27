@@ -223,6 +223,41 @@ const PanelConnections = () => {
         }
     };
 
+    // State for auto-detect
+    const [autoDetecting, setAutoDetecting] = useState(false);
+
+    // Auto-detect panel type and apply predefined endpoints
+    const handleAutoDetect = async () => {
+        if (!selectedPanel) return;
+
+        setAutoDetecting(true);
+
+        try {
+            console.log('[PanelConnections] Auto-detecting panel type...');
+
+            const response = await api.post(`/panels/${selectedPanel.id}/auto-detect`);
+
+            console.log('[PanelConnections] Auto-detect response:', response);
+
+            const data = response?.data;
+
+            if (data?.panelType) {
+                alert(`✅ Panel Type Detected!\n\nType: ${data.panelType.toUpperCase()}\nEndpoints configured: ${data.detectedCount}\n\n${data.message}`);
+            } else {
+                alert(`⚠️ Could not auto-detect panel type.\n\nPlease scan endpoints manually.`);
+            }
+
+            // Reload panels to get updated results
+            await fetchPanels();
+
+        } catch (error) {
+            console.error('[PanelConnections] Error auto-detecting:', error);
+            alert('Error: ' + (error?.message || 'Unknown error'));
+        } finally {
+            setAutoDetecting(false);
+        }
+    };
+
     // Get status for a service
     const getServiceStatus = (serviceName) => {
         if (!scanResults) return { status: 'not_tested', endpoint: null };
@@ -480,17 +515,37 @@ const PanelConnections = () => {
                                     </div>
                                 </div>
                                 <div className="panel-actions">
-                                    {/* Per-endpoint scanning info */}
-                                    <div style={{
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        gap: '8px',
-                                        color: 'rgba(255,255,255,0.7)',
-                                        fontSize: '13px'
-                                    }}>
-                                        <RefreshCw size={16} />
-                                        <span>Click "Scan" on each endpoint below to detect</span>
-                                    </div>
+                                    {/* Auto Detect Button */}
+                                    <button
+                                        onClick={handleAutoDetect}
+                                        disabled={autoDetecting}
+                                        style={{
+                                            background: 'linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%)',
+                                            color: '#fff',
+                                            border: 'none',
+                                            padding: '10px 20px',
+                                            borderRadius: '8px',
+                                            fontSize: '14px',
+                                            fontWeight: '600',
+                                            cursor: autoDetecting ? 'wait' : 'pointer',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '8px',
+                                            opacity: autoDetecting ? 0.7 : 1
+                                        }}
+                                    >
+                                        {autoDetecting ? (
+                                            <>
+                                                <Loader2 className="animate-spin" size={18} />
+                                                Detecting...
+                                            </>
+                                        ) : (
+                                            <>
+                                                <Zap size={18} />
+                                                Auto Detect Endpoints
+                                            </>
+                                        )}
+                                    </button>
                                 </div>
                             </div>
 
