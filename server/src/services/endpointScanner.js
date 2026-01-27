@@ -614,46 +614,85 @@ class EndpointScanner {
                 // Get error message from various possible fields (normalize to lowercase string)
                 const rawError = data?.error || data?.message || '';
                 const errorMessage = typeof rawError === 'string' ? rawError.toLowerCase() : '';
+                const statusValue = (data?.status || '').toString().toLowerCase();
 
-                // V1 panels return errors in body with HTTP 200
-                // Check for various error indicators
-                const hasError =
-                    data?.status === 'error' ||
-                    data?.error === true ||
-                    (typeof data?.error === 'string' && data.error !== '') ||
-                    data?.success === false;
+                // ========== V1 API SUCCESS DETECTION ==========
+                // V1 APIs return { status: 'success', ... } or { status: 'fail', error: '...' }
+                if (isV1Pattern) {
+                    // Check for success status (including common typo 'sucess')
+                    if (statusValue === 'success' || statusValue === 'sucess') {
+                        return { success: true, exists: true, data };
+                    }
 
-                if (testMode && isV1Pattern) {
-                    // For V1 testMode: determine if the endpoint EXISTS on this panel
-
-                    // Auth errors mean we can't access the API at all
-                    if (errorMessage.includes('auth') ||
-                        errorMessage.includes('key') ||
-                        errorMessage === 'bad_auth' ||
-                        errorMessage.includes('unauthorized')) {
+                    // Auth errors - API key is invalid
+                    if (errorMessage === 'bad_auth' ||
+                        errorMessage.includes('unauthorized') ||
+                        errorMessage.includes('invalid key') ||
+                        errorMessage.includes('invalid api')) {
                         return { success: false, exists: false, error: 'Auth failed' };
                     }
 
-                    // 'bad_action' specifically means this action is NOT supported by the panel
+                    // 'bad_action' - this action is NOT supported by the panel
                     if (errorMessage === 'bad_action' ||
                         errorMessage.includes('unknown action') ||
                         errorMessage.includes('invalid action')) {
                         return { success: false, exists: false, error: 'Action not supported' };
                     }
 
-                    // Any other error (missing params, invalid order, etc.) means endpoint EXISTS
-                    // Because the API recognized the action and is asking for more info
-                    if (hasError) {
-                        return { success: false, exists: true, error: rawError || 'V1 error (endpoint exists)' };
+                    // For V1 APIs, these errors mean the endpoint WORKS but data is missing/invalid
+                    // This is important: order_not_found, bad_username etc. = endpoint exists & works!
+                    const v1WorkingErrors = [
+                        'order_not_found', 'not_found', 'order not found',
+                        'bad_username', 'user_not_found', 'user not found',
+                        'bad_order', 'invalid_order', 'invalid order',
+                        'missing', 'required', 'invalid',
+                        'empty', 'no_orders', 'no orders'
+                    ];
+
+                    const isWorkingEndpoint = v1WorkingErrors.some(err =>
+                        errorMessage === err || errorMessage.includes(err)
+                    );
+
+                    if (isWorkingEndpoint) {
+                        // Endpoint works! Return success so scanner detects it
+                        if (testMode) {
+                            return { success: false, exists: true, error: rawError };
+                        } else {
+                            // In normal mode, these errors mean endpoint is functional
+                            return { success: true, exists: true, data, note: 'V1 endpoint works (data error)' };
+                        }
                     }
 
-                    // Success response in testMode
+                    // For testMode V1, any other response means endpoint exists
+                    if (testMode) {
+                        return { success: false, exists: true, error: rawError || 'V1 endpoint exists' };
+                    }
+
+                    // V1 with status: 'fail' but unrecognized error
+                    if (statusValue === 'fail') {
+                        return { success: false, exists: true, error: rawError };
+                    }
+                }
+
+                // ========== V2 / General API Error Detection ==========
+                const hasError =
+                    data?.status === 'error' ||
+                    data?.error === true ||
+                    (typeof data?.error === 'string' && data.error !== '' && !isV1Pattern) ||
+                    data?.success === false;
+
+                if (testMode) {
+                    // In testMode, we just want to know if endpoint exists
+                    if (hasError) {
+                        const endpointExistsErrors = ['missing', 'required', 'invalid', 'order', 'not found', 'user', 'amount'];
+                        const isEndpointExistsError = endpointExistsErrors.some(err => errorMessage.includes(err));
+                        return { success: false, exists: isEndpointExistsError, error: rawError };
+                    }
                     return { success: true, exists: true, data };
                 }
 
-                // Normal mode (non-test) - not V1 testMode
+                // Normal mode V2
                 if (hasError) {
-                    // Check if error indicates endpoint exists but request failed
                     const endpointExistsErrors = ['missing', 'required', 'invalid', 'order', 'not found', 'user', 'amount'];
                     const isEndpointExistsError = endpointExistsErrors.some(err => errorMessage.includes(err));
                     return { success: false, exists: isEndpointExistsError, error: rawError };
