@@ -498,7 +498,7 @@ const PanelConnections = () => {
                                     </div>
                                 </div>
                                 <div className="panel-actions">
-                                    {/* Section Scan Controls */}
+                                    {/* Section Scan Controls - TEMPORARILY HIDDEN
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginRight: '16px' }}>
                                         <select
                                             value={selectedSection}
@@ -525,7 +525,7 @@ const PanelConnections = () => {
                                             className="btn-scan"
                                             onClick={handleScanSection}
                                             disabled={scanningSection || !selectedSection}
-                                            style={{
+                                            style={{ 
                                                 background: selectedSection ? 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)' : 'rgba(255,255,255,0.1)',
                                                 opacity: selectedSection ? 1 : 0.5
                                             }}
@@ -543,7 +543,7 @@ const PanelConnections = () => {
                                             )}
                                         </button>
                                     </div>
-
+                                    */}
                                     {/* Scan All Button */}
                                     <button
                                         className="btn-scan"
