@@ -693,24 +693,65 @@ router.patch('/:id/manual-endpoint', async (req, res, next) => {
     }
 });
 
-// GET /api/panels/:id/scan-sections - Get available scan sections
-router.get('/:id/scan-sections', async (req, res, next) => {
+// POST /api/panels/:id/scan-endpoint - Scan a single endpoint/service type
+router.post('/:id/scan-endpoint', async (req, res, next) => {
     try {
+        const { serviceType, testOrderId, testTicketId } = req.body;
+
+        if (!serviceType) {
+            throw new AppError('serviceType is required (e.g., orders, refill, cancel, users, etc.)', 400);
+        }
+
+        const panel = await prisma.smmPanel.findFirst({
+            where: {
+                id: req.params.id,
+                userId: req.user.id
+            }
+        });
+
+        if (!panel) {
+            throw new AppError('Panel not found', 404);
+        }
+
+        if (!panel.supportsAdminApi || !panel.adminApiKey) {
+            throw new AppError('Admin API not configured for this panel', 400);
+        }
+
         const endpointScanner = require('../services/endpointScanner');
-        const sections = endpointScanner.getAvailableSections();
+
+        // Get test order ID if needed
+        let orderIdToUse = testOrderId;
+        const needsOrderId = ['status', 'ordersEditLink', 'ordersSetPartial', 'providerInfo'].includes(serviceType);
+        if (!orderIdToUse && needsOrderId) {
+            const testOrder = await prisma.order.findFirst({
+                where: { panelId: panel.id, userId: req.user.id },
+                orderBy: { createdAt: 'desc' }
+            });
+            orderIdToUse = testOrder?.externalOrderId;
+        }
+
+        console.log(`[SingleScan] Scanning endpoint '${serviceType}' for panel: ${panel.alias}`);
+
+        const result = await endpointScanner.scanService(panel, serviceType, orderIdToUse || testTicketId);
+
+        console.log(`[SingleScan] Result:`, {
+            serviceType,
+            detected: result.detected,
+            patternsTried: result.patternsTried
+        });
 
         successResponse(res, {
-            sections,
-            description: {
-                orders: 'Order endpoints (getOrders, pullOrders, updateOrders, etc.)',
-                refill: 'Refill/resend endpoints',
-                cancel: 'Cancel order endpoints',
-                provider: 'Provider info endpoints',
-                payments: 'Payment management endpoints',
-                users: 'User management endpoints',
-                tickets: 'Ticket/support endpoints'
-            }
-        }, 'Available scan sections');
+            serviceType,
+            detected: result.detected || null,
+            method: result.method || null,
+            patternsTried: result.patternsTried || 0,
+            patternsTotal: result.patternsTotal || 0,
+            success: !!result.detected,
+            message: result.detected
+                ? `Found: ${result.detected}`
+                : `Not found (tried ${result.patternsTried || 0} patterns)`
+        }, result.detected ? 'Endpoint detected' : 'Endpoint not found');
+
     } catch (error) {
         next(error);
     }

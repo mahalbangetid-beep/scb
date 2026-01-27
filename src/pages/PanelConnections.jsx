@@ -185,59 +185,41 @@ const PanelConnections = () => {
         }
     };
 
-    // Scan a specific section only (to avoid rate limiting)
-    const handleScanSection = async () => {
-        if (!selectedPanel || !selectedSection) {
-            alert('Please select a section to scan');
-            return;
-        }
+    // State for endpoint-level scanning
+    const [scanningEndpoint, setScanningEndpoint] = useState(null); // which endpoint is currently scanning
 
-        setScanningSection(true);
-        setSectionResults(null);
+    // Scan a single endpoint/service type
+    const handleScanEndpoint = async (serviceType) => {
+        if (!selectedPanel) return;
+
+        setScanningEndpoint(serviceType);
 
         try {
-            console.log(`[PanelConnections] Scanning section: ${selectedSection}`);
+            console.log(`[PanelConnections] Scanning endpoint: ${serviceType}`);
 
-            const response = await api.post(`/panels/${selectedPanel.id}/scan-section`, {
-                section: selectedSection
-            }, {
-                timeout: 300000 // 5 minutes timeout for scanning
+            const response = await api.post(`/panels/${selectedPanel.id}/scan-endpoint`, {
+                serviceType
             });
 
-            console.log('[PanelConnections] Section scan response:', response);
+            console.log('[PanelConnections] Endpoint scan response:', response);
 
-            // Note: api interceptor already returns response.data, so response IS the data
             const data = response?.data;
-            setSectionResults(data);
 
-            // Show results
-            if (data?.detected?.length > 0) {
-                alert(`✅ Section "${selectedSection}" scanned!\n\nDetected ${data.detectedCount} endpoints:\n${data.detected.join('\n')}`);
+            // Show result
+            if (data?.detected) {
+                alert(`✅ Endpoint "${serviceType}" found!\n\n${data.detected}`);
             } else {
-                alert(`⚠️ Section "${selectedSection}" scanned.\n\nNo endpoints detected. This section may not be supported by this panel.`);
+                alert(`❌ Endpoint "${serviceType}" not found.\n\nTried ${data?.patternsTried || 0} patterns.`);
             }
 
             // Reload panel to get updated results
-            const panelsResponse = await api.get('/panels');
-            let panelList = [];
-            if (panelsResponse.data?.data) {
-                panelList = Array.isArray(panelsResponse.data.data) ? panelsResponse.data.data : [];
-            } else if (Array.isArray(panelsResponse.data)) {
-                panelList = panelsResponse.data;
-            }
-            setPanels(panelList);
-
-            const updatedPanel = panelList.find(p => p.id === selectedPanel.id);
-            if (updatedPanel) {
-                setSelectedPanel(updatedPanel);
-                loadPanelScanResults(updatedPanel);
-            }
+            await fetchPanels();
 
         } catch (error) {
-            console.error('[PanelConnections] Error scanning section:', error);
-            alert('Error scanning section: ' + (error.response?.data?.error?.message || error.message));
+            console.error('[PanelConnections] Error scanning endpoint:', error);
+            alert('Error scanning: ' + (error?.message || 'Unknown error'));
         } finally {
-            setScanningSection(false);
+            setScanningEndpoint(null);
         }
     };
 
@@ -498,70 +480,17 @@ const PanelConnections = () => {
                                     </div>
                                 </div>
                                 <div className="panel-actions">
-                                    {/* Section Scan Controls - TEMPORARILY HIDDEN
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginRight: '16px' }}>
-                                        <select
-                                            value={selectedSection}
-                                            onChange={(e) => setSelectedSection(e.target.value)}
-                                            style={{
-                                                padding: '8px 12px',
-                                                borderRadius: '8px',
-                                                border: '1px solid rgba(255,255,255,0.2)',
-                                                background: 'rgba(255,255,255,0.1)',
-                                                color: '#fff',
-                                                fontSize: '14px',
-                                                cursor: 'pointer'
-                                            }}
-                                            disabled={scanningSection}
-                                        >
-                                            <option value="" style={{ background: '#1a1a2e' }}>Select Section...</option>
-                                            {sectionOptions.map(opt => (
-                                                <option key={opt.value} value={opt.value} style={{ background: '#1a1a2e' }}>
-                                                    {opt.label}
-                                                </option>
-                                            ))}
-                                        </select>
-                                        <button
-                                            className="btn-scan"
-                                            onClick={handleScanSection}
-                                            disabled={scanningSection || !selectedSection}
-                                            style={{ 
-                                                background: selectedSection ? 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)' : 'rgba(255,255,255,0.1)',
-                                                opacity: selectedSection ? 1 : 0.5
-                                            }}
-                                        >
-                                            {scanningSection ? (
-                                                <>
-                                                    <Loader2 className="animate-spin" size={16} />
-                                                    Scanning...
-                                                </>
-                                            ) : (
-                                                <>
-                                                    <RefreshCw size={16} />
-                                                    Scan Section
-                                                </>
-                                            )}
-                                        </button>
+                                    {/* Per-endpoint scanning info */}
+                                    <div style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '8px',
+                                        color: 'rgba(255,255,255,0.7)',
+                                        fontSize: '13px'
+                                    }}>
+                                        <RefreshCw size={16} />
+                                        <span>Click "Scan" on each endpoint below to detect</span>
                                     </div>
-                                    */}
-                                    {/* Scan All Button */}
-                                    <button
-                                        className="btn-scan"
-                                        onClick={handleScanAll}
-                                        disabled={scanning}
-                                    >
-                                        {scanning ? (
-                                            <>
-                                                <Loader2 className="animate-spin" size={18} />
-                                                Scanning All...
-                                            </>
-                                        ) : (
-                                            <>
-                                                <Zap size={18} />
-                                                Scan All
-                                            </>
-                                        )}
-                                    </button>
                                 </div>
                             </div>
 
@@ -663,6 +592,32 @@ const PanelConnections = () => {
                                                                     </div>
                                                                 ) : (
                                                                     <div className="card-actions">
+                                                                        <button
+                                                                            className="btn-scan-single"
+                                                                            onClick={() => handleScanEndpoint(service.key)}
+                                                                            disabled={scanningEndpoint === service.key}
+                                                                            title="Scan this endpoint"
+                                                                            style={{
+                                                                                background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                                                                                color: '#fff',
+                                                                                border: 'none',
+                                                                                padding: '6px 12px',
+                                                                                borderRadius: '6px',
+                                                                                fontSize: '12px',
+                                                                                cursor: 'pointer',
+                                                                                display: 'flex',
+                                                                                alignItems: 'center',
+                                                                                gap: '4px',
+                                                                                marginRight: '8px'
+                                                                            }}
+                                                                        >
+                                                                            {scanningEndpoint === service.key ? (
+                                                                                <Loader2 className="animate-spin" size={14} />
+                                                                            ) : (
+                                                                                <RefreshCw size={14} />
+                                                                            )}
+                                                                            {scanningEndpoint === service.key ? 'Scanning...' : 'Scan'}
+                                                                        </button>
                                                                         <button
                                                                             className="btn-manual"
                                                                             onClick={() => {
