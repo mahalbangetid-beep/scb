@@ -151,7 +151,9 @@ const PanelConnections = () => {
 
         setScanning(true);
         try {
-            const response = await api.post(`/panels/${selectedPanel.id}/sync-all`);
+            const response = await api.post(`/panels/${selectedPanel.id}/sync-all`, {}, {
+                timeout: 300000 // 5 minutes timeout for full scan
+            });
             console.log('[PanelConnections] Scan response:', response.data);
 
             const data = response.data?.data;
@@ -198,6 +200,8 @@ const PanelConnections = () => {
 
             const response = await api.post(`/panels/${selectedPanel.id}/scan-section`, {
                 section: selectedSection
+            }, {
+                timeout: 300000 // 5 minutes timeout for scanning
             });
 
             console.log('[PanelConnections] Section scan response:', response);
