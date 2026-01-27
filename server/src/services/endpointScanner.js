@@ -344,8 +344,79 @@ class EndpointScanner {
         };
     }
 
+    // Define available sections with their service types
+    static SECTIONS = {
+        orders: ['orders', 'ordersPull', 'status', 'ordersUpdate', 'ordersEditLink', 'ordersChangeStatus', 'ordersSetPartial', 'ordersRequestCancel'],
+        refill: ['refill', 'refillPull', 'refillChangeStatus'],
+        cancel: ['cancel', 'cancelPull', 'cancelReject'],
+        provider: ['providerInfo'],
+        payments: ['payments', 'paymentsAdd'],
+        users: ['users', 'usersAdd'],
+        tickets: ['tickets', 'ticketsGet', 'ticketsReply', 'ticketsAdd']
+    };
+
+    // Delay settings (in ms) - increased to avoid rate limiting
+    static REQUEST_DELAY = 2000;  // 2 seconds between each request
+    static SECTION_DELAY = 3000;  // 3 seconds between sections
+
     /**
-     * Scan all endpoints for a panel
+     * Get list of available sections
+     */
+    getAvailableSections() {
+        return Object.keys(EndpointScanner.SECTIONS);
+    }
+
+    /**
+     * Scan a specific section only
+     * @param {Object} panel - Panel object
+     * @param {string} section - Section name (orders, refill, cancel, etc.)
+     * @param {string} testOrderId - Optional order ID
+     * @param {string} testTicketId - Optional ticket ID
+     */
+    async scanSection(panel, section, testOrderId = null, testTicketId = null) {
+        const sectionServices = EndpointScanner.SECTIONS[section];
+        if (!sectionServices) {
+            return { error: `Unknown section: ${section}. Available: ${this.getAvailableSections().join(', ')}` };
+        }
+
+        console.log(`[EndpointScanner] Scanning section '${section}' for panel: ${panel.alias || panel.name}`);
+        console.log(`[EndpointScanner] Services to scan: ${sectionServices.join(', ')}`);
+
+        const results = {};
+
+        for (let i = 0; i < sectionServices.length; i++) {
+            const serviceType = sectionServices[i];
+
+            // Check if service requires test IDs
+            const needsOrderId = ['status', 'ordersEditLink', 'ordersSetPartial', 'providerInfo'].includes(serviceType);
+            const needsTicketId = ['ticketsGet', 'ticketsReply'].includes(serviceType);
+
+            if (needsOrderId && !testOrderId) {
+                results[serviceType] = { detected: null, testedPatterns: [], skipped: true, reason: 'Requires order ID' };
+            } else if (needsTicketId && !testTicketId) {
+                results[serviceType] = { detected: null, testedPatterns: [], skipped: true, reason: 'Requires ticket ID' };
+            } else {
+                const testId = needsOrderId ? testOrderId : (needsTicketId ? testTicketId : null);
+                results[serviceType] = await this.scanService(panel, serviceType, testId);
+            }
+
+            // Delay between services within a section
+            if (i < sectionServices.length - 1) {
+                await new Promise(resolve => setTimeout(resolve, 1000));
+            }
+        }
+
+        const detected = Object.entries(results)
+            .filter(([_, v]) => v.detected)
+            .map(([k, v]) => `${k}: ${v.detected}`);
+
+        console.log(`[EndpointScanner] Section '${section}' complete. Detected ${detected.length} endpoints:`, detected);
+
+        return { section, results, detected: detected.length };
+    }
+
+    /**
+     * Scan all endpoints for a panel (with delays between sections)
      * @param {Object} panel - Panel object with adminApiKey
      * @param {string} testOrderId - Optional order ID for testing status endpoint
      * @param {string} testTicketId - Optional ticket ID for testing ticket endpoint
@@ -353,54 +424,37 @@ class EndpointScanner {
      */
     async scanAll(panel, testOrderId = null, testTicketId = null) {
         console.log(`[EndpointScanner] Starting full scan for panel: ${panel.alias || panel.name}`);
+        console.log(`[EndpointScanner] Using delays: ${EndpointScanner.REQUEST_DELAY}ms between requests, ${EndpointScanner.SECTION_DELAY}ms between sections`);
 
-        const results = {
-            // Core Order endpoints
-            orders: await this.scanService(panel, 'orders'),
-            ordersPull: await this.scanService(panel, 'ordersPull'),
-            status: testOrderId ? await this.scanService(panel, 'status', testOrderId) : { detected: null, testedPatterns: [], skipped: true },
-            ordersUpdate: await this.scanService(panel, 'ordersUpdate'),
-            ordersEditLink: testOrderId ? await this.scanService(panel, 'ordersEditLink', testOrderId) : { detected: null, testedPatterns: [], skipped: true },
-            ordersChangeStatus: await this.scanService(panel, 'ordersChangeStatus'),
-            ordersSetPartial: testOrderId ? await this.scanService(panel, 'ordersSetPartial', testOrderId) : { detected: null, testedPatterns: [], skipped: true },
-            ordersRequestCancel: await this.scanService(panel, 'ordersRequestCancel'),
+        const allResults = {};
+        const sections = this.getAvailableSections();
 
-            // Refill endpoints
-            refill: await this.scanService(panel, 'refill'),
-            refillPull: await this.scanService(panel, 'refillPull'),
-            refillChangeStatus: await this.scanService(panel, 'refillChangeStatus'),
+        for (let i = 0; i < sections.length; i++) {
+            const section = sections[i];
+            console.log(`[EndpointScanner] === Scanning section ${i + 1}/${sections.length}: ${section} ===`);
 
-            // Cancel endpoints
-            cancel: await this.scanService(panel, 'cancel'),
-            cancelPull: await this.scanService(panel, 'cancelPull'),
-            cancelReject: await this.scanService(panel, 'cancelReject'),
+            const sectionResult = await this.scanSection(panel, section, testOrderId, testTicketId);
 
-            // Provider info
-            providerInfo: testOrderId ? await this.scanService(panel, 'providerInfo', testOrderId) : { detected: null, testedPatterns: [], skipped: true },
+            // Merge results
+            if (sectionResult.results) {
+                Object.assign(allResults, sectionResult.results);
+            }
 
-            // Payments
-            payments: await this.scanService(panel, 'payments'),
-            paymentsAdd: await this.scanService(panel, 'paymentsAdd'),
-
-            // Users
-            users: await this.scanService(panel, 'users'),
-            usersAdd: await this.scanService(panel, 'usersAdd'),
-
-            // Tickets
-            tickets: await this.scanService(panel, 'tickets'),
-            ticketsGet: testTicketId ? await this.scanService(panel, 'ticketsGet', testTicketId) : { detected: null, testedPatterns: [], skipped: true },
-            ticketsReply: testTicketId ? await this.scanService(panel, 'ticketsReply', testTicketId) : { detected: null, testedPatterns: [], skipped: true },
-            ticketsAdd: await this.scanService(panel, 'ticketsAdd'),
-        };
+            // Delay between sections to avoid rate limiting
+            if (i < sections.length - 1) {
+                console.log(`[EndpointScanner] Waiting ${EndpointScanner.SECTION_DELAY}ms before next section...`);
+                await new Promise(resolve => setTimeout(resolve, EndpointScanner.SECTION_DELAY));
+            }
+        }
 
         // Log summary
-        const detected = Object.entries(results)
+        const detected = Object.entries(allResults)
             .filter(([_, v]) => v.detected)
             .map(([k, v]) => `${k}: ${v.detected}`);
 
-        console.log(`[EndpointScanner] Scan complete. Detected ${detected.length} endpoints:`, detected);
+        console.log(`[EndpointScanner] Full scan complete. Detected ${detected.length} endpoints:`, detected);
 
-        return results;
+        return allResults;
     }
 
     /**
@@ -419,9 +473,8 @@ class EndpointScanner {
         let detectedEndpoint = null;
         let detectedMethod = null;
 
-        // Delay between requests to avoid rate limiting (ms)
-        const REQUEST_DELAY = 500;
-        const RATE_LIMIT_DELAY = 2000;
+        // Use class-level delay settings
+        const REQUEST_DELAY = EndpointScanner.REQUEST_DELAY;
 
         console.log(`[EndpointScanner] Scanning ${serviceType} with ${patterns.length} patterns...`);
 

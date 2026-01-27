@@ -693,6 +693,113 @@ router.patch('/:id/manual-endpoint', async (req, res, next) => {
     }
 });
 
+// GET /api/panels/:id/scan-sections - Get available scan sections
+router.get('/:id/scan-sections', async (req, res, next) => {
+    try {
+        const endpointScanner = require('../services/endpointScanner');
+        const sections = endpointScanner.getAvailableSections();
+
+        successResponse(res, {
+            sections,
+            description: {
+                orders: 'Order endpoints (getOrders, pullOrders, updateOrders, etc.)',
+                refill: 'Refill/resend endpoints',
+                cancel: 'Cancel order endpoints',
+                provider: 'Provider info endpoints',
+                payments: 'Payment management endpoints',
+                users: 'User management endpoints',
+                tickets: 'Ticket/support endpoints'
+            }
+        }, 'Available scan sections');
+    } catch (error) {
+        next(error);
+    }
+});
+
+// POST /api/panels/:id/scan-section - Scan specific section only
+router.post('/:id/scan-section', async (req, res, next) => {
+    try {
+        const { section, testOrderId, testTicketId } = req.body;
+
+        if (!section) {
+            throw new AppError('Section is required. Use GET /scan-sections to see available sections.', 400);
+        }
+
+        const panel = await prisma.smmPanel.findFirst({
+            where: {
+                id: req.params.id,
+                userId: req.user.id
+            }
+        });
+
+        if (!panel) {
+            throw new AppError('Panel not found', 404);
+        }
+
+        if (!panel.supportsAdminApi || !panel.adminApiKey) {
+            throw new AppError('Admin API not configured for this panel', 400);
+        }
+
+        const endpointScanner = require('../services/endpointScanner');
+
+        // Get test order ID if not provided
+        let orderIdToUse = testOrderId;
+        if (!orderIdToUse && ['orders', 'provider'].includes(section)) {
+            const testOrder = await prisma.order.findFirst({
+                where: { panelId: panel.id, userId: req.user.id },
+                orderBy: { createdAt: 'desc' }
+            });
+            orderIdToUse = testOrder?.externalOrderId;
+        }
+
+        console.log(`[SectionScan] Scanning section '${section}' for panel: ${panel.alias}`);
+
+        const result = await endpointScanner.scanSection(panel, section, orderIdToUse, testTicketId);
+
+        if (result.error) {
+            throw new AppError(result.error, 400);
+        }
+
+        // Process results for response
+        const processedResults = {};
+        const detectedEndpoints = [];
+
+        if (result.results) {
+            for (const [serviceName, scanResult] of Object.entries(result.results)) {
+                if (scanResult.detected) {
+                    processedResults[serviceName] = {
+                        status: 'success',
+                        endpoint: scanResult.detected,
+                        method: scanResult.method
+                    };
+                    detectedEndpoints.push(`${serviceName}: ${scanResult.detected}`);
+                } else if (scanResult.skipped) {
+                    processedResults[serviceName] = {
+                        status: 'skipped',
+                        reason: scanResult.reason || 'Requires test data'
+                    };
+                } else {
+                    processedResults[serviceName] = {
+                        status: 'not_found',
+                        patternsTried: scanResult.patternsTried || 0
+                    };
+                }
+            }
+        }
+
+        successResponse(res, {
+            section: result.section,
+            results: processedResults,
+            detected: detectedEndpoints,
+            detectedCount: result.detected || 0,
+            message: `Section '${section}' scan complete. Found ${result.detected || 0} endpoints.`
+        }, `Section scan complete: ${section}`);
+
+    } catch (error) {
+        next(error);
+    }
+});
+
 // POST /api/panels/:id/sync-all - Smart Endpoint Scanner & Comprehensive Sync
 router.post('/:id/sync-all', async (req, res, next) => {
     try {

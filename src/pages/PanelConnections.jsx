@@ -34,6 +34,22 @@ const PanelConnections = () => {
     const [editingService, setEditingService] = useState(null);
     const [manualEndpoint, setManualEndpoint] = useState('');
 
+    // Section scanning state
+    const [selectedSection, setSelectedSection] = useState('');
+    const [scanningSection, setScanningSection] = useState(false);
+    const [sectionResults, setSectionResults] = useState(null);
+
+    // Available sections
+    const sectionOptions = [
+        { value: 'orders', label: 'Orders', description: 'Get/Pull/Update orders' },
+        { value: 'refill', label: 'Refill', description: 'Resend/refill endpoints' },
+        { value: 'cancel', label: 'Cancel', description: 'Cancel order endpoints' },
+        { value: 'provider', label: 'Provider', description: 'Provider info' },
+        { value: 'payments', label: 'Payments', description: 'Payment endpoints' },
+        { value: 'users', label: 'Users', description: 'User management' },
+        { value: 'tickets', label: 'Tickets', description: 'Support tickets' }
+    ];
+
     // Service definitions with icons and labels
     const serviceDefinitions = {
         // Core Order endpoints
@@ -164,6 +180,59 @@ const PanelConnections = () => {
             alert('Error scanning panel: ' + (error.response?.data?.error?.message || error.message));
         } finally {
             setScanning(false);
+        }
+    };
+
+    // Scan a specific section only (to avoid rate limiting)
+    const handleScanSection = async () => {
+        if (!selectedPanel || !selectedSection) {
+            alert('Please select a section to scan');
+            return;
+        }
+
+        setScanningSection(true);
+        setSectionResults(null);
+
+        try {
+            console.log(`[PanelConnections] Scanning section: ${selectedSection}`);
+
+            const response = await api.post(`/panels/${selectedPanel.id}/scan-section`, {
+                section: selectedSection
+            });
+
+            console.log('[PanelConnections] Section scan response:', response.data);
+
+            const data = response.data?.data;
+            setSectionResults(data);
+
+            // Show results
+            if (data?.detected?.length > 0) {
+                alert(`✅ Section "${selectedSection}" scanned!\n\nDetected ${data.detectedCount} endpoints:\n${data.detected.join('\n')}`);
+            } else {
+                alert(`⚠️ Section "${selectedSection}" scanned.\n\nNo endpoints detected. This section may not be supported by this panel.`);
+            }
+
+            // Reload panel to get updated results
+            const panelsResponse = await api.get('/panels');
+            let panelList = [];
+            if (panelsResponse.data?.data) {
+                panelList = Array.isArray(panelsResponse.data.data) ? panelsResponse.data.data : [];
+            } else if (Array.isArray(panelsResponse.data)) {
+                panelList = panelsResponse.data;
+            }
+            setPanels(panelList);
+
+            const updatedPanel = panelList.find(p => p.id === selectedPanel.id);
+            if (updatedPanel) {
+                setSelectedPanel(updatedPanel);
+                loadPanelScanResults(updatedPanel);
+            }
+
+        } catch (error) {
+            console.error('[PanelConnections] Error scanning section:', error);
+            alert('Error scanning section: ' + (error.response?.data?.error?.message || error.message));
+        } finally {
+            setScanningSection(false);
         }
     };
 
@@ -424,6 +493,53 @@ const PanelConnections = () => {
                                     </div>
                                 </div>
                                 <div className="panel-actions">
+                                    {/* Section Scan Controls */}
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginRight: '16px' }}>
+                                        <select
+                                            value={selectedSection}
+                                            onChange={(e) => setSelectedSection(e.target.value)}
+                                            style={{
+                                                padding: '8px 12px',
+                                                borderRadius: '8px',
+                                                border: '1px solid rgba(255,255,255,0.2)',
+                                                background: 'rgba(255,255,255,0.1)',
+                                                color: '#fff',
+                                                fontSize: '14px',
+                                                cursor: 'pointer'
+                                            }}
+                                            disabled={scanningSection}
+                                        >
+                                            <option value="" style={{ background: '#1a1a2e' }}>Select Section...</option>
+                                            {sectionOptions.map(opt => (
+                                                <option key={opt.value} value={opt.value} style={{ background: '#1a1a2e' }}>
+                                                    {opt.label}
+                                                </option>
+                                            ))}
+                                        </select>
+                                        <button
+                                            className="btn-scan"
+                                            onClick={handleScanSection}
+                                            disabled={scanningSection || !selectedSection}
+                                            style={{
+                                                background: selectedSection ? 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)' : 'rgba(255,255,255,0.1)',
+                                                opacity: selectedSection ? 1 : 0.5
+                                            }}
+                                        >
+                                            {scanningSection ? (
+                                                <>
+                                                    <Loader2 className="animate-spin" size={16} />
+                                                    Scanning...
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <RefreshCw size={16} />
+                                                    Scan Section
+                                                </>
+                                            )}
+                                        </button>
+                                    </div>
+
+                                    {/* Scan All Button */}
                                     <button
                                         className="btn-scan"
                                         onClick={handleScanAll}
@@ -432,12 +548,12 @@ const PanelConnections = () => {
                                         {scanning ? (
                                             <>
                                                 <Loader2 className="animate-spin" size={18} />
-                                                Scanning...
+                                                Scanning All...
                                             </>
                                         ) : (
                                             <>
                                                 <Zap size={18} />
-                                                Scan All Endpoints
+                                                Scan All
                                             </>
                                         )}
                                     </button>
