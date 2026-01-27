@@ -200,9 +200,10 @@ const PanelConnections = () => {
                 section: selectedSection
             });
 
-            console.log('[PanelConnections] Section scan response:', response.data);
+            console.log('[PanelConnections] Section scan response:', response);
 
-            const data = response.data?.data;
+            // Note: api interceptor already returns response.data, so response IS the data
+            const data = response?.data;
             setSectionResults(data);
 
             // Show results
