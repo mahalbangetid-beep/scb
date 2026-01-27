@@ -355,9 +355,10 @@ class EndpointScanner {
         tickets: ['tickets', 'ticketsGet', 'ticketsReply', 'ticketsAdd']
     };
 
-    // Delay settings (in ms) - increased to avoid rate limiting
-    static REQUEST_DELAY = 2000;  // 2 seconds between each request
-    static SECTION_DELAY = 3000;  // 3 seconds between sections
+    // Delay settings (in ms) - AGGRESSIVE to avoid rate limiting
+    static REQUEST_DELAY = 1000;   // 1 second between each pattern attempt within a service
+    static ENDPOINT_DELAY = 25000; // 25 seconds between each endpoint/service type scan
+    static SECTION_DELAY = 30000;  // 30 seconds between sections
 
     /**
      * Get list of available sections
@@ -400,9 +401,10 @@ class EndpointScanner {
                 results[serviceType] = await this.scanService(panel, serviceType, testId);
             }
 
-            // Delay between services within a section
+            // 25 second delay between each endpoint scan to avoid rate limiting
             if (i < sectionServices.length - 1) {
-                await new Promise(resolve => setTimeout(resolve, 1000));
+                console.log(`[EndpointScanner] Waiting ${EndpointScanner.ENDPOINT_DELAY / 1000}s before next endpoint...`);
+                await new Promise(resolve => setTimeout(resolve, EndpointScanner.ENDPOINT_DELAY));
             }
         }
 
@@ -442,7 +444,7 @@ class EndpointScanner {
 
             // Delay between sections to avoid rate limiting
             if (i < sections.length - 1) {
-                console.log(`[EndpointScanner] Waiting ${EndpointScanner.SECTION_DELAY}ms before next section...`);
+                console.log(`[EndpointScanner] Waiting ${EndpointScanner.SECTION_DELAY / 1000}s before next section...`);
                 await new Promise(resolve => setTimeout(resolve, EndpointScanner.SECTION_DELAY));
             }
         }
