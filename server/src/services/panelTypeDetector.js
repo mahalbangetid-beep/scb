@@ -10,40 +10,80 @@ const { decrypt } = require('../utils/encryption');
 
 class PanelTypeDetector {
     // Predefined endpoints for V1 (Rental Panel style)
+    // Based on Admin API v1 Documentation.html
     static V1_ENDPOINTS = {
+        // ========== ORDER MANAGEMENT ==========
         orders: '/adminapi/v1?action=getOrders',
-        status: '/adminapi/v1?action=getOrders-by-id',
+        ordersPull: null, // Not supported in V1 - use getOrders instead
+        status: '/adminapi/v1?action=getOrders-by-id', // Gets single order with provider info
         ordersUpdate: '/adminapi/v1?action=updateOrders',
-        ordersChangeStatus: '/adminapi/v1?action=setCompleted',
+        ordersEditLink: null, // Not supported in V1
+        ordersChangeStatus: '/adminapi/v1?action=setCompleted', // Also: setInprogress, setCanceled, setPartial
         ordersSetPartial: '/adminapi/v1?action=setPartial',
-        refill: '/refill',
-        cancel: null, // Not supported typically
-        paymentsAdd: '/adminapi/v1?action=addPayment',
+        ordersRequestCancel: null, // Not supported in V1 - use setCanceled directly
+
+        // ========== REFILL ==========
+        refill: null, // Not supported in V1
+        refillPull: null, // Not supported in V1
+        refillChangeStatus: null, // Not supported in V1
+
+        // ========== CANCEL ==========
+        cancel: '/adminapi/v1?action=setCanceled', // Direct cancel via status change
+        cancelPull: null, // Not supported in V1
+        cancelReject: null, // Not supported in V1
+
+        // ========== PROVIDER INFO ==========
+        providerInfo: '/adminapi/v1?action=getMassProviderData', // Get provider data for orders
+
+        // ========== PAYMENTS ==========
+        payments: null, // Not supported in V1 - no getPayments
+        paymentsAdd: '/adminapi/v1?action=addPayment', // Also: deductPayment
+
+        // ========== USERS ==========
         users: '/adminapi/v1?action=getUser',
+        usersAdd: null, // Not supported in V1 - no addUser
+
+        // ========== TICKETS ==========
+        tickets: null, // Not supported in V1 - no getTickets
+        ticketsGet: null, // Not supported in V1 - no getTicket
+        ticketsReply: null, // Not supported in V1 - no replyTicket
         ticketsAdd: '/adminapi/v1?action=addTicket',
     };
 
     // Predefined endpoints for V2 (Perfect Panel style)
     static V2_ENDPOINTS = {
+        // ========== ORDER MANAGEMENT ==========
         orders: '/adminapi/v2/orders',
         ordersPull: '/adminapi/v2/orders/pull',
         status: '/adminapi/v2/orders/{id}',
         ordersUpdate: '/adminapi/v2/orders/update',
+        ordersEditLink: '/adminapi/v2/orders/{id}/edit-link',
         ordersChangeStatus: '/adminapi/v2/orders/{id}/change-status',
         ordersSetPartial: '/adminapi/v2/orders/{id}/set-partial',
-        ordersEditLink: '/adminapi/v2/orders/{id}/edit-link',
         ordersRequestCancel: '/adminapi/v2/orders/request-cancel',
+
+        // ========== REFILL ==========
         refill: '/adminapi/v2/orders/resend',
         refillPull: '/adminapi/v2/refill/pull',
         refillChangeStatus: '/adminapi/v2/refill/change-status',
+
+        // ========== CANCEL ==========
         cancel: '/adminapi/v2/orders/cancel',
         cancelPull: '/adminapi/v2/cancel/pull',
         cancelReject: '/adminapi/v2/cancel/reject',
+
+        // ========== PROVIDER INFO ==========
         providerInfo: '/adminapi/v2/orders/{id}?include=provider',
+
+        // ========== PAYMENTS ==========
         payments: '/adminapi/v2/payments',
         paymentsAdd: '/adminapi/v2/payments/add',
+
+        // ========== USERS ==========
         users: '/adminapi/v2/users',
         usersAdd: '/adminapi/v2/users/add',
+
+        // ========== TICKETS ==========
         tickets: '/adminapi/v2/tickets',
         ticketsGet: '/adminapi/v2/tickets/{id}',
         ticketsReply: '/adminapi/v2/tickets/{id}/reply',
@@ -157,16 +197,20 @@ class PanelTypeDetector {
             if (endpoint) {
                 results[serviceName] = {
                     detected: endpoint,
-                    method: endpoint.includes('?action=') ? 'GET' : 'GET', // Most are GET
+                    method: endpoint.includes('?action=') ? 'GET' : 'GET',
                     testedPatterns: [],
                     autoDetected: true,
                     panelType
                 };
             } else {
+                // Mark as not supported (not just skipped)
                 results[serviceName] = {
                     detected: null,
                     skipped: true,
-                    reason: 'Not supported by this panel type'
+                    notSupported: true,
+                    reason: `Not available in ${panelType.toUpperCase()} API`,
+                    autoDetected: true,
+                    panelType
                 };
             }
         }
@@ -193,11 +237,13 @@ class PanelTypeDetector {
         }
 
         const scanResults = this.generateScanResults(panelType);
+        const supportedCount = Object.values(scanResults).filter(r => r.detected).length;
+        const notSupportedCount = Object.values(scanResults).filter(r => r.notSupported).length;
 
         return {
             panelType,
             scanResults,
-            message: `Detected as ${panelType.toUpperCase()} panel. ${Object.keys(scanResults).filter(k => scanResults[k].detected).length} endpoints auto-configured.`
+            message: `Detected as ${panelType.toUpperCase()} panel. ${supportedCount} endpoints available, ${notSupportedCount} not supported by this API version.`
         };
     }
 }

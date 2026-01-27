@@ -270,6 +270,8 @@ const PanelConnections = () => {
         const result = scanResults[serviceName];
         if (!result) return { status: 'not_tested', endpoint: null };
 
+        // Check if not supported by this API version
+        if (result.notSupported) return { status: 'not_supported', endpoint: null, reason: result.reason };
         if (result.skipped) return { status: 'skipped', endpoint: null };
         if (result.detected) return { status: 'connected', endpoint: result.detected };
         return { status: 'failed', endpoint: null };
@@ -379,6 +381,12 @@ const PanelConnections = () => {
                 color: '#6b7280', // Gray
                 bg: '#6b7280',
                 label: 'Not Tested'
+            },
+            not_supported: {
+                icon: XCircle,
+                color: '#9333ea', // Purple
+                bg: '#9333ea',
+                label: 'Not Supported'
             }
         };
 
@@ -617,8 +625,10 @@ const PanelConnections = () => {
                                                             {endpoint ? (
                                                                 <code className="endpoint-display">{endpoint}</code>
                                                             ) : (
-                                                                <span className="no-endpoint">
-                                                                    {status === 'skipped' ? 'Requires test data' : 'Not detected'}
+                                                                <span className="no-endpoint" style={status === 'not_supported' ? { color: '#9333ea' } : {}}>
+                                                                    {status === 'skipped' ? 'Requires test data' :
+                                                                        status === 'not_supported' ? 'Not available in this API version' :
+                                                                            'Not detected'}
                                                                 </span>
                                                             )}
                                                         </div>
