@@ -310,7 +310,7 @@ export default function MyStaff() {
 
             {/* Modal */}
             {showModal && (
-                <div className="modal-overlay" onClick={() => setShowModal(false)}>
+                <div className="modal-overlay open" onClick={() => setShowModal(false)}>
                     <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '550px' }}>
                         <div className="modal-header">
                             <h3>{editingStaff ? 'Edit Staff Permissions' : 'Add Staff Member'}</h3>

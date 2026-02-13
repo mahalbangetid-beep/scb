@@ -16,7 +16,8 @@ import {
     X,
     Loader2,
     Link2,
-    Settings
+    Settings,
+    Power
 } from 'lucide-react'
 import api from '../services/api'
 import { formatDistanceToNow } from 'date-fns'
@@ -202,6 +203,19 @@ export default function Devices() {
         }
     }
 
+    const handleToggleDevice = async (id) => {
+        try {
+            const res = await api.patch(`/devices/${id}/toggle`)
+            // Optimistic update
+            setDevices(prev => prev.map(d =>
+                d.id === id ? { ...d, isActive: res.data?.isActive ?? !d.isActive } : d
+            ))
+        } catch (error) {
+            console.error('Failed to toggle device:', error)
+            alert(error?.error?.message || 'Failed to toggle device')
+        }
+    }
+
     const handleGetQR = async (id) => {
         setCurrentDeviceId(id)
         setNewDeviceName(devices.find(d => d.id === id)?.name || '')
@@ -335,8 +349,11 @@ export default function Devices() {
                             borderRadius: 'var(--radius-lg)',
                             padding: 'var(--spacing-lg)',
                             border: device.status === 'connected'
-                                ? '1px solid rgba(37, 211, 102, 0.3)'
+                                ? device.isActive !== false
+                                    ? '1px solid rgba(37, 211, 102, 0.3)'
+                                    : '1px solid rgba(251, 191, 36, 0.3)'
                                 : '1px solid var(--border-color)',
+                            opacity: device.isActive === false ? 0.7 : 1,
                             transition: 'all 0.2s ease'
                         }}
                     >
@@ -398,26 +415,61 @@ export default function Devices() {
                                     )}
                                 </div>
                             </div>
-                            <div style={{
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '6px',
-                                padding: '6px 12px',
-                                borderRadius: '20px',
-                                fontSize: '0.75rem',
-                                fontWeight: 500,
-                                background: device.status === 'connected'
-                                    ? 'rgba(37, 211, 102, 0.15)'
-                                    : 'rgba(239, 68, 68, 0.1)',
-                                color: device.status === 'connected' ? '#25D366' : '#ef4444'
-                            }}>
-                                <span style={{
-                                    width: '6px',
-                                    height: '6px',
-                                    borderRadius: '50%',
-                                    background: device.status === 'connected' ? '#25D366' : '#ef4444'
-                                }}></span>
-                                {device.status === 'connected' ? 'Online' : 'Offline'}
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                {/* ON/OFF Toggle */}
+                                {device.status === 'connected' && (
+                                    <button
+                                        onClick={() => handleToggleDevice(device.id)}
+                                        title={device.isActive !== false ? 'Turn Bot OFF' : 'Turn Bot ON'}
+                                        style={{
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            width: '32px',
+                                            height: '32px',
+                                            borderRadius: '8px',
+                                            border: 'none',
+                                            cursor: 'pointer',
+                                            background: device.isActive !== false
+                                                ? 'rgba(37, 211, 102, 0.15)'
+                                                : 'rgba(239, 68, 68, 0.1)',
+                                            color: device.isActive !== false ? '#25D366' : '#ef4444',
+                                            transition: 'all 0.2s ease'
+                                        }}
+                                    >
+                                        <Power size={14} />
+                                    </button>
+                                )}
+                                {/* Status Badge */}
+                                <div style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '6px',
+                                    padding: '6px 12px',
+                                    borderRadius: '20px',
+                                    fontSize: '0.75rem',
+                                    fontWeight: 500,
+                                    background: device.status === 'connected'
+                                        ? device.isActive !== false
+                                            ? 'rgba(37, 211, 102, 0.15)'
+                                            : 'rgba(251, 191, 36, 0.15)'
+                                        : 'rgba(239, 68, 68, 0.1)',
+                                    color: device.status === 'connected'
+                                        ? device.isActive !== false ? '#25D366' : '#f59e0b'
+                                        : '#ef4444'
+                                }}>
+                                    <span style={{
+                                        width: '6px',
+                                        height: '6px',
+                                        borderRadius: '50%',
+                                        background: device.status === 'connected'
+                                            ? device.isActive !== false ? '#25D366' : '#f59e0b'
+                                            : '#ef4444'
+                                    }}></span>
+                                    {device.status === 'connected'
+                                        ? device.isActive !== false ? 'Online' : 'Bot OFF'
+                                        : 'Offline'}
+                                </div>
                             </div>
                         </div>
 

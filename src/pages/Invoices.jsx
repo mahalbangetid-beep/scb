@@ -253,7 +253,7 @@ const Invoices = () => {
 
             {/* Invoice Detail Modal */}
             {showModal && selectedInvoice && (
-                <div className="modal-overlay" onClick={() => setShowModal(false)}>
+                <div className="modal-overlay open" onClick={() => setShowModal(false)}>
                     <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 550 }}>
                         <div className="modal-header">
                             <h3><FileText size={20} /> Invoice {selectedInvoice.invoiceNumber}</h3>
