@@ -6,6 +6,7 @@ import {
     Shield,
     Globe,
     Moon,
+    Sun,
     Palette,
     Key,
     Database,
@@ -28,6 +29,7 @@ import {
     Zap
 } from 'lucide-react'
 import api from '../services/api'
+import { useTheme } from '../contexts/ThemeContext'
 
 const settingsSections = [
     { id: 'general', label: 'General', icon: SettingsIcon },
@@ -44,6 +46,7 @@ export default function Settings() {
     const [submitting, setSubmitting] = useState(false)
     const [saved, setSaved] = useState(false)
     const [error, setError] = useState(null)
+    const { theme, toggleTheme, isDark } = useTheme()
 
     // Account state
     const [profile, setProfile] = useState({ name: '', email: '', avatar: '' })
@@ -355,15 +358,45 @@ export default function Settings() {
                                 <p className="form-hint">Currently only English is supported</p>
                             </div>
                             <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: 'var(--spacing-lg)', marginTop: 'var(--spacing-lg)' }}>
-                                <div className="toggle-wrapper" style={{ marginBottom: 'var(--spacing-md)' }}>
-                                    <label className="toggle">
-                                        <input type="checkbox" checked={generalSettings.darkMode === 'true'} onChange={e => setGeneralSettings({ ...generalSettings, darkMode: e.target.checked ? 'true' : 'false' })} />
-                                        <span className="slider"></span>
-                                    </label>
-                                    <div>
-                                        <div style={{ fontWeight: 500 }}>Dark Mode</div>
-                                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Use dark theme throughout the application</div>
+                                <h4 style={{ marginBottom: 'var(--spacing-md)', display: 'flex', alignItems: 'center', gap: 'var(--spacing-sm)' }}>
+                                    {isDark ? <Moon size={18} /> : <Sun size={18} />} Appearance
+                                </h4>
+                                <div style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'space-between',
+                                    padding: 'var(--spacing-md)',
+                                    background: 'var(--bg-tertiary)',
+                                    borderRadius: 'var(--radius-lg)',
+                                    marginBottom: 'var(--spacing-md)'
+                                }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--spacing-md)' }}>
+                                        <div style={{
+                                            width: '40px', height: '40px', borderRadius: 'var(--radius-md)',
+                                            background: isDark ? 'rgba(245, 158, 11, 0.15)' : 'rgba(99, 102, 241, 0.15)',
+                                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                            color: isDark ? 'var(--warning)' : '#6366f1'
+                                        }}>
+                                            {isDark ? <Moon size={20} /> : <Sun size={20} />}
+                                        </div>
+                                        <div>
+                                            <div style={{ fontWeight: 500 }}>{isDark ? 'Dark Mode' : 'Light Mode'}</div>
+                                            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                                                {isDark
+                                                    ? 'Using dark theme - easier on the eyes'
+                                                    : 'Using light theme - clean and bright'
+                                                }
+                                            </div>
+                                        </div>
                                     </div>
+                                    <button
+                                        className="btn btn-secondary btn-sm"
+                                        onClick={toggleTheme}
+                                        style={{ gap: 'var(--spacing-xs)' }}
+                                    >
+                                        {isDark ? <Sun size={14} /> : <Moon size={14} />}
+                                        {isDark ? 'Switch to Light' : 'Switch to Dark'}
+                                    </button>
                                 </div>
                             </div>
                         </div>

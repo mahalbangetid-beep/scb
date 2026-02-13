@@ -20,6 +20,7 @@ export default function SmmPanels() {
     // Smart Detection States
     const [wizardStep, setWizardStep] = useState(1) // 1: Input, 2: Scanning, 3: Success/Config
     const [smartForm, setSmartForm] = useState({
+        panelType: 'PERFECT_PANEL', // PERFECT_PANEL (V2) or RENTAL (V1)
         url: '',
         adminApiKey: '',
         name: '',
@@ -96,7 +97,8 @@ export default function SmmPanels() {
         try {
             const res = await api.post('/panels/detect', {
                 url: smartForm.url,
-                adminApiKey: smartForm.adminApiKey
+                adminApiKey: smartForm.adminApiKey,
+                panelType: smartForm.panelType
             })
 
             clearInterval(progressInterval)
@@ -292,6 +294,7 @@ export default function SmmPanels() {
 
     const resetSmartForm = () => {
         setSmartForm({
+            panelType: 'PERFECT_PANEL',
             url: '',
             adminApiKey: '',
             name: '',
@@ -574,6 +577,40 @@ export default function SmmPanels() {
                                 <div className="wizard-form">
                                     <div className="form-group">
                                         <label className="form-label">
+                                            <Database size={16} />
+                                            Panel Type *
+                                        </label>
+                                        <div className="panel-type-selector">
+                                            <button
+                                                type="button"
+                                                className={`panel-type-btn ${smartForm.panelType === 'PERFECT_PANEL' ? 'active' : ''}`}
+                                                onClick={() => setSmartForm({ ...smartForm, panelType: 'PERFECT_PANEL' })}
+                                            >
+                                                <div className="panel-type-icon">V2</div>
+                                                <div className="panel-type-info">
+                                                    <span className="panel-type-name">Perfect Panel</span>
+                                                    <span className="panel-type-desc">Admin API v2 (Header Auth)</span>
+                                                </div>
+                                                {smartForm.panelType === 'PERFECT_PANEL' && <CheckCircle2 size={18} className="check-icon" />}
+                                            </button>
+                                            <button
+                                                type="button"
+                                                className={`panel-type-btn ${smartForm.panelType === 'RENTAL' ? 'active' : ''}`}
+                                                onClick={() => setSmartForm({ ...smartForm, panelType: 'RENTAL' })}
+                                            >
+                                                <div className="panel-type-icon">V1</div>
+                                                <div className="panel-type-info">
+                                                    <span className="panel-type-name">Rental Panel</span>
+                                                    <span className="panel-type-desc">Admin API v1 (Key Param)</span>
+                                                </div>
+                                                {smartForm.panelType === 'RENTAL' && <CheckCircle2 size={18} className="check-icon" />}
+                                            </button>
+                                        </div>
+                                        <p className="form-hint">Select your panel type for optimized detection</p>
+                                    </div>
+
+                                    <div className="form-group">
+                                        <label className="form-label">
                                             <Globe size={16} />
                                             URL Panel *
                                         </label>
@@ -583,7 +620,6 @@ export default function SmmPanels() {
                                             placeholder="https://yourpanel.com"
                                             value={smartForm.url}
                                             onChange={(e) => setSmartForm({ ...smartForm, url: e.target.value })}
-                                            autoFocus
                                         />
                                         <p className="form-hint">Enter base panel URL (without /api/v2)</p>
                                     </div>
@@ -790,6 +826,9 @@ export default function SmmPanels() {
                                                 )}
                                                 {scanResult?.errorType === 'DETECTION_FAILED' && (
                                                     <li>API format not recognized - use manual configuration</li>
+                                                )}
+                                                {scanResult?.errorType === 'CLOUDFLARE_PROTECTED' && (
+                                                    <li>Panel is protected by Cloudflare - Admin API cannot be accessed remotely</li>
                                                 )}
                                                 <li>Please double-check your credentials</li>
                                             </ul>

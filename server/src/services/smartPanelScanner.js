@@ -12,14 +12,14 @@ const axios = require('axios');
 
 class SmartPanelScanner {
     constructor() {
-        // Timeout per request (10 seconds)
-        this.requestTimeout = 10000;
+        // Timeout per request (5 seconds - reduced for faster failure)
+        this.requestTimeout = 5000;
 
-        // Maximum total scanning time (60 seconds)
-        this.maxScanTime = 60000;
+        // Maximum total scanning time (30 seconds)
+        this.maxScanTime = 30000;
 
-        // Delay between requests (500ms to avoid rate limiting)
-        this.requestDelay = 500;
+        // Delay between requests (300ms to speed up scanning)
+        this.requestDelay = 300;
 
         // Admin API patterns - comprehensive list from Admin API v1 & v2 documentation
         // Supports both X-Api-Key header auth (v2) and key param auth (v1)
@@ -263,6 +263,14 @@ class SmartPanelScanner {
                 data = JSON.parse(data);
             } catch {
                 // Not JSON - likely HTML error page
+                // Check for Cloudflare protection
+                if (data.includes('Just a moment') || data.includes('Checking your browser') || data.includes('cf-browser-verification')) {
+                    return {
+                        success: false,
+                        errorType: 'CLOUDFLARE_PROTECTED',
+                        error: 'Panel Admin API is protected by Cloudflare. Use Manual Configuration instead.'
+                    };
+                }
                 if (data.includes('<!DOCTYPE') || data.includes('<html')) {
                     return {
                         success: false,
@@ -543,25 +551,45 @@ class SmartPanelScanner {
 
 
     /**
-     * Main scanning function - tries all Admin API configurations until success
+     * Main scanning function - tries Admin API configurations based on panel type
      * 
      * @param {string} url - Panel URL
      * @param {string} apiKey - Admin API Key
+     * @param {string|null} panelType - 'PERFECT_PANEL' (V2) or 'RENTAL' (V1) or null for auto
      * @param {function|null} onProgress - Optional callback for progress updates
      * @returns {Promise<object>} Scan result
      */
-    async scan(url, apiKey, onProgress = null) {
+    async scan(url, apiKey, panelType = null, onProgress = null) {
         const startTime = Date.now();
         const baseUrl = this.normalizeUrl(url);
 
         console.log(`[SmartScanner] Starting Admin API scan for: ${baseUrl}`);
-        console.log(`[SmartScanner] Testing ${this.scanPatterns.length} configurations...`);
+        console.log(`[SmartScanner] Panel Type: ${panelType || 'auto-detect'}`);
+
+        // Get patterns based on panel type
+        let patternsToTest = this.scanPatterns;
+
+        if (panelType === 'RENTAL') {
+            // V1 patterns first (isV1: true), then fallback to V2
+            const v1Patterns = this.scanPatterns.filter(p => p.isV1 === true);
+            const v2Patterns = this.scanPatterns.filter(p => p.isV1 !== true);
+            patternsToTest = [...v1Patterns, ...v2Patterns];
+            console.log(`[SmartScanner] RENTAL mode: Testing ${v1Patterns.length} V1 patterns first, then ${v2Patterns.length} V2 patterns`);
+        } else if (panelType === 'PERFECT_PANEL') {
+            // V2 patterns first (no isV1 flag), then fallback to V1
+            const v2Patterns = this.scanPatterns.filter(p => p.isV1 !== true);
+            const v1Patterns = this.scanPatterns.filter(p => p.isV1 === true);
+            patternsToTest = [...v2Patterns, ...v1Patterns];
+            console.log(`[SmartScanner] PERFECT_PANEL mode: Testing ${v2Patterns.length} V2 patterns first, then ${v1Patterns.length} V1 patterns`);
+        }
+
+        console.log(`[SmartScanner] Testing ${patternsToTest.length} configurations...`);
 
         const attempts = [];
         let connectionErrorCount = 0;
 
-        for (let i = 0; i < this.scanPatterns.length; i++) {
-            const pattern = this.scanPatterns[i];
+        for (let i = 0; i < patternsToTest.length; i++) {
+            const pattern = patternsToTest[i];
 
             // Check max scan time
             if (Date.now() - startTime > this.maxScanTime) {
@@ -573,9 +601,9 @@ class SmartPanelScanner {
             if (onProgress) {
                 onProgress({
                     current: i + 1,
-                    total: this.scanPatterns.length,
+                    total: patternsToTest.length,
                     testing: `${pattern.method} ${baseUrl}${pattern.endpoint}`,
-                    percentage: Math.round(((i + 1) / this.scanPatterns.length) * 100)
+                    percentage: Math.round(((i + 1) / patternsToTest.length) * 100)
                 });
             }
 
@@ -615,6 +643,18 @@ class SmartPanelScanner {
                 };
             }
 
+            // CLOUDFLARE PROTECTED - stop scanning immediately
+            if (result.errorType === 'CLOUDFLARE_PROTECTED') {
+                console.log(`[SmartScanner] ❌ Panel is protected by Cloudflare`);
+                return {
+                    success: false,
+                    errorType: 'CLOUDFLARE_PROTECTED',
+                    error: 'Panel Admin API is protected by Cloudflare and cannot be accessed remotely. Please use Manual Configuration instead.',
+                    attempts: attempts.length,
+                    scanTime: Date.now() - startTime
+                };
+            }
+
             // CONNECTION ERROR counter
             if (result.errorType === 'CONNECTION_ERROR') {
                 connectionErrorCount++;
@@ -631,7 +671,7 @@ class SmartPanelScanner {
             }
 
             // Add delay between requests
-            if (i < this.scanPatterns.length - 1) {
+            if (i < patternsToTest.length - 1) {
                 await this.delay(this.requestDelay);
             }
         }

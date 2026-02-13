@@ -41,7 +41,7 @@ class CommandHandlerService {
      * @returns {Object} - { success, responses[], summary }
      */
     async processCommand(params) {
-        const { userId, panelId, message, senderNumber, platform = 'WHATSAPP', isGroup = false } = params;
+        const { userId, panelId, panelIds, message, senderNumber, platform = 'WHATSAPP', isGroup = false } = params;
 
         // Parse the command
         const parsed = commandParser.parse(message);
@@ -100,13 +100,14 @@ class CommandHandlerService {
             try {
                 const result = await this.processOrderCommand({
                     userId,
-                    panelId,    // Pass panelId for panel-specific order lookup
+                    panelId,
+                    panelIds,   // Pass panelIds for multi-panel order lookup
                     orderId,
                     command,
                     senderNumber,
-                    platform,   // Pass platform for conversation state
+                    platform,
                     isGroup,
-                    skipIndividualForward: orderIds.length > 1  // Skip individual forward if bulk
+                    skipIndividualForward: orderIds.length > 1
                 });
 
                 responses.push({
@@ -179,19 +180,20 @@ class CommandHandlerService {
      * Process a single order command
      */
     async processOrderCommand(params) {
-        const { userId, panelId, orderId, command, senderNumber, platform = 'WHATSAPP', isGroup = false } = params;
+        const { userId, panelId, panelIds, orderId, command, senderNumber, platform = 'WHATSAPP', isGroup = false } = params;
 
-        // Build order query - filter by panelId if provided
+        // Build order query - filter by panelId(s) if provided
         const whereClause = {
             externalOrderId: orderId,
             userId
         };
 
-        // If panelId is specified, only search in that panel's orders
-        // If panelId is null, search across ALL user's panels (backward compatible)
-        if (panelId) {
-            whereClause.panelId = panelId;
-            console.log(`[CommandHandler] Looking for order ${orderId} in panel ${panelId}`);
+        // Multi-panel support: use panelIds array if available, fallback to single panelId
+        const effectivePanelIds = (panelIds && panelIds.length > 0) ? panelIds : (panelId ? [panelId] : []);
+
+        if (effectivePanelIds.length > 0) {
+            whereClause.panelId = { in: effectivePanelIds };
+            console.log(`[CommandHandler] Looking for order ${orderId} in ${effectivePanelIds.length} panel(s)`);
         } else {
             console.log(`[CommandHandler] Looking for order ${orderId} across all user panels (no panelId specified)`);
         }
@@ -219,14 +221,14 @@ class CommandHandlerService {
         if (!order) {
             console.log(`[CommandHandler] Order ${orderId} not in DB, attempting API fetch...`);
 
-            // Get user's panels to search
-            const panelsToSearch = panelId
-                ? [await prisma.smmPanel.findUnique({ where: { id: panelId } })]
+            // Get user's panels to search (multi-panel aware)
+            const panelsToSearch = effectivePanelIds.length > 0
+                ? await prisma.smmPanel.findMany({ where: { id: { in: effectivePanelIds } } })
                 : await prisma.smmPanel.findMany({ where: { userId, isActive: true } });
 
             console.log(`[CommandHandler] Searching in ${panelsToSearch.filter(p => p).length} panels for order ${orderId}`);
-            if (panelId) {
-                console.log(`[CommandHandler] Using specific panelId: ${panelId}`);
+            if (effectivePanelIds.length > 0) {
+                console.log(`[CommandHandler] Using specific panelIds: ${effectivePanelIds.join(', ')}`);
             }
 
             for (const panel of panelsToSearch) {

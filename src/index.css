@@ -99,6 +99,83 @@
   --sidebar-collapsed-width: 80px;
 }
 
+/* ========================================
+   Light Theme Override
+======================================== */
+
+[data-theme="light"] {
+  /* Background - Clean whites and light grays */
+  --bg-primary: #f8f9fb;
+  --bg-secondary: #ffffff;
+  --bg-tertiary: #f0f2f5;
+  --bg-card: rgba(255, 255, 255, 0.85);
+  --bg-card-hover: rgba(255, 255, 255, 1);
+
+  /* Text - Dark readable text */
+  --text-primary: #111827;
+  --text-secondary: #4b5563;
+  --text-muted: #9ca3af;
+
+  /* Border - Subtle light borders */
+  --border-color: rgba(0, 0, 0, 0.08);
+  --border-color-hover: rgba(0, 0, 0, 0.15);
+
+  /* Shadows - Softer light shadows */
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.07), 0 2px 4px -2px rgba(0, 0, 0, 0.05);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.08), 0 4px 6px -4px rgba(0, 0, 0, 0.05);
+  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.08), 0 8px 10px -6px rgba(0, 0, 0, 0.04);
+  --shadow-glow: 0 0 30px rgba(37, 211, 102, 0.1);
+
+  /* Gradients - Light theme gradients */
+  --gradient-dark: linear-gradient(180deg, #ffffff 0%, #f8f9fb 100%);
+  --gradient-card: linear-gradient(145deg, rgba(255, 255, 255, 0.9) 0%, rgba(248, 249, 251, 0.95) 100%);
+  --gradient-glass: linear-gradient(145deg, rgba(255, 255, 255, 0.7) 0%, rgba(255, 255, 255, 0.4) 100%);
+
+  /* Semantic - Slightly adjusted for light bg */
+  --success-light: rgba(34, 197, 94, 0.08);
+  --warning-light: rgba(245, 158, 11, 0.08);
+  --error-light: rgba(239, 68, 68, 0.08);
+  --info-light: rgba(59, 130, 246, 0.08);
+
+  /* Dark palette referencing — used directly in some selectors */
+  --dark-50: #f8fafc;
+  --dark-100: #e5e7eb;
+  --dark-200: #d1d5db;
+  --dark-300: #9ca3af;
+  --dark-400: #6b7280;
+  --dark-500: #d1d5db;
+  --dark-600: #e5e7eb;
+  --dark-700: #f3f4f6;
+  --dark-800: #f9fafb;
+  --dark-900: #ffffff;
+  --dark-950: #ffffff;
+}
+
+/* ========================================
+   Theme Transition
+======================================== */
+
+html {
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+html *,
+html *::before,
+html *::after {
+  transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
+}
+
+/* Disable theme transitions for elements that animate on their own */
+.nav-item::before,
+.btn,
+.btn *,
+input,
+textarea,
+select {
+  transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease, transform var(--transition-fast), opacity var(--transition-fast) !important;
+}
+
 /* Reset & Base Styles */
 *,
 *::before,
@@ -2510,4 +2587,317 @@ input[type="checkbox"] {
 
 .text-muted {
   color: var(--text-muted);
+}
+
+/* ========================================
+   Panel Type Selector
+======================================== */
+
+.panel-type-selector {
+  display: flex;
+  gap: var(--spacing-md);
+  margin-bottom: var(--spacing-sm);
+}
+
+.panel-type-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+  padding: var(--spacing-md);
+  background: var(--bg-tertiary);
+  border: 2px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  text-align: left;
+  position: relative;
+}
+
+.panel-type-btn:hover {
+  border-color: var(--border-color-hover);
+  background: var(--bg-card-hover);
+}
+
+.panel-type-btn.active {
+  border-color: var(--primary-500);
+  background: rgba(37, 211, 102, 0.1);
+}
+
+.panel-type-icon {
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-secondary);
+  border-radius: var(--radius-md);
+  font-weight: 700;
+  font-size: 1rem;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+
+.panel-type-btn.active .panel-type-icon {
+  background: var(--gradient-primary);
+  color: white;
+}
+
+.panel-type-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+}
+
+.panel-type-name {
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: var(--text-primary);
+}
+
+.panel-type-desc {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.panel-type-btn .check-icon {
+  color: var(--primary-500);
+  flex-shrink: 0;
+}
+
+/* ========================================
+   Light Theme - Element Specific Overrides
+   These override hardcoded rgba/hex values
+   that don't use CSS variables
+======================================== */
+
+/* Sidebar */
+[data-theme="light"] .sidebar {
+  background: linear-gradient(180deg, #ffffff 0%, #f8f9fb 100%);
+  border-right: 1px solid rgba(0, 0, 0, 0.08);
+  box-shadow: 2px 0 8px rgba(0, 0, 0, 0.04);
+}
+
+/* Nav items in light mode */
+[data-theme="light"] .nav-item:hover {
+  background: rgba(37, 211, 102, 0.08);
+}
+
+[data-theme="light"] .nav-item.active {
+  background: rgba(37, 211, 102, 0.1);
+}
+
+/* Cards - visible shadow instead of transparency */
+[data-theme="light"] .card {
+  box-shadow: var(--shadow-sm);
+}
+
+[data-theme="light"] .card:hover {
+  box-shadow: var(--shadow-md);
+}
+
+[data-theme="light"] .stat-card {
+  box-shadow: var(--shadow-sm);
+}
+
+[data-theme="light"] .stat-card:hover {
+  box-shadow: 0 4px 20px rgba(37, 211, 102, 0.12);
+}
+
+/* Scrollbar */
+[data-theme="light"] ::-webkit-scrollbar-track {
+  background: #f1f5f9;
+}
+
+[data-theme="light"] ::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+}
+
+[data-theme="light"] ::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Modal overlay */
+[data-theme="light"] .modal-overlay {
+  background: rgba(0, 0, 0, 0.4);
+}
+
+[data-theme="light"] .modal {
+  box-shadow: var(--shadow-xl);
+}
+
+/* Table row hover */
+[data-theme="light"] .table tbody tr:hover {
+  background: rgba(37, 211, 102, 0.04);
+}
+
+/* Form inputs - cleaner border */
+[data-theme="light"] .form-input,
+[data-theme="light"] .form-select,
+[data-theme="light"] .form-textarea {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+}
+
+[data-theme="light"] .form-input:focus,
+[data-theme="light"] .form-select:focus,
+[data-theme="light"] .form-textarea:focus {
+  border-color: var(--primary-500);
+  box-shadow: 0 0 0 3px rgba(37, 211, 102, 0.08);
+}
+
+/* Toggle slider in light mode */
+[data-theme="light"] .toggle .toggle-slider {
+  background-color: #e2e8f0;
+  border-color: #d1d5db;
+}
+
+[data-theme="light"] .toggle .toggle-slider:before {
+  background-color: #ffffff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+}
+
+/* User profile card */
+[data-theme="light"] .user-profile {
+  background: rgba(0, 0, 0, 0.03);
+}
+
+[data-theme="light"] .user-profile:hover {
+  background: rgba(0, 0, 0, 0.06);
+}
+
+/* Credit balance */
+[data-theme="light"] .credit-balance {
+  background: linear-gradient(135deg, rgba(37, 211, 102, 0.06), rgba(37, 211, 102, 0.03));
+  border-color: rgba(37, 211, 102, 0.15);
+}
+
+/* Btn primary shadow */
+[data-theme="light"] .btn-primary {
+  box-shadow: 0 4px 15px rgba(37, 211, 102, 0.2);
+}
+
+[data-theme="light"] .btn-primary:hover:not(:disabled) {
+  box-shadow: 0 6px 20px rgba(37, 211, 102, 0.3);
+}
+
+/* Btn secondary */
+[data-theme="light"] .btn-secondary {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+}
+
+[data-theme="light"] .btn-secondary:hover:not(:disabled) {
+  background: #f8fafc;
+  border-color: #cbd5e1;
+}
+
+/* Selection */
+[data-theme="light"] ::selection {
+  background: var(--primary-500);
+  color: white;
+}
+
+/* Stat icon in light mode */
+[data-theme="light"] .stat-icon {
+  background: #f1f5f9;
+}
+
+/* Panel type selector in light mode */
+[data-theme="light"] .panel-type-btn {
+  background: #ffffff;
+  border-color: #e2e8f0;
+}
+
+[data-theme="light"] .panel-type-btn:hover {
+  border-color: #cbd5e1;
+  background: #f8fafc;
+}
+
+[data-theme="light"] .panel-type-btn.active {
+  background: rgba(37, 211, 102, 0.06);
+}
+
+[data-theme="light"] .panel-type-icon {
+  background: #f1f5f9;
+}
+
+/* Empty state */
+[data-theme="light"] .empty-state {
+  background: rgba(0, 0, 0, 0.02);
+}
+
+/* Tabs */
+[data-theme="light"] .tabs {
+  border-bottom-color: #e2e8f0;
+}
+
+/* Auth decoration */
+[data-theme="light"] .auth-decoration .blob {
+  background: radial-gradient(circle, rgba(37, 211, 102, 0.06) 0%, transparent 70%);
+}
+
+[data-theme="light"] .auth-decoration .blob2 {
+  background: radial-gradient(circle, rgba(18, 140, 126, 0.06) 0%, transparent 70%);
+}
+
+/* Auth card in light mode */
+[data-theme="light"] .auth-card {
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.08);
+}
+
+/* Alert boxes */
+[data-theme="light"] .alert {
+  border-width: 1px;
+}
+
+/* Dropdown menus */
+[data-theme="light"] .dropdown-menu {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.08);
+}
+
+/* Tooltip */
+[data-theme="light"] .tooltip {
+  background: #1e293b;
+  color: #f8fafc;
+}
+
+/* Code blocks */
+[data-theme="light"] code,
+[data-theme="light"] pre {
+  background: #f1f5f9;
+  color: #334155;
+}
+
+/* Sidebar brand text in light mode */
+[data-theme="light"] .sidebar-brand h1 {
+  color: #111827;
+}
+
+/* Sidebar footer border */
+[data-theme="light"] .sidebar-footer {
+  border-top-color: rgba(0, 0, 0, 0.08);
+}
+
+/* Sidebar header border */
+[data-theme="light"] .sidebar-header {
+  border-bottom-color: rgba(0, 0, 0, 0.08);
+}
+
+/* Table header in light mode */
+[data-theme="light"] .table th {
+  background: #f8fafc;
+  border-bottom-color: #e2e8f0;
+}
+
+[data-theme="light"] .table td {
+  border-bottom-color: #f1f5f9;
+}
+
+/* Stat card radial decoration in light mode */
+[data-theme="light"] .stat-card::before {
+  background: radial-gradient(circle at center, rgba(37, 211, 102, 0.06) 0%, transparent 70%);
 }

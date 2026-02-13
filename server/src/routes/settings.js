@@ -27,7 +27,7 @@ router.get('/', authenticate, async (req, res, next) => {
 // because Express matches routes in order, and /:key would match all named routes
 // like /stats/dashboard, /bot-security, /bot-toggles, etc.
 
-// GET /api/settings/stats/dashboard - Dashboard statistics
+// GET /api/settings/stats/dashboard - Enhanced Dashboard statistics
 router.get('/stats/dashboard', authenticate, async (req, res, next) => {
     try {
         const userId = req.user.id;
@@ -35,18 +35,25 @@ router.get('/stats/dashboard', authenticate, async (req, res, next) => {
         const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
         const startOfYesterday = new Date(startOfToday);
         startOfYesterday.setDate(startOfYesterday.getDate() - 1);
+        const sevenDaysAgo = new Date(startOfToday);
+        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
 
         const [
             totalMessages,
             messagesToday,
             messagesYesterday,
+            sentToday,
+            receivedToday,
             activeDevices,
-            devicesYesterday,
+            totalDevices,
             successfulMessages,
             failedMessages,
             failedYesterday,
             autoReplyTriggers,
-            webhookCalls
+            webhookCalls,
+            userCredit,
+            weeklyMessages,
+            recentBotActivity
         ] = await Promise.all([
             // Total messages
             prisma.message.count({ where: { device: { userId } } }),
@@ -67,13 +74,30 @@ router.get('/stats/dashboard', authenticate, async (req, res, next) => {
                 }
             }),
 
+            // Sent today (outgoing)
+            prisma.message.count({
+                where: {
+                    device: { userId },
+                    type: 'outgoing',
+                    createdAt: { gte: startOfToday }
+                }
+            }),
+
+            // Received today (incoming)
+            prisma.message.count({
+                where: {
+                    device: { userId },
+                    type: 'incoming',
+                    createdAt: { gte: startOfToday }
+                }
+            }),
+
             // Active devices
             prisma.device.count({
                 where: { userId, status: 'connected' }
             }),
 
-            // Total devices (as proxy for device change if we don't track connection history)
-            // For now let's just use connected devices today vs total
+            // Total devices
             prisma.device.count({
                 where: { userId }
             }),
@@ -115,6 +139,37 @@ router.get('/stats/dashboard', authenticate, async (req, res, next) => {
                     webhook: { userId },
                     createdAt: { gte: startOfToday }
                 }
+            }),
+
+            // User credit balance
+            prisma.user.findUnique({
+                where: { id: userId },
+                select: { creditBalance: true }
+            }),
+
+            // Weekly messages (last 7 days, grouped by day)
+            prisma.message.findMany({
+                where: {
+                    device: { userId },
+                    createdAt: { gte: sevenDaysAgo }
+                },
+                select: { createdAt: true, type: true, status: true }
+            }),
+
+            // Recent bot activity (order commands)
+            prisma.orderCommand.findMany({
+                where: { order: { userId } },
+                take: 10,
+                orderBy: { createdAt: 'desc' },
+                include: {
+                    order: {
+                        select: {
+                            externalOrderId: true,
+                            providerName: true,
+                            panel: { select: { alias: true } }
+                        }
+                    }
+                }
             })
         ]);
 
@@ -123,18 +178,61 @@ router.get('/stats/dashboard', authenticate, async (req, res, next) => {
         const successRate = totalMessages === 0 ? 100 : (successfulMessages / totalMessages * 100);
         const failedChange = failedYesterday === 0 ? (failedMessages > 0 ? 100 : 0) : ((failedMessages - failedYesterday) / failedYesterday * 100);
 
+        // Build weekly chart data
+        const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+        const weeklyChart = [];
+        for (let i = 6; i >= 0; i--) {
+            const date = new Date(startOfToday);
+            date.setDate(date.getDate() - i);
+            const nextDate = new Date(date);
+            nextDate.setDate(nextDate.getDate() + 1);
+
+            const dayMsgs = weeklyMessages.filter(m => m.createdAt >= date && m.createdAt < nextDate);
+            const sent = dayMsgs.filter(m => m.type === 'outgoing').length;
+            const received = dayMsgs.filter(m => m.type === 'incoming').length;
+            const failed = dayMsgs.filter(m => m.status === 'failed').length;
+
+            weeklyChart.push({
+                day: dayNames[date.getDay()],
+                date: date.toISOString().split('T')[0],
+                sent,
+                received,
+                failed,
+                total: sent + received
+            });
+        }
+
+        // Format recent bot activity
+        const botActivity = recentBotActivity.map(cmd => ({
+            id: cmd.id,
+            command: cmd.command,
+            status: cmd.status,
+            orderId: cmd.order?.externalOrderId || 'N/A',
+            panelName: cmd.order?.panel?.alias || 'Unknown',
+            providerAlias: cmd.order?.providerName || 'Direct',
+            sentTo: cmd.targetGroup || cmd.targetNumber || 'N/A',
+            createdAt: cmd.createdAt
+        }));
+
         const stats = {
             totalMessages,
             messagesChange: Math.round(messagesChange),
             activeDevices,
-            devicesChange: activeDevices, // Just show current count as change if no history
+            totalDevices,
+            offlineDevices: totalDevices - activeDevices,
             successRate: Math.round(successRate * 10) / 10,
-            successRateChange: 0, // Hard to calculate without snapshots
+            successRateChange: 0,
             failedMessages,
             failedChange: Math.round(failedChange),
             messagesToday,
+            sentToday,
+            receivedToday,
+            successfulMessages,
+            creditBalance: userCredit?.creditBalance || 0,
             autoReplyTriggers: autoReplyTriggers._sum.triggerCount || 0,
-            webhookCalls
+            webhookCalls,
+            weeklyChart,
+            botActivity
         };
         successResponse(res, stats);
     } catch (error) {

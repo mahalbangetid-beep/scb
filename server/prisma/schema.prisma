@@ -83,6 +83,7 @@ model User {
   walletTransactions        WalletTransaction[]
   contactBackups            ContactBackup[]
   providerGroups            ProviderGroup[]
+  systemBotSubscriptions    SystemBotSubscription[]
 }
 
 model ApiKey {
@@ -195,6 +196,7 @@ model SmmPanel {
   providerGroups ProviderGroup[]
   devices        Device[] // WhatsApp devices bound to this panel
   telegramBots   TelegramBot[] // Telegram bots bound to this panel
+  devicePanelBindings DevicePanelBinding[] // Multi-panel binding support
 
   @@unique([url, userId])
 }
@@ -359,6 +361,7 @@ model Device {
   status      String    @default("pending") // pending, connected, disconnected
   sessionData String? // Store session JSON
   lastActive  DateTime?
+  isActive    Boolean   @default(true) // ON/OFF toggle - bot stops processing when OFF
 
   // Panel Binding - Which SMM Panel this device serves
   // If null, device will search orders across ALL user's panels
@@ -369,6 +372,15 @@ model Device {
   chargeType   String? // MONTHLY, ONE_TIME
   chargeAmount Float?
   nextChargeAt DateTime?
+
+  // System Bot fields
+  isSystemBot    Boolean   @default(false) // True = platform-owned shared device
+  groupOnly      Boolean   @default(false) // True = only responds in groups (required for system bots)
+  usageLimit     Int?      // Max messages per billing period (null = unlimited)
+  usageCount     Int       @default(0) // Current period message count
+  usageResetAt   DateTime? // When to reset usageCount
+  systemBotPrice Float?    // Monthly subscription price for this system bot
+  maxSubscribers Int?      // Max users who can subscribe to this bot (null = unlimited)
 
   userId    String
   createdAt DateTime @default(now())
@@ -381,13 +393,57 @@ model Device {
   autoReplies    AutoReplyRule[]
   contactBackups ContactBackup[]
   providerGroups ProviderGroup[]
+  systemBotSubscriptions SystemBotSubscription[]
+  panelBindings  DevicePanelBinding[]
+}
+
+// ==================== SYSTEM BOT SUBSCRIPTIONS ====================
+
+model SystemBotSubscription {
+  id       String @id @default(cuid())
+  userId   String // User who subscribed
+  deviceId String // System bot device
+
+  // Status
+  status String @default("ACTIVE") // ACTIVE, EXPIRED, CANCELLED, SUSPENDED
+
+  // Billing
+  monthlyFee      Float
+  startDate       DateTime  @default(now())
+  nextBillingDate DateTime
+  lastBilledAt    DateTime?
+  autoRenew       Boolean   @default(true)
+
+  // Usage tracking per subscriber
+  usageCount   Int @default(0)
+  usageLimit   Int? // Subscriber-specific limit (null = use device limit)
+
+  // Grace period
+  gracePeriodDays Int       @default(3)
+  expiresAt       DateTime?
+
+  // Payment tracking
+  failedAttempts Int       @default(0)
+  lastFailReason String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  device Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, deviceId]) // One subscription per user per bot
+  @@index([userId])
+  @@index([deviceId])
+  @@index([status])
+  @@index([nextBillingDate])
 }
 
 // ==================== CONTACT BACKUP ====================
 
 model ContactBackup {
-  id       String @id @default(cuid())
-  deviceId String
+  id       String  @id @default(cuid())
+  deviceId String? // Nullable so backups survive device deletion
   userId   String
 
   // Backup data
@@ -405,11 +461,27 @@ model ContactBackup {
   createdAt DateTime  @default(now())
   expiresAt DateTime? // Optional: Auto-delete old backups
 
-  device Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  device Device? @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([deviceId, createdAt])
   @@index([userId, createdAt])
+}
+
+// ==================== DEVICE-PANEL BINDINGS (Many-to-Many) ====================
+
+model DevicePanelBinding {
+  id        String   @id @default(cuid())
+  deviceId  String
+  panelId   String
+  createdAt DateTime @default(now())
+
+  device Device   @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  panel  SmmPanel @relation(fields: [panelId], references: [id], onDelete: Cascade)
+
+  @@unique([deviceId, panelId])
+  @@index([deviceId])
+  @@index([panelId])
 }
 
 // ==================== TELEGRAM BOTS ====================

@@ -747,6 +747,232 @@ router.get('/stats', async (req, res, next) => {
     }
 });
 
+// GET /api/admin/dashboard-stats - Comprehensive dashboard for Master Admin
+router.get('/dashboard-stats', async (req, res, next) => {
+    try {
+        const now = new Date();
+        const today = new Date(now);
+        today.setHours(0, 0, 0, 0);
+
+        const thirtyDaysAgo = new Date(now);
+        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+        const sevenDaysAgo = new Date(now);
+        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+
+        // ── Core counts ──
+        const [
+            totalUsers,
+            activeUsers,
+            newUsersToday,
+            newUsersThisWeek,
+            totalDevices,
+            connectedDevices,
+            systemBotDevices,
+            totalTelegramBots,
+            activeTelegramBots,
+            totalPanels,
+            totalOrders,
+            todayOrders,
+            totalMessages,
+            todayMessagesSent,
+            todayMessagesReceived,
+            failedMessages
+        ] = await Promise.all([
+            prisma.user.count(),
+            prisma.user.count({ where: { status: 'ACTIVE' } }),
+            prisma.user.count({ where: { createdAt: { gte: today } } }),
+            prisma.user.count({ where: { createdAt: { gte: sevenDaysAgo } } }),
+            prisma.device.count({ where: { isSystemBot: false } }),
+            prisma.device.count({ where: { status: 'connected', isSystemBot: false } }),
+            prisma.device.count({ where: { isSystemBot: true } }),
+            prisma.telegramBot.count(),
+            prisma.telegramBot.count({ where: { status: 'connected' } }),
+            prisma.smmPanel.count(),
+            prisma.order.count(),
+            prisma.order.count({ where: { createdAt: { gte: today } } }),
+            prisma.message.count(),
+            prisma.message.count({ where: { createdAt: { gte: today }, type: 'outgoing' } }),
+            prisma.message.count({ where: { createdAt: { gte: today }, type: 'incoming' } }),
+            prisma.message.count({ where: { status: 'failed' } })
+        ]);
+
+        // ── Financial stats ──
+        const [
+            totalPaymentsReceived,
+            totalCreditsDeducted,
+            pendingPayments,
+            monthlyPayments
+        ] = await Promise.all([
+            prisma.payment.aggregate({
+                _sum: { amount: true },
+                where: { status: 'COMPLETED' }
+            }),
+            prisma.creditTransaction.aggregate({
+                _sum: { amount: true },
+                where: { type: 'DEBIT' }
+            }),
+            prisma.payment.count({ where: { status: 'PENDING' } }),
+            prisma.payment.aggregate({
+                _sum: { amount: true },
+                where: { status: 'COMPLETED', completedAt: { gte: thirtyDaysAgo } }
+            })
+        ]);
+
+        // ── System bot stats ──
+        let systemBotStats = { totalSubscribers: 0, activeSubscribers: 0, monthlyRevenue: 0 };
+        try {
+            const [totalSubs, activeSubs, sbRevenue] = await Promise.all([
+                prisma.systemBotSubscription.count(),
+                prisma.systemBotSubscription.count({ where: { status: 'ACTIVE' } }),
+                prisma.systemBotSubscription.aggregate({
+                    _sum: { monthlyFee: true },
+                    where: { status: 'ACTIVE' }
+                })
+            ]);
+            systemBotStats = {
+                totalSubscribers: totalSubs,
+                activeSubscribers: activeSubs,
+                monthlyRevenue: sbRevenue._sum.monthlyFee || 0
+            };
+        } catch (e) {
+            // SystemBotSubscription model might not exist yet if migration not run
+        }
+
+        // ── Users with active bots (has at least 1 connected device) ──
+        const usersWithActiveBots = await prisma.user.count({
+            where: {
+                devices: {
+                    some: { status: 'connected' }
+                }
+            }
+        });
+
+        // ── Monthly subscription stats ──
+        let subscriptionStats = { active: 0, revenue: 0 };
+        try {
+            const [activeMonthlySubs, subRevenue] = await Promise.all([
+                prisma.monthlySubscription.count({ where: { status: 'ACTIVE' } }),
+                prisma.monthlySubscription.aggregate({
+                    _sum: { monthlyFee: true },
+                    where: { status: 'ACTIVE' }
+                })
+            ]);
+            subscriptionStats = {
+                active: activeMonthlySubs,
+                revenue: subRevenue._sum.monthlyFee || 0
+            };
+        } catch (e) { }
+
+        // ── 7-day trend (messages per day) ──
+        const weeklyTrend = [];
+        for (let i = 6; i >= 0; i--) {
+            const dayStart = new Date(now);
+            dayStart.setDate(dayStart.getDate() - i);
+            dayStart.setHours(0, 0, 0, 0);
+            const dayEnd = new Date(dayStart);
+            dayEnd.setHours(23, 59, 59, 999);
+
+            const [sent, received, orders, newUsers] = await Promise.all([
+                prisma.message.count({ where: { createdAt: { gte: dayStart, lte: dayEnd }, type: 'outgoing' } }),
+                prisma.message.count({ where: { createdAt: { gte: dayStart, lte: dayEnd }, type: 'incoming' } }),
+                prisma.order.count({ where: { createdAt: { gte: dayStart, lte: dayEnd } } }),
+                prisma.user.count({ where: { createdAt: { gte: dayStart, lte: dayEnd } } })
+            ]);
+
+            weeklyTrend.push({
+                date: dayStart.toISOString().split('T')[0],
+                label: dayStart.toLocaleDateString('en', { weekday: 'short' }),
+                sent,
+                received,
+                orders,
+                newUsers
+            });
+        }
+
+        // ── Recent activity ──
+        const recentPayments = await prisma.payment.findMany({
+            where: { status: 'COMPLETED' },
+            orderBy: { completedAt: 'desc' },
+            take: 5,
+            select: {
+                id: true,
+                amount: true,
+                method: true,
+                completedAt: true,
+                user: { select: { username: true, name: true } }
+            }
+        });
+
+        const recentRegistrations = await prisma.user.findMany({
+            orderBy: { createdAt: 'desc' },
+            take: 5,
+            select: { id: true, username: true, name: true, email: true, createdAt: true, status: true }
+        });
+
+        // ── System health ──
+        const memUsage = process.memoryUsage();
+        const systemHealth = {
+            uptime: process.uptime(),
+            uptimeHuman: formatUptime(process.uptime()),
+            memory: {
+                rss: Math.round(memUsage.rss / 1024 / 1024),
+                heapUsed: Math.round(memUsage.heapUsed / 1024 / 1024),
+                heapTotal: Math.round(memUsage.heapTotal / 1024 / 1024),
+                heapPercent: Math.round((memUsage.heapUsed / memUsage.heapTotal) * 100)
+            },
+            nodeVersion: process.version,
+            platform: process.platform
+        };
+
+        successResponse(res, {
+            users: {
+                total: totalUsers,
+                active: activeUsers,
+                withActiveBots: usersWithActiveBots,
+                newToday: newUsersToday,
+                newThisWeek: newUsersThisWeek
+            },
+            devices: {
+                whatsapp: { total: totalDevices, connected: connectedDevices, offline: totalDevices - connectedDevices },
+                telegram: { total: totalTelegramBots, active: activeTelegramBots },
+                systemBots: systemBotDevices
+            },
+            panels: { total: totalPanels },
+            orders: { total: totalOrders, today: todayOrders },
+            messages: {
+                total: totalMessages,
+                todaySent: todayMessagesSent,
+                todayReceived: todayMessagesReceived,
+                failed: failedMessages
+            },
+            finance: {
+                totalReceived: totalPaymentsReceived._sum.amount || 0,
+                totalCreditsUsed: totalCreditsDeducted._sum.amount || 0,
+                pendingPayments,
+                monthlyRevenue: monthlyPayments._sum.amount || 0,
+                subscriptions: subscriptionStats,
+                systemBots: systemBotStats
+            },
+            weeklyTrend,
+            recentPayments,
+            recentRegistrations,
+            systemHealth
+        });
+    } catch (error) {
+        next(error);
+    }
+});
+
+function formatUptime(seconds) {
+    const d = Math.floor(seconds / 86400);
+    const h = Math.floor((seconds % 86400) / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    if (d > 0) return `${d}d ${h}h ${m}m`;
+    if (h > 0) return `${h}h ${m}m`;
+    return `${m}m`;
+}
+
 // ==================== SYSTEM CONFIG (Master Admin Only) ====================
 
 // GET /api/admin/config - Get system configuration
@@ -877,7 +1103,7 @@ router.post('/users/:id/disconnect-devices', async (req, res, next) => {
         }
 
         // Get WhatsApp service from app
-        const whatsappService = req.app.get('whatsappService');
+        const whatsappService = req.app.get('whatsapp');
 
         let disconnectedCount = 0;
         for (const device of user.devices) {
@@ -916,7 +1142,7 @@ router.post('/devices/:id/disconnect', async (req, res, next) => {
         }
 
         // Get WhatsApp service from app
-        const whatsappService = req.app.get('whatsappService');
+        const whatsappService = req.app.get('whatsapp');
 
         if (whatsappService) {
             try {

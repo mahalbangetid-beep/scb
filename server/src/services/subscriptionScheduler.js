@@ -49,10 +49,25 @@ class SubscriptionScheduler {
 
             const results = await subscriptionService.processAllRenewals();
 
+            // Also process system bot subscription renewals
+            let systemBotResults = { processed: 0, success: 0, failed: 0 };
+            try {
+                const { processSystemBotRenewals } = require('../routes/systemBots');
+                systemBotResults = await processSystemBotRenewals();
+                console.log(`[SubscriptionScheduler] System bot renewals:`, {
+                    processed: systemBotResults.processed,
+                    success: systemBotResults.success,
+                    failed: systemBotResults.failed
+                });
+            } catch (err) {
+                console.error('[SubscriptionScheduler] System bot renewal error:', err.message);
+            }
+
             const duration = Date.now() - startTime;
             this.lastRun = new Date();
             this.lastResults = {
                 ...results,
+                systemBots: systemBotResults,
                 duration,
                 timestamp: this.lastRun
             };
@@ -61,7 +76,8 @@ class SubscriptionScheduler {
                 processed: results.processed,
                 success: results.success,
                 failed: results.failed,
-                paused: results.paused
+                paused: results.paused,
+                systemBots: systemBotResults.processed
             });
 
             // Send notifications for failed renewals

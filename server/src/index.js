@@ -39,6 +39,7 @@ const highRiskRoutes = require('./routes/highRisk');
 const contactBackupRoutes = require('./routes/contactBackup');
 const messageCreditsRoutes = require('./routes/messageCredits');
 const billingModeRoutes = require('./routes/billingMode');
+const systemBotRoutes = require('./routes/systemBots');
 
 // Import middleware
 const { errorHandler, notFound } = require('./middleware/errorHandler');
@@ -153,6 +154,7 @@ app.use('/api/admin/master-backup', require('./routes/masterBackup'));
 app.use('/api/contact-backup', contactBackupRoutes);
 app.use('/api/message-credits', messageCreditsRoutes);
 app.use('/api/billing-mode', billingModeRoutes);
+app.use('/api/system-bots', systemBotRoutes);
 
 
 // Socket.IO connection handler

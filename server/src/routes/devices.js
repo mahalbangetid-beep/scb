@@ -24,6 +24,17 @@ router.get('/', authenticate, async (req, res, next) => {
                             alias: true,
                             url: true
                         }
+                    },
+                    panelBindings: {
+                        include: {
+                            panel: {
+                                select: {
+                                    id: true,
+                                    name: true,
+                                    alias: true
+                                }
+                            }
+                        }
                     }
                 }
             }),
@@ -47,8 +58,10 @@ router.get('/', authenticate, async (req, res, next) => {
                 name: device.name,
                 phone: device.phone,
                 status: device.status,
+                isActive: device.isActive,
                 panelId: device.panelId,
-                panel: device.panel,  // Include panel info
+                panel: device.panel,
+                panels: (device.panelBindings || []).map(b => b.panel),
                 lastActive: device.lastActive,
                 messagesSent: sent,
                 messagesReceived: received,
@@ -173,7 +186,7 @@ router.delete('/:id', authenticate, async (req, res, next) => {
 // PUT /api/devices/:id - Update device (panel binding, name, etc.)
 router.put('/:id', authenticate, async (req, res, next) => {
     try {
-        const { panelId, name } = req.body;
+        const { panelId, panelIds, name } = req.body;
 
         // Find device
         const device = await prisma.device.findFirst({
@@ -220,11 +233,104 @@ router.put('/:id', authenticate, async (req, res, next) => {
                         name: true,
                         alias: true
                     }
+                },
+                panelBindings: {
+                    include: {
+                        panel: {
+                            select: {
+                                id: true,
+                                name: true,
+                                alias: true
+                            }
+                        }
+                    }
                 }
             }
         });
 
-        successResponse(res, updatedDevice, 'Device updated successfully');
+        // Handle multi-panel bindings if panelIds array provided
+        if (Array.isArray(panelIds)) {
+            // Validate all panel IDs belong to user
+            if (panelIds.length > 0) {
+                const validPanels = await prisma.smmPanel.findMany({
+                    where: {
+                        id: { in: panelIds },
+                        userId: req.user.id
+                    },
+                    select: { id: true }
+                });
+                const validIds = validPanels.map(p => p.id);
+                const invalidIds = panelIds.filter(id => !validIds.includes(id));
+                if (invalidIds.length > 0) {
+                    throw new AppError(`Invalid panel IDs: ${invalidIds.join(', ')}`, 400);
+                }
+            }
+
+            // Delete existing bindings and create new ones
+            await prisma.devicePanelBinding.deleteMany({
+                where: { deviceId: device.id }
+            });
+
+            if (panelIds.length > 0) {
+                await prisma.devicePanelBinding.createMany({
+                    data: panelIds.map(pid => ({
+                        deviceId: device.id,
+                        panelId: pid
+                    }))
+                });
+            }
+
+            // Re-fetch with updated bindings
+            const refreshed = await prisma.device.findUnique({
+                where: { id: device.id },
+                include: {
+                    panel: { select: { id: true, name: true, alias: true } },
+                    panelBindings: {
+                        include: {
+                            panel: { select: { id: true, name: true, alias: true } }
+                        }
+                    }
+                }
+            });
+            return successResponse(res, {
+                ...refreshed,
+                panels: (refreshed.panelBindings || []).map(b => b.panel)
+            }, 'Device updated successfully');
+        }
+
+        successResponse(res, {
+            ...updatedDevice,
+            panels: (updatedDevice.panelBindings || []).map(b => b.panel)
+        }, 'Device updated successfully');
+    } catch (error) {
+        next(error);
+    }
+});
+
+// PATCH /api/devices/:id/toggle - Toggle device ON/OFF (bot stops when OFF)
+router.patch('/:id/toggle', authenticate, async (req, res, next) => {
+    try {
+        const device = await prisma.device.findFirst({
+            where: {
+                id: req.params.id,
+                userId: req.user.id
+            }
+        });
+
+        if (!device) {
+            throw new AppError('Device not found', 404);
+        }
+
+        const updatedDevice = await prisma.device.update({
+            where: { id: device.id },
+            data: { isActive: !device.isActive }
+        });
+
+        successResponse(res, {
+            id: updatedDevice.id,
+            name: updatedDevice.name,
+            isActive: updatedDevice.isActive
+        }, `Bot ${updatedDevice.isActive ? 'activated' : 'deactivated'} successfully`);
     } catch (error) {
         next(error);
     }

@@ -17,16 +17,16 @@ router.use(authenticate);
 // POST /api/panels/detect - Auto-detect panel Admin API configuration
 router.post('/detect', async (req, res, next) => {
     try {
-        const { url, adminApiKey } = req.body;
+        const { url, adminApiKey, panelType } = req.body;
 
         if (!url || !adminApiKey) {
             throw new AppError('URL and Admin API Key are required', 400);
         }
 
-        console.log(`[Panel Detect] User ${req.user.id} scanning: ${url}`);
+        console.log(`[Panel Detect] User ${req.user.id} scanning: ${url} (type: ${panelType || 'auto'})`);
 
         // Run smart scanner (Admin API only)
-        const result = await smartPanelScanner.scan(url, adminApiKey);
+        const result = await smartPanelScanner.scan(url, adminApiKey, panelType);
 
         if (result.success) {
             console.log(`[Panel Detect] Success! Admin API detected`);

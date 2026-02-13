@@ -33,9 +33,78 @@ class BotMessageHandler {
      * @returns {Object} - { handled, response, type }
      */
     async handleMessage(params) {
-        const { deviceId, userId, panelId, panel, message, senderNumber, senderName, isGroup, groupJid, platform = 'WHATSAPP' } = params;
+        const { deviceId, userId, panelId, panelIds, panel, message, senderNumber, senderName, isGroup, groupJid, platform = 'WHATSAPP' } = params;
 
         console.log(`[BotHandler] Processing message from ${senderNumber}${panelId ? ` (Panel: ${panel?.alias || panel?.name || panelId})` : ''}: ${message.substring(0, 50)}...`);
+
+        // ==================== DEVICE ACTIVE CHECK ====================
+        // If device is deactivated (ON/OFF toggle), skip all message processing
+        const device = await prisma.device.findUnique({
+            where: { id: deviceId },
+            select: { isSystemBot: true, groupOnly: true, usageLimit: true, isActive: true }
+        });
+
+        if (device && !device.isActive) {
+            // Device is OFF — silently ignore all messages
+            return { handled: false, type: 'device_inactive' };
+        }
+
+        // ==================== SYSTEM BOT CHECKS ====================
+        // Check if this device is a system bot and enforce restrictions
+
+        if (device?.isSystemBot) {
+            // System bot: Group-only restriction
+            if (device.groupOnly && !isGroup) {
+                console.log(`[BotHandler] System bot ${deviceId} - rejected private message (group-only mode)`);
+                return {
+                    handled: true,
+                    type: 'system_bot_restriction',
+                    response: '⚠️ This bot only works in WhatsApp groups. Please use this bot in a group chat.'
+                };
+            }
+
+            // System bot: Check subscriber has active subscription
+            // We need to find which user sent this message, and check their subscription
+            // For system bots, the userId is the admin who owns the bot.
+            // We need to check if any user with an active subscription is using this bot.
+            const activeSubscription = await prisma.systemBotSubscription.findFirst({
+                where: {
+                    deviceId,
+                    status: 'ACTIVE'
+                },
+                // For now, system bots serve all active subscribers in the same groups
+                // In a more advanced setup, we'd match subscriber by group membership
+                select: {
+                    id: true,
+                    userId: true,
+                    usageCount: true,
+                    usageLimit: true
+                }
+            });
+
+            if (!activeSubscription) {
+                console.log(`[BotHandler] System bot ${deviceId} - no active subscriptions`);
+                return {
+                    handled: true,
+                    type: 'system_bot_restriction',
+                    response: '⚠️ No active subscription found for this bot. Please subscribe first from the dashboard.'
+                };
+            }
+
+            // System bot: Usage limit check
+            const effectiveLimit = activeSubscription.usageLimit || device.usageLimit;
+            if (effectiveLimit && activeSubscription.usageCount >= effectiveLimit) {
+                console.log(`[BotHandler] System bot ${deviceId} - usage limit reached (${activeSubscription.usageCount}/${effectiveLimit})`);
+                return {
+                    handled: true,
+                    type: 'system_bot_restriction',
+                    response: `⚠️ Usage limit reached (${activeSubscription.usageCount}/${effectiveLimit} messages this period). Please wait for the next billing cycle or upgrade your plan.`
+                };
+            }
+
+            // Store subscription info for later usage increment
+            params._systemBotSubscriptionId = activeSubscription.id;
+        }
 
         // ==================== CHECK IF FROM PROVIDER SUPPORT GROUP ====================
         // Skip processing for Provider Support Groups (forward-only mode)
@@ -150,21 +219,31 @@ class BotMessageHandler {
             groupJid: params.groupJid  // Pass group JID if available
         });
         if (utilityResult.handled) {
+            // Increment system bot usage for utility commands too
+            if (params._systemBotSubscriptionId) {
+                await this.incrementSystemBotUsage(params._systemBotSubscriptionId);
+            }
             return utilityResult;
         }
 
         // Priority 1: Check if it's an SMM command
         if (commandParser.isCommandMessage(message)) {
-            return await this.handleSmmCommand({
+            const smmResult = await this.handleSmmCommand({
                 userId,
                 user,
                 message,
                 senderNumber,
                 deviceId,
-                panelId,    // Pass panelId for panel-specific order lookup
+                panelId,
+                panelIds,   // Pass panelIds for multi-panel lookup
                 platform,
                 isGroup
             });
+            // Increment system bot usage for SMM commands
+            if (smmResult.handled && params._systemBotSubscriptionId) {
+                await this.incrementSystemBotUsage(params._systemBotSubscriptionId);
+            }
+            return smmResult;
         }
 
         // Priority 2: Check auto-reply rules
@@ -179,6 +258,10 @@ class BotMessageHandler {
         });
 
         if (autoReplyResult.handled) {
+            // Increment system bot usage for auto-replies
+            if (params._systemBotSubscriptionId) {
+                await this.incrementSystemBotUsage(params._systemBotSubscriptionId);
+            }
             return autoReplyResult;
         }
 
@@ -204,6 +287,10 @@ class BotMessageHandler {
                     `Example: \`12345 status\``;
 
                 console.log(`[BotHandler] No handler matched, sending fallback response`);
+                // Increment system bot usage for fallback
+                if (params._systemBotSubscriptionId) {
+                    await this.incrementSystemBotUsage(params._systemBotSubscriptionId);
+                }
                 return {
                     handled: true,
                     type: 'fallback',
@@ -216,6 +303,20 @@ class BotMessageHandler {
 
         // No handler matched
         return { handled: false, reason: 'no_handler' };
+    }
+
+    /**
+     * Increment usage count for a system bot subscription
+     */
+    async incrementSystemBotUsage(subscriptionId) {
+        try {
+            await prisma.systemBotSubscription.update({
+                where: { id: subscriptionId },
+                data: { usageCount: { increment: 1 } }
+            });
+        } catch (err) {
+            console.error(`[BotHandler] Failed to increment system bot usage:`, err.message);
+        }
     }
 
     /**
@@ -314,7 +415,7 @@ class BotMessageHandler {
      * Handle SMM command
      */
     async handleSmmCommand(params) {
-        const { userId, user, message, senderNumber, deviceId, panelId, platform = 'WHATSAPP', isGroup = false } = params;
+        const { userId, user, message, senderNumber, deviceId, panelId, panelIds, platform = 'WHATSAPP', isGroup = false } = params;
 
         // Check billing mode
         const isCreditsMode = await billingModeService.isCreditsMode();
@@ -352,10 +453,11 @@ class BotMessageHandler {
             }
         }
 
-        // Process the command with panelId for panel-specific order lookup
+        // Process the command with panelId(s) for panel-specific order lookup
         const result = await commandHandler.processCommand({
             userId,
-            panelId,    // Pass panelId to filter orders by specific panel
+            panelId,
+            panelIds,   // Pass panelIds for multi-panel order lookup
             message,
             senderNumber,
             platform,

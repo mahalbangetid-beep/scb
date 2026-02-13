@@ -24,9 +24,12 @@ import {
     Radio,
     Plug,
     Ticket,
-    Database
+    Database,
+    Sun,
+    Moon
 } from 'lucide-react'
 import api from '../services/api'
+import { useTheme } from '../contexts/ThemeContext'
 
 // Overview - Main dashboard
 const overviewNavigation = [
@@ -37,6 +40,7 @@ const overviewNavigation = [
 const channelsNavigation = [
     { name: 'WhatsApp Devices', icon: Smartphone, path: '/devices' },
     { name: 'Telegram Bots', icon: SendHorizontal, path: '/telegram' },
+    { name: 'System Bots', icon: Bot, path: '/system-bots' },
 ]
 
 // SMM Integration - Panel & order management
@@ -73,6 +77,7 @@ const settingsNavigation = [
 
 // Admin section
 const adminNavigation = [
+    { name: 'Admin Dashboard', icon: LayoutDashboard, path: '/admin/dashboard' },
     { name: 'User Management', icon: Users, path: '/admin/users' },
     { name: 'Staff Management', icon: Shield, path: '/admin/staff' },
     { name: 'Payments', icon: CreditCard, path: '/admin/payments' },
@@ -80,9 +85,30 @@ const adminNavigation = [
     { name: 'Credit Packages', icon: Package, path: '/admin/credit-packages' },
     { name: 'Vouchers', icon: Gift, path: '/admin/vouchers' },
     { name: 'Contact Backups', icon: Database, path: '/admin/contact-backups' },
+    { name: 'System Bots', icon: Bot, path: '/admin/system-bots' },
     { name: 'System Settings', icon: Settings, path: '/admin/settings' },
 ]
 
+
+// Theme Toggle Component
+function ThemeToggle({ collapsed }) {
+    const { theme, toggleTheme, isDark } = useTheme();
+
+    return (
+        <button
+            className="theme-toggle-btn"
+            onClick={toggleTheme}
+            title={isDark ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
+        >
+            <span className="theme-icon">
+                {isDark ? <Sun size={16} /> : <Moon size={16} />}
+            </span>
+            {!collapsed && (
+                <span>{isDark ? 'Light Mode' : 'Dark Mode'}</span>
+            )}
+        </button>
+    );
+}
 
 export default function Sidebar({ collapsed, onToggle }) {
     const location = useLocation()
@@ -276,6 +302,9 @@ export default function Sidebar({ collapsed, onToggle }) {
                     </div>
                 )}
 
+                {/* Theme Toggle */}
+                <ThemeToggle collapsed={collapsed} />
+
                 <div className="user-profile" style={{ marginBottom: 'var(--spacing-sm)' }}>
                     <div className="user-avatar">{user.name?.substring(0, 2).toUpperCase() || 'U'}</div>
                     <div className="user-info">
@@ -311,6 +340,35 @@ export default function Sidebar({ collapsed, onToggle }) {
                     font-size: 0.875rem;
                     color: var(--primary-500);
                     font-weight: 500;
+                }
+                .theme-toggle-btn {
+                    display: flex;
+                    align-items: center;
+                    gap: var(--spacing-sm);
+                    width: 100%;
+                    padding: var(--spacing-sm) var(--spacing-md);
+                    background: var(--bg-tertiary);
+                    border: 1px solid var(--border-color);
+                    border-radius: var(--radius-md);
+                    margin-bottom: var(--spacing-md);
+                    font-size: 0.813rem;
+                    color: var(--text-secondary);
+                    font-weight: 500;
+                    cursor: pointer;
+                    transition: all var(--transition-fast);
+                    font-family: inherit;
+                    justify-content: ${collapsed ? 'center' : 'flex-start'};
+                }
+                .theme-toggle-btn:hover {
+                    background: var(--bg-card-hover);
+                    color: var(--text-primary);
+                    border-color: var(--border-color-hover);
+                }
+                .theme-toggle-btn svg {
+                    flex-shrink: 0;
+                }
+                .theme-toggle-btn .theme-icon {
+                    color: var(--warning);
                 }
             `}</style>
         </aside>

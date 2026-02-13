@@ -228,6 +228,23 @@ class WhatsAppService {
                 if (callbacks.onConnected) {
                     callbacks.onConnected(socket.user);
                 }
+
+                // Auto-backup contacts on connect (with delay to let store populate)
+                setTimeout(async () => {
+                    try {
+                        const contactBackupService = require('./contactBackupService');
+                        const deviceInfo = await prisma.device.findUnique({
+                            where: { id: deviceId },
+                            select: { userId: true }
+                        });
+                        if (deviceInfo) {
+                            await contactBackupService.createBackup(deviceId, deviceInfo.userId, 'AUTO');
+                            console.log(`[WA:${deviceId}] Auto-backup completed on connect`);
+                        }
+                    } catch (err) {
+                        console.error(`[WA:${deviceId}] Auto-backup on connect failed:`, err.message);
+                    }
+                }, 10000); // 10 second delay for store to populate
             }
 
             // Connection closed
@@ -360,7 +377,7 @@ class WhatsAppService {
                 // Process incoming message through botMessageHandler
                 // This handles: SMM commands, auto-reply, and other workflows
                 if (!messageData.fromMe && content) {
-                    // Get device userId and panelId for panel-specific order handling
+                    // Get device userId, panelId and multi-panel bindings
                     const device = await prisma.device.findUnique({
                         where: { id: deviceId },
                         select: {
@@ -372,22 +389,32 @@ class WhatsAppService {
                                     name: true,
                                     alias: true
                                 }
+                            },
+                            panelBindings: {
+                                select: {
+                                    panelId: true
+                                }
                             }
                         }
                     });
 
                     if (device?.userId) {
+                        // Determine effective panelIds: use multi-panel bindings if available, fallback to single panelId
+                        const boundPanelIds = (device.panelBindings || []).map(b => b.panelId);
+                        const effectivePanelId = boundPanelIds.length > 0 ? boundPanelIds[0] : device.panelId;
+
                         try {
                             const handlerResult = await botMessageHandler.handleMessage({
                                 deviceId,
                                 userId: device.userId,
-                                panelId: device.panelId,  // Pass panelId for panel-specific order lookup
-                                panel: device.panel,       // Pass panel info for logging
+                                panelId: effectivePanelId,  // Primary panel for backward compat
+                                panelIds: boundPanelIds.length > 0 ? boundPanelIds : (device.panelId ? [device.panelId] : []),
+                                panel: device.panel,
                                 message: content,
                                 senderNumber: messageData.from,
                                 senderName: messageData.pushName,
                                 isGroup,
-                                groupJid: isGroup ? msg.key.remoteJid : null,  // Pass group JID for .groupid command
+                                groupJid: isGroup ? msg.key.remoteJid : null,
                                 platform: 'WHATSAPP'
                             });
 

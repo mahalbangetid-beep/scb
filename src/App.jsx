@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom'
+import { ThemeProvider } from './contexts/ThemeContext'
 import Sidebar from './components/Sidebar'
 import ImpersonationBanner from './components/ImpersonationBanner'
 import Dashboard from './pages/Dashboard'
@@ -30,6 +31,7 @@ import Tickets from './pages/Tickets'
 import LandingPage from './pages/LandingPage'
 import ResponseTemplates from './pages/ResponseTemplates'
 import ProviderForwarding from './pages/ProviderForwarding'
+import SystemBots from './pages/SystemBots'
 import './styles/landing.css'
 // Admin Pages
 import UserManagement from './pages/admin/UserManagement'
@@ -40,6 +42,8 @@ import PaymentSettings from './pages/admin/PaymentSettings'
 import VoucherManagement from './pages/admin/VoucherManagement'
 import CreditPackages from './pages/admin/CreditPackages'
 import ContactBackups from './pages/admin/ContactBackups'
+import SystemBotManagement from './pages/admin/SystemBotManagement'
+import AdminDashboard from './pages/admin/AdminDashboard'
 import './index.css'
 
 
@@ -129,8 +133,10 @@ function AppContent() {
           <Route path="/tickets" element={<ProtectedRoute><Tickets /></ProtectedRoute>} />
           <Route path="/response-templates" element={<ProtectedRoute><ResponseTemplates /></ProtectedRoute>} />
           <Route path="/provider-forwarding" element={<ProtectedRoute><ProviderForwarding /></ProtectedRoute>} />
+          <Route path="/system-bots" element={<ProtectedRoute><SystemBots /></ProtectedRoute>} />
 
           {/* Admin Routes */}
+          <Route path="/admin/dashboard" element={<AdminRoute><AdminDashboard /></AdminRoute>} />
           <Route path="/admin/users" element={<AdminRoute><UserManagement /></AdminRoute>} />
           <Route path="/admin/staff" element={<AdminRoute><StaffManagement /></AdminRoute>} />
           <Route path="/admin/settings" element={<AdminRoute><SystemSettings /></AdminRoute>} />
@@ -139,6 +145,7 @@ function AppContent() {
           <Route path="/admin/vouchers" element={<AdminRoute><VoucherManagement /></AdminRoute>} />
           <Route path="/admin/credit-packages" element={<AdminRoute><CreditPackages /></AdminRoute>} />
           <Route path="/admin/contact-backups" element={<AdminRoute><ContactBackups /></AdminRoute>} />
+          <Route path="/admin/system-bots" element={<AdminRoute><SystemBotManagement /></AdminRoute>} />
 
           {/* Catch all */}
           <Route path="*" element={<Navigate to="/" replace />} />
@@ -150,9 +157,11 @@ function AppContent() {
 
 function App() {
   return (
-    <Router>
-      <AppContent />
-    </Router>
+    <ThemeProvider>
+      <Router>
+        <AppContent />
+      </Router>
+    </ThemeProvider>
   )
 }
 
