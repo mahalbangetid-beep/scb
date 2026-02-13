@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import {
     Bot, Plus, Edit2, Trash2, Users, DollarSign, Signal, SignalZero,
     QrCode, RefreshCw, AlertTriangle, Zap, MessageSquare, Settings,
-    X, Shield, Loader2, Eye, Clock
+    X, Shield, Loader2, Eye, Clock, Search
 } from 'lucide-react';
 import api from '../../services/api';
 
@@ -15,6 +15,7 @@ const SystemBotManagement = () => {
     const [editingItem, setEditingItem] = useState(null);
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
+    const [searchTerm, setSearchTerm] = useState('');
 
     const [formData, setFormData] = useState({
         name: '',
@@ -186,79 +187,94 @@ const SystemBotManagement = () => {
                     </button>
                 </div>
             ) : (
-                <div className="card">
-                    <div className="table-container">
-                        <table className="table">
-                            <thead>
-                                <tr>
-                                    <th>Bot Name</th>
-                                    <th>Phone</th>
-                                    <th>Status</th>
-                                    <th>Price/mo</th>
-                                    <th>Usage Limit</th>
-                                    <th>Subscribers</th>
-                                    <th>Group Only</th>
-                                    <th>Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {bots.map(bot => (
-                                    <tr key={bot.id}>
-                                        <td>
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                                                <Bot size={16} style={{ color: 'var(--primary-color)' }} />
-                                                <strong>{bot.name}</strong>
-                                            </div>
-                                        </td>
-                                        <td>
-                                            <span style={{ fontFamily: 'monospace' }}>{bot.phone || '—'}</span>
-                                        </td>
-                                        <td>
-                                            <span className={`badge ${getStatusColor(bot.status)}`}>
-                                                {bot.status === 'connected' ? <Signal size={12} /> : <SignalZero size={12} />}
-                                                {bot.status}
-                                            </span>
-                                        </td>
-                                        <td><strong>${(bot.systemBotPrice || 0).toFixed(2)}</strong></td>
-                                        <td>
-                                            {bot.usageLimit ? (
-                                                <span>{bot.usageLimit.toLocaleString()} msgs</span>
-                                            ) : (
-                                                <span style={{ color: 'var(--text-secondary)' }}>Unlimited</span>
-                                            )}
-                                        </td>
-                                        <td>
-                                            <button
-                                                className="btn btn-ghost btn-sm"
-                                                onClick={() => handleViewSubscribers(bot.id)}
-                                                style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}
-                                            >
-                                                <Users size={14} />
-                                                {bot.subscriberCount || 0}
-                                                {bot.maxSubscribers ? `/${bot.maxSubscribers}` : ''}
-                                            </button>
-                                        </td>
-                                        <td>
-                                            <span className={`badge ${bot.groupOnly ? 'badge-info' : 'badge-warning'}`}>
-                                                {bot.groupOnly ? 'Yes' : 'No'}
-                                            </span>
-                                        </td>
-                                        <td>
-                                            <div style={{ display: 'flex', gap: '0.25rem' }}>
-                                                <button className="btn btn-ghost btn-icon btn-sm" onClick={() => handleEdit(bot)} title="Edit">
-                                                    <Edit2 size={14} />
-                                                </button>
-                                                <button className="btn btn-ghost btn-icon btn-sm text-danger" onClick={() => handleDelete(bot.id, bot.name)} title="Delete">
-                                                    <Trash2 size={14} />
-                                                </button>
-                                            </div>
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
+                <>
+                    <div style={{ marginBottom: 'var(--spacing-lg)' }}>
+                        <div className="search-box">
+                            <Search size={18} />
+                            <input
+                                type="text"
+                                placeholder="Search bots by name or phone..."
+                                value={searchTerm}
+                                onChange={(e) => setSearchTerm(e.target.value)}
+                            />
+                        </div>
                     </div>
-                </div>
+                    <div className="card">
+                        <div className="table-container">
+                            <table className="table">
+                                <thead>
+                                    <tr>
+                                        <th>Bot Name</th>
+                                        <th>Phone</th>
+                                        <th>Status</th>
+                                        <th>Price/mo</th>
+                                        <th>Usage Limit</th>
+                                        <th>Subscribers</th>
+                                        <th>Group Only</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {bots
+                                        .filter(bot => !searchTerm || bot.name.toLowerCase().includes(searchTerm.toLowerCase()) || (bot.phone && bot.phone.includes(searchTerm)))
+                                        .map(bot => (
+                                            <tr key={bot.id}>
+                                                <td>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                                        <Bot size={16} style={{ color: 'var(--primary-color)' }} />
+                                                        <strong>{bot.name}</strong>
+                                                    </div>
+                                                </td>
+                                                <td>
+                                                    <span style={{ fontFamily: 'monospace' }}>{bot.phone || '—'}</span>
+                                                </td>
+                                                <td>
+                                                    <span className={`badge ${getStatusColor(bot.status)}`}>
+                                                        {bot.status === 'connected' ? <Signal size={12} /> : <SignalZero size={12} />}
+                                                        {bot.status}
+                                                    </span>
+                                                </td>
+                                                <td><strong>${(bot.systemBotPrice || 0).toFixed(2)}</strong></td>
+                                                <td>
+                                                    {bot.usageLimit ? (
+                                                        <span>{bot.usageLimit.toLocaleString()} msgs</span>
+                                                    ) : (
+                                                        <span style={{ color: 'var(--text-secondary)' }}>Unlimited</span>
+                                                    )}
+                                                </td>
+                                                <td>
+                                                    <button
+                                                        className="btn btn-ghost btn-sm"
+                                                        onClick={() => handleViewSubscribers(bot.id)}
+                                                        style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}
+                                                    >
+                                                        <Users size={14} />
+                                                        {bot.subscriberCount || 0}
+                                                        {bot.maxSubscribers ? `/${bot.maxSubscribers}` : ''}
+                                                    </button>
+                                                </td>
+                                                <td>
+                                                    <span className={`badge ${bot.groupOnly ? 'badge-info' : 'badge-warning'}`}>
+                                                        {bot.groupOnly ? 'Yes' : 'No'}
+                                                    </span>
+                                                </td>
+                                                <td>
+                                                    <div style={{ display: 'flex', gap: '0.25rem' }}>
+                                                        <button className="btn btn-ghost btn-icon btn-sm" onClick={() => handleEdit(bot)} title="Edit">
+                                                            <Edit2 size={14} />
+                                                        </button>
+                                                        <button className="btn btn-ghost btn-icon btn-sm text-danger" onClick={() => handleDelete(bot.id, bot.name)} title="Delete">
+                                                            <Trash2 size={14} />
+                                                        </button>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </>
             )}
 
             {/* Create/Edit Modal */}

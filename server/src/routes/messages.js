@@ -108,7 +108,7 @@ router.post('/send', authenticate, async (req, res, next) => {
         const msgRecord = await prisma.message.create({
             data: {
                 type: 'outgoing',
-                content,
+                message: content,
                 to,
                 status: 'pending',
                 deviceId: device.id
@@ -117,7 +117,7 @@ router.post('/send', authenticate, async (req, res, next) => {
 
         // Send via WhatsApp service
         try {
-            await whatsapp.sendMessage(device.id, to, content);
+            await whatsapp.sendMessage(device.id, to, content, { userId: req.user.id });
 
             // Update to sent
             const updatedMsg = await prisma.message.update({
@@ -161,7 +161,7 @@ router.post('/send-media', authenticate, async (req, res, next) => {
         const msgRecord = await prisma.message.create({
             data: {
                 type: 'outgoing',
-                content: caption || `Media: ${type || 'image'}`,
+                message: caption || `Media: ${type || 'image'}`,
                 to,
                 status: 'pending',
                 deviceId: device.id

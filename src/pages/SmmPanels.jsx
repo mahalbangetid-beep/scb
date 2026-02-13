@@ -4,7 +4,7 @@ import {
     DollarSign, Link2, AlertCircle, Loader2, Search,
     Shield, Eye, EyeOff, CheckCircle2, ExternalLink, Settings,
     Sparkles, Zap, ArrowRight, ArrowLeft, HelpCircle, Wifi, WifiOff,
-    Key, Database, Users
+    Key, Database, Users, Clock, ChevronDown, ChevronUp
 } from 'lucide-react'
 import api from '../services/api'
 
@@ -58,9 +58,20 @@ export default function SmmPanels() {
     })
     const [syncComplete, setSyncComplete] = useState(false)
 
+    // Connection History State
+    const [showHistory, setShowHistory] = useState(false)
+    const [history, setHistory] = useState([])
+    const [historyLoading, setHistoryLoading] = useState(false)
+    const [historyPage, setHistoryPage] = useState(1)
+    const [historyPagination, setHistoryPagination] = useState({ total: 0, pages: 0 })
+
     useEffect(() => {
         fetchPanels()
     }, [])
+
+    useEffect(() => {
+        if (showHistory) fetchHistory()
+    }, [showHistory, historyPage])
 
     const fetchPanels = async () => {
         try {
@@ -71,6 +82,20 @@ export default function SmmPanels() {
             setError(err.message || 'Failed to fetch panels')
         } finally {
             setLoading(false)
+        }
+    }
+
+    const fetchHistory = async () => {
+        try {
+            setHistoryLoading(true)
+            const res = await api.get(`/panels/history?page=${historyPage}&limit=15`)
+            const payload = res.data || {}
+            setHistory(payload.logs || [])
+            setHistoryPagination(payload.pagination || { total: 0, pages: 0 })
+        } catch (err) {
+            console.error('Failed to load panel history:', err)
+        } finally {
+            setHistoryLoading(false)
         }
     }
 
@@ -387,6 +412,21 @@ export default function SmmPanels() {
         return new Intl.NumberFormat('en-US').format(num)
     }
 
+    const getTimeAgo = (date) => {
+        const now = new Date()
+        const diffMs = now - date
+        const diffSec = Math.floor(diffMs / 1000)
+        const diffMin = Math.floor(diffSec / 60)
+        const diffHour = Math.floor(diffMin / 60)
+        const diffDay = Math.floor(diffHour / 24)
+
+        if (diffSec < 60) return 'Just now'
+        if (diffMin < 60) return `${diffMin}m ago`
+        if (diffHour < 24) return `${diffHour}h ago`
+        if (diffDay < 7) return `${diffDay}d ago`
+        return date.toLocaleDateString()
+    }
+
     return (
         <div className="page-container">
             <div className="page-header">
@@ -534,6 +574,132 @@ export default function SmmPanels() {
                             </div>
                         </div>
                     ))}
+                </div>
+            )}
+
+            {/* ── Connection History Section ── */}
+            {!loading && panels.length > 0 && (
+                <div className="card" style={{ marginTop: '1.5rem' }}>
+                    <div
+                        className="card-header"
+                        style={{ cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '1rem 1.25rem' }}
+                        onClick={() => setShowHistory(!showHistory)}
+                    >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                            <Clock size={18} />
+                            <h3 style={{ margin: 0, fontSize: '1rem' }}>Connection History</h3>
+                            {historyPagination.total > 0 && (
+                                <span className="badge badge-secondary">{historyPagination.total}</span>
+                            )}
+                        </div>
+                        {showHistory ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+                    </div>
+
+                    {showHistory && (
+                        <div style={{ padding: '0 1.25rem 1.25rem' }}>
+                            {historyLoading ? (
+                                <div style={{ textAlign: 'center', padding: '2rem 0' }}>
+                                    <Loader2 className="animate-spin" size={24} />
+                                    <p style={{ marginTop: '0.5rem', color: 'var(--text-secondary)', fontSize: '0.875rem' }}>Loading history...</p>
+                                </div>
+                            ) : history.length === 0 ? (
+                                <div style={{ textAlign: 'center', padding: '2rem 0', color: 'var(--text-secondary)' }}>
+                                    <Clock size={32} style={{ opacity: 0.5, marginBottom: '0.5rem' }} />
+                                    <p style={{ fontSize: '0.875rem' }}>No panel activity recorded yet</p>
+                                </div>
+                            ) : (
+                                <>
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                                        {history.map((log) => {
+                                            const actionMap = {
+                                                'PANEL_ADD': { icon: <Plus size={14} />, label: 'Panel Added', color: '#10b981' },
+                                                'PANEL_DELETE': { icon: <Trash2 size={14} />, label: 'Panel Deleted', color: '#ef4444' },
+                                                'PANEL_UPDATE': { icon: <Edit3 size={14} />, label: 'Panel Updated', color: '#f59e0b' },
+                                                'PANEL_TEST': { icon: <Wifi size={14} />, label: 'Connection Test', color: '#3b82f6' },
+                                                'PANEL_SYNC': { icon: <RefreshCw size={14} />, label: 'Synced Services', color: '#8b5cf6' },
+                                                'PANEL_BALANCE_REFRESH': { icon: <DollarSign size={14} />, label: 'Balance Refreshed', color: '#06b6d4' },
+                                                'PANEL_TEST_ADMIN': { icon: <Key size={14} />, label: 'Admin API Test', color: '#6366f1' },
+                                                'PANEL_DETECT': { icon: <Sparkles size={14} />, label: 'Auto Detected', color: '#ec4899' }
+                                            }
+                                            const info = actionMap[log.action] || { icon: <Globe size={14} />, label: log.action, color: 'var(--text-secondary)' }
+                                            const panelName = log.metadata?.panelAlias || log.metadata?.panelName || 'Unknown Panel'
+                                            const timeAgo = getTimeAgo(new Date(log.createdAt))
+
+                                            return (
+                                                <div
+                                                    key={log.id}
+                                                    style={{
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        gap: '0.75rem',
+                                                        padding: '0.625rem 0.75rem',
+                                                        borderRadius: 'var(--radius-lg)',
+                                                        background: 'var(--bg-tertiary)',
+                                                        border: '1px solid var(--border-color)',
+                                                        fontSize: '0.8125rem'
+                                                    }}
+                                                >
+                                                    <div style={{
+                                                        width: '28px', height: '28px', borderRadius: '50%',
+                                                        background: `${info.color}20`, color: info.color,
+                                                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                                        flexShrink: 0
+                                                    }}>
+                                                        {info.icon}
+                                                    </div>
+                                                    <div style={{ flex: 1, minWidth: 0 }}>
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                                                            <strong style={{ color: info.color }}>{info.label}</strong>
+                                                            <span style={{ color: 'var(--text-primary)' }}>{panelName}</span>
+                                                            {log.status === 'failed' && (
+                                                                <span className="badge badge-error" style={{ fontSize: '0.6875rem' }}>Failed</span>
+                                                            )}
+                                                        </div>
+                                                        {log.metadata?.method && (
+                                                            <span style={{ color: 'var(--text-secondary)', fontSize: '0.75rem' }}>
+                                                                via {log.metadata.method === 'smart_detect' ? 'Smart Detection' : 'Manual'}
+                                                            </span>
+                                                        )}
+                                                        {log.metadata?.endpointsDetected !== undefined && (
+                                                            <span style={{ color: 'var(--text-secondary)', fontSize: '0.75rem' }}>
+                                                                {log.metadata.endpointsDetected} endpoints detected
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                    <span style={{ color: 'var(--text-secondary)', fontSize: '0.75rem', whiteSpace: 'nowrap', flexShrink: 0 }}>
+                                                        {timeAgo}
+                                                    </span>
+                                                </div>
+                                            )
+                                        })}
+                                    </div>
+
+                                    {/* Pagination */}
+                                    {historyPagination.pages > 1 && (
+                                        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '0.75rem', marginTop: '1rem' }}>
+                                            <button
+                                                className="btn btn-secondary btn-sm"
+                                                disabled={historyPage <= 1}
+                                                onClick={() => setHistoryPage(p => p - 1)}
+                                            >
+                                                <ArrowLeft size={14} /> Prev
+                                            </button>
+                                            <span style={{ fontSize: '0.8125rem', color: 'var(--text-secondary)' }}>
+                                                Page {historyPage} of {historyPagination.pages}
+                                            </span>
+                                            <button
+                                                className="btn btn-secondary btn-sm"
+                                                disabled={historyPage >= historyPagination.pages}
+                                                onClick={() => setHistoryPage(p => p + 1)}
+                                            >
+                                                Next <ArrowRight size={14} />
+                                            </button>
+                                        </div>
+                                    )}
+                                </>
+                            )}
+                        </div>
+                    )}
                 </div>
             )}
 

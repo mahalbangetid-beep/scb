@@ -1,8 +1,9 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import {
     Package, Search, Filter, RefreshCw, RotateCcw, XCircle,
     Zap, CheckCircle2, Clock, AlertCircle, Loader2, X,
-    ChevronDown, ExternalLink, Copy, ArrowUpDown, Users, Hash, UserCheck
+    ChevronDown, ExternalLink, Copy, ArrowUpDown, Users, Hash, UserCheck,
+    FileText, Save, Link2, ClipboardCopy
 } from 'lucide-react'
 import api from '../services/api'
 
@@ -31,6 +32,24 @@ export default function Orders() {
     const [showDetailModal, setShowDetailModal] = useState(null)
     const [actionLoading, setActionLoading] = useState(null)
     const [error, setError] = useState(null)
+    const [successMsg, setSuccessMsg] = useState(null)
+    const [showCopyMenu, setShowCopyMenu] = useState(false)
+    const [memoText, setMemoText] = useState('')
+    const [memoSaving, setMemoSaving] = useState(false)
+    const [statusOverriding, setStatusOverriding] = useState(false)
+    const copyMenuRef = useRef(null)
+
+    // Close copy menu when clicking outside
+    useEffect(() => {
+        if (!showCopyMenu) return
+        const handleClickOutside = (e) => {
+            if (copyMenuRef.current && !copyMenuRef.current.contains(e.target)) {
+                setShowCopyMenu(false)
+            }
+        }
+        document.addEventListener('mousedown', handleClickOutside)
+        return () => document.removeEventListener('mousedown', handleClickOutside)
+    }, [showCopyMenu])
 
     useEffect(() => {
         fetchPanels()
@@ -178,6 +197,62 @@ export default function Orders() {
         navigator.clipboard.writeText(text)
     }
 
+    // Bulk Copy handler
+    const handleBulkCopy = async (field) => {
+        if (selectedOrders.length === 0) {
+            setError('No orders selected')
+            return
+        }
+        try {
+            const res = await api.post('/orders/bulk-copy', { orderIds: selectedOrders, field })
+            const text = res.data?.text || ''
+            if (text) {
+                await navigator.clipboard.writeText(text)
+                setSuccessMsg(`Copied ${res.data.count} ${field === 'externalOrderId' ? 'Order IDs' : field === 'providerOrderId' ? 'External IDs' : 'Links'} to clipboard`)
+                setTimeout(() => setSuccessMsg(null), 3000)
+            } else {
+                setError('No data to copy')
+            }
+        } catch (err) {
+            setError(err.error?.message || err.message || 'Copy failed')
+        }
+        setShowCopyMenu(false)
+    }
+
+    // Manual status override
+    const handleStatusOverride = async (orderId, newStatus) => {
+        if (newStatus === showDetailModal?.status) return
+        setStatusOverriding(true)
+        try {
+            const res = await api.patch(`/orders/${orderId}/status-override`, { status: newStatus })
+            const updated = res.data
+            setShowDetailModal(prev => prev ? { ...prev, status: updated.status, statusOverride: updated.statusOverride, statusOverrideBy: updated.statusOverrideBy, statusOverrideAt: updated.statusOverrideAt } : null)
+            setSuccessMsg(`Status changed to ${newStatus}`)
+            setTimeout(() => setSuccessMsg(null), 3000)
+            fetchOrders()
+            fetchStats()
+        } catch (err) {
+            setError(err.error?.message || err.message || 'Status override failed')
+        } finally {
+            setStatusOverriding(false)
+        }
+    }
+
+    // Save staff memo
+    const handleSaveMemo = async (orderId) => {
+        setMemoSaving(true)
+        try {
+            await api.patch(`/orders/${orderId}/memo`, { memo: memoText })
+            setShowDetailModal(prev => prev ? { ...prev, staffMemo: memoText || null } : null)
+            setSuccessMsg(memoText ? 'Memo saved' : 'Memo cleared')
+            setTimeout(() => setSuccessMsg(null), 3000)
+        } catch (err) {
+            setError(err.error?.message || err.message || 'Failed to save memo')
+        } finally {
+            setMemoSaving(false)
+        }
+    }
+
     return (
         <div className="page-container">
             <div className="page-header">
@@ -289,6 +364,15 @@ export default function Orders() {
                 </select>
             </div>
 
+            {/* Success Message */}
+            {successMsg && (
+                <div className="alert alert-success" style={{ background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.3)', color: '#22c55e' }}>
+                    <CheckCircle2 size={18} />
+                    <span>{successMsg}</span>
+                    <button onClick={() => setSuccessMsg(null)}><X size={16} /></button>
+                </div>
+            )}
+
             {/* Bulk Actions */}
             {selectedOrders.length > 0 && (
                 <div className="bulk-actions">
@@ -309,9 +393,52 @@ export default function Orders() {
                         <RotateCcw size={14} />
                         Bulk Refill
                     </button>
+
+                    {/* Bulk Copy Dropdown */}
+                    <div style={{ position: 'relative' }} ref={copyMenuRef}>
+                        <button
+                            className="btn btn-secondary btn-sm"
+                            onClick={() => setShowCopyMenu(!showCopyMenu)}
+                        >
+                            <ClipboardCopy size={14} />
+                            Copy
+                            <ChevronDown size={12} />
+                        </button>
+                        {showCopyMenu && (
+                            <div style={{
+                                position: 'absolute', top: '100%', left: 0, marginTop: '4px',
+                                background: 'var(--bg-secondary)', border: '1px solid var(--border-color)',
+                                borderRadius: 'var(--radius-md)', padding: '4px', zIndex: 50,
+                                minWidth: '180px', boxShadow: '0 8px 24px rgba(0,0,0,0.3)'
+                            }}>
+                                <button
+                                    className="btn btn-ghost btn-sm"
+                                    style={{ width: '100%', justifyContent: 'flex-start', padding: '8px 12px' }}
+                                    onClick={() => handleBulkCopy('externalOrderId')}
+                                >
+                                    <Hash size={14} /> Copy Order IDs
+                                </button>
+                                <button
+                                    className="btn btn-ghost btn-sm"
+                                    style={{ width: '100%', justifyContent: 'flex-start', padding: '8px 12px' }}
+                                    onClick={() => handleBulkCopy('providerOrderId')}
+                                >
+                                    <Users size={14} /> Copy External IDs
+                                </button>
+                                <button
+                                    className="btn btn-ghost btn-sm"
+                                    style={{ width: '100%', justifyContent: 'flex-start', padding: '8px 12px' }}
+                                    onClick={() => handleBulkCopy('link')}
+                                >
+                                    <Link2 size={14} /> Copy Links
+                                </button>
+                            </div>
+                        )}
+                    </div>
+
                     <button
                         className="btn btn-ghost btn-sm"
-                        onClick={() => setSelectedOrders([])}
+                        onClick={() => { setSelectedOrders([]); setShowCopyMenu(false); }}
                     >
                         Clear
                     </button>
@@ -338,13 +465,14 @@ export default function Orders() {
                             <th>Qty</th>
                             <th>Status</th>
                             <th>Charge</th>
+                            <th><FileText size={14} title="Memo" /></th>
                             <th>Actions</th>
                         </tr>
                     </thead>
                     <tbody>
                         {loading ? (
                             <tr>
-                                <td colSpan="10" className="loading-cell">
+                                <td colSpan="11" className="loading-cell">
                                     <div>
                                         <Loader2 className="animate-spin" size={32} />
                                         <span>Loading orders...</span>
@@ -353,7 +481,7 @@ export default function Orders() {
                             </tr>
                         ) : orders.length === 0 ? (
                             <tr>
-                                <td colSpan="10" className="empty-cell">
+                                <td colSpan="11" className="empty-cell">
                                     <div>
                                         <Package size={48} />
                                         <span>No orders found</span>
@@ -437,11 +565,19 @@ export default function Orders() {
                                     </span>
                                 </td>
                                 <td>${order.charge?.toFixed(2) || '0.00'}</td>
+                                {/* Memo indicator */}
+                                <td>
+                                    {order.staffMemo && (
+                                        <span title={order.staffMemo} style={{ cursor: 'help', marginRight: '4px' }}>
+                                            <FileText size={12} style={{ color: '#f59e0b' }} />
+                                        </span>
+                                    )}
+                                </td>
                                 <td>
                                     <div className="action-buttons">
                                         <button
                                             className="btn btn-ghost btn-sm"
-                                            onClick={() => setShowDetailModal(order)}
+                                            onClick={() => { setShowDetailModal(order); setMemoText(order.staffMemo || ''); }}
                                             title="View Details"
                                         >
                                             <ExternalLink size={14} />
@@ -551,15 +687,43 @@ export default function Orders() {
                                     </div>
                                     <div className="detail-item">
                                         <span className="detail-label">Status</span>
-                                        <span
-                                            className="status-badge"
-                                            style={{
-                                                background: STATUS_COLORS[showDetailModal.status]?.bg,
-                                                color: STATUS_COLORS[showDetailModal.status]?.color
-                                            }}
-                                        >
-                                            {showDetailModal.status}
-                                        </span>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                            <span
+                                                className="status-badge"
+                                                style={{
+                                                    background: STATUS_COLORS[showDetailModal.status]?.bg,
+                                                    color: STATUS_COLORS[showDetailModal.status]?.color
+                                                }}
+                                            >
+                                                {showDetailModal.status}
+                                            </span>
+                                            {showDetailModal.statusOverride && (
+                                                <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
+                                                    (overridden by {showDetailModal.statusOverrideBy})
+                                                </span>
+                                            )}
+                                        </div>
+                                    </div>
+                                    <div className="detail-item">
+                                        <span className="detail-label">Manual Status Override</span>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                            <select
+                                                className="form-select"
+                                                style={{ fontSize: '0.8125rem', padding: '4px 8px', minWidth: '140px' }}
+                                                value={showDetailModal.status}
+                                                disabled={statusOverriding}
+                                                onChange={(e) => handleStatusOverride(showDetailModal.id, e.target.value)}
+                                            >
+                                                <option value="PENDING">Pending</option>
+                                                <option value="IN_PROGRESS">In Progress</option>
+                                                <option value="PROCESSING">Processing</option>
+                                                <option value="COMPLETED">Completed</option>
+                                                <option value="PARTIAL">Partial</option>
+                                                <option value="CANCELLED">Cancelled</option>
+                                                <option value="REFUNDED">Refunded</option>
+                                            </select>
+                                            {statusOverriding && <Loader2 className="animate-spin" size={14} />}
+                                        </div>
                                     </div>
                                     <div className="detail-item full-width">
                                         <span className="detail-label">Link</span>
@@ -659,6 +823,39 @@ export default function Orders() {
                                         <span className="detail-value">
                                             {showDetailModal.createdAt ? new Date(showDetailModal.createdAt).toLocaleString() : 'N/A'}
                                         </span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Staff Memo Section */}
+                            <div className="detail-section">
+                                <h4><FileText size={16} /> Staff Memo</h4>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                                    <textarea
+                                        value={memoText}
+                                        onChange={(e) => setMemoText(e.target.value)}
+                                        placeholder="Add internal notes for this order..."
+                                        maxLength={1000}
+                                        style={{
+                                            width: '100%', minHeight: '80px', padding: '0.625rem',
+                                            background: 'var(--bg-tertiary)', border: '1px solid var(--border-color)',
+                                            borderRadius: 'var(--radius-md)', color: 'var(--text-primary)',
+                                            fontSize: '0.8125rem', resize: 'vertical', outline: 'none',
+                                            fontFamily: 'inherit'
+                                        }}
+                                    />
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                        <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                                            {memoText.length}/1000
+                                        </span>
+                                        <button
+                                            className="btn btn-primary btn-sm"
+                                            onClick={() => handleSaveMemo(showDetailModal.id)}
+                                            disabled={memoSaving || memoText === (showDetailModal.staffMemo || '')}
+                                        >
+                                            {memoSaving ? <Loader2 className="animate-spin" size={14} /> : <Save size={14} />}
+                                            Save Memo
+                                        </button>
                                     </div>
                                 </div>
                             </div>

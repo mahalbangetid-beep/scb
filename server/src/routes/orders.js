@@ -635,4 +635,136 @@ router.get('/:id/commands', async (req, res, next) => {
     }
 });
 
+// ==================== STAFF TOOLS ====================
+
+// PATCH /api/orders/:id/status-override - Manually override order status
+router.patch('/:id/status-override', async (req, res, next) => {
+    try {
+        const { status } = req.body;
+
+        const validStatuses = ['PENDING', 'IN_PROGRESS', 'COMPLETED', 'PARTIAL', 'CANCELLED', 'REFUNDED', 'PROCESSING'];
+        if (!status || !validStatuses.includes(status)) {
+            throw new AppError(`Invalid status. Must be one of: ${validStatuses.join(', ')}`, 400);
+        }
+
+        const order = await prisma.order.findFirst({
+            where: {
+                id: req.params.id,
+                userId: req.user.id
+            }
+        });
+
+        if (!order) {
+            throw new AppError('Order not found', 404);
+        }
+
+        const previousStatus = order.status;
+
+        const updated = await prisma.order.update({
+            where: { id: order.id },
+            data: {
+                status,
+                statusOverride: status,
+                statusOverrideBy: req.user.username,
+                statusOverrideAt: new Date(),
+                ...(status === 'COMPLETED' && !order.completedAt ? { completedAt: new Date() } : {})
+            },
+            include: {
+                panel: {
+                    select: { id: true, alias: true }
+                }
+            }
+        });
+
+        successResponse(res, {
+            ...updated,
+            previousStatus
+        }, `Order status changed from ${previousStatus} to ${status}`);
+    } catch (error) {
+        next(error);
+    }
+});
+
+// PATCH /api/orders/:id/memo - Update staff memo/notes
+router.patch('/:id/memo', async (req, res, next) => {
+    try {
+        const { memo } = req.body;
+
+        if (memo !== undefined && typeof memo !== 'string') {
+            throw new AppError('Memo must be a string', 400);
+        }
+
+        if (memo && memo.length > 1000) {
+            throw new AppError('Memo must be 1000 characters or less', 400);
+        }
+
+        const order = await prisma.order.findFirst({
+            where: {
+                id: req.params.id,
+                userId: req.user.id
+            }
+        });
+
+        if (!order) {
+            throw new AppError('Order not found', 404);
+        }
+
+        const updated = await prisma.order.update({
+            where: { id: order.id },
+            data: { staffMemo: memo || null }
+        });
+
+        successResponse(res, updated, memo ? 'Memo saved' : 'Memo cleared');
+    } catch (error) {
+        next(error);
+    }
+});
+
+// POST /api/orders/bulk-copy - Get copy data for selected orders
+router.post('/bulk-copy', async (req, res, next) => {
+    try {
+        const { orderIds, field } = req.body;
+
+        if (!orderIds || !Array.isArray(orderIds) || orderIds.length === 0) {
+            throw new AppError('Order IDs array is required', 400);
+        }
+
+        const validFields = ['externalOrderId', 'providerOrderId', 'link'];
+        if (!field || !validFields.includes(field)) {
+            throw new AppError(`Invalid field. Must be one of: ${validFields.join(', ')}`, 400);
+        }
+
+        if (orderIds.length > 500) {
+            throw new AppError('Maximum 500 orders per request', 400);
+        }
+
+        const orders = await prisma.order.findMany({
+            where: {
+                id: { in: orderIds },
+                userId: req.user.id
+            },
+            select: {
+                id: true,
+                externalOrderId: true,
+                providerOrderId: true,
+                link: true
+            },
+            orderBy: { createdAt: 'desc' }
+        });
+
+        const values = orders
+            .map(o => o[field])
+            .filter(v => v !== null && v !== undefined && v !== '');
+
+        successResponse(res, {
+            field,
+            count: values.length,
+            total: orders.length,
+            text: values.join('\n')
+        }, `Copied ${values.length} ${field} values`);
+    } catch (error) {
+        next(error);
+    }
+});
+
 module.exports = router;

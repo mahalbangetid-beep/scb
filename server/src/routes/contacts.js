@@ -225,57 +225,206 @@ router.delete('/:id', authenticate, async (req, res, next) => {
     }
 });
 
-// POST /api/contacts/import - Bulk import
+// POST /api/contacts/import - Bulk import (JSON body or CSV file upload)
 router.post('/import', authenticate, async (req, res, next) => {
     try {
-        const { contacts } = req.body;
+        let contactItems = [];
 
-        if (!contacts || !Array.isArray(contacts)) {
-            throw new AppError('contacts array is required', 400);
+        // Check if this is a CSV text upload (sent as { csv: "...", tags: [...] })
+        if (req.body.csv) {
+            const lines = req.body.csv.split('\n').map(l => l.trim()).filter(Boolean);
+            if (lines.length < 2) {
+                throw new AppError('CSV must have a header row and at least one data row', 400);
+            }
+
+            // Parse header
+            const headerLine = lines[0].toLowerCase();
+            const headers = headerLine.split(',').map(h => h.trim().replace(/^["']|["']$/g, ''));
+
+            // Find column indices
+            const nameIdx = headers.findIndex(h => ['name', 'full name', 'fullname', 'nama'].includes(h));
+            const phoneIdx = headers.findIndex(h => ['phone', 'phone number', 'phonenumber', 'nomor', 'no', 'whatsapp', 'wa'].includes(h));
+            const emailIdx = headers.findIndex(h => ['email', 'e-mail', 'mail'].includes(h));
+            const notesIdx = headers.findIndex(h => ['notes', 'note', 'description', 'catatan'].includes(h));
+            const tagsIdx = headers.findIndex(h => ['tags', 'tag', 'label', 'group', 'groups'].includes(h));
+
+            if (phoneIdx === -1) {
+                throw new AppError('CSV must have a "phone" column', 400);
+            }
+
+            // Parse CSV rows (simple parser — handles quoted commas)
+            for (let i = 1; i < lines.length; i++) {
+                const values = parseCSVLine(lines[i]);
+                const phone = normalizePhone(values[phoneIdx] || '');
+                if (!phone) continue;
+
+                const item = {
+                    name: (nameIdx !== -1 ? values[nameIdx] : '') || phone,
+                    phone,
+                    email: emailIdx !== -1 ? (values[emailIdx] || null) : null,
+                    notes: notesIdx !== -1 ? (values[notesIdx] || null) : null,
+                    tags: []
+                };
+
+                // Tags from CSV column
+                if (tagsIdx !== -1 && values[tagsIdx]) {
+                    item.tags = values[tagsIdx].split(';').map(t => t.trim()).filter(Boolean);
+                }
+
+                // Global tags from request body
+                if (req.body.tags && Array.isArray(req.body.tags)) {
+                    item.tags = [...new Set([...item.tags, ...req.body.tags])];
+                }
+
+                contactItems.push(item);
+            }
+        } else if (req.body.contacts && Array.isArray(req.body.contacts)) {
+            // JSON body import
+            contactItems = req.body.contacts;
+        } else {
+            throw new AppError('Provide either a "csv" string or a "contacts" array', 400);
         }
 
-        let imported = 0;
+        if (contactItems.length === 0) {
+            throw new AppError('No valid contacts to import', 400);
+        }
 
-        // Simple sequential import for reliability
-        // In a real high-volume app, we'd use createMany or a queue
-        for (const item of contacts) {
+        if (contactItems.length > 5000) {
+            throw new AppError('Maximum 5000 contacts per import', 400);
+        }
+
+        let created = 0;
+        let updated = 0;
+        let skipped = 0;
+        const errors = [];
+
+        for (const item of contactItems) {
             try {
-                const { name, phone, email, tags: tagNames } = item;
-                if (!name || !phone) continue;
+                const { name, phone, email, notes, tags: tagNames } = item;
+                const cleanPhone = normalizePhone(phone || '');
+                if (!cleanPhone) {
+                    skipped++;
+                    continue;
+                }
 
-                const contact = await prisma.contact.create({
-                    data: {
-                        name,
-                        phone,
-                        email,
+                const contactName = (name || '').trim() || cleanPhone;
+
+                // Check if contact exists (for accurate created/updated count)
+                const existing = await prisma.contact.findFirst({
+                    where: { phone: cleanPhone, userId: req.user.id },
+                    select: { id: true }
+                });
+
+                // Upsert: auto-dedup by phone+userId
+                const contact = await prisma.contact.upsert({
+                    where: {
+                        phone_userId: {
+                            phone: cleanPhone,
+                            userId: req.user.id
+                        }
+                    },
+                    update: {
+                        name: contactName,
+                        ...(email ? { email } : {}),
+                        ...(notes ? { notes } : {})
+                    },
+                    create: {
+                        name: contactName,
+                        phone: cleanPhone,
+                        email: email || null,
+                        notes: notes || null,
                         userId: req.user.id
                     }
                 });
 
-                if (tagNames && Array.isArray(tagNames)) {
+                if (existing) updated++;
+                else created++;
+
+                // Assign tags
+                if (tagNames && Array.isArray(tagNames) && tagNames.length > 0) {
                     for (const tagName of tagNames) {
+                        if (!tagName || typeof tagName !== 'string') continue;
+                        const cleanTag = tagName.trim();
+                        if (!cleanTag) continue;
+
                         const tag = await prisma.tag.upsert({
-                            where: { name_userId: { name: tagName, userId: req.user.id } },
+                            where: { name_userId: { name: cleanTag, userId: req.user.id } },
                             update: {},
-                            create: { name: tagName, userId: req.user.id }
+                            create: { name: cleanTag, userId: req.user.id }
                         });
-                        await prisma.contactTag.create({
-                            data: { contactId: contact.id, tagId: tag.id }
+
+                        // Upsert contact-tag link (avoid duplicate errors)
+                        await prisma.contactTag.upsert({
+                            where: {
+                                contactId_tagId: {
+                                    contactId: contact.id,
+                                    tagId: tag.id
+                                }
+                            },
+                            update: {},
+                            create: {
+                                contactId: contact.id,
+                                tagId: tag.id
+                            }
                         });
                     }
                 }
-                imported++;
             } catch (err) {
-                console.error('Failed to import contact:', err);
-                // Continue with next contact
+                skipped++;
+                errors.push({ phone: item.phone, error: err.message });
             }
         }
 
-        successResponse(res, { imported }, `${imported} contacts imported`);
+        successResponse(res, {
+            total: contactItems.length,
+            created,
+            updated,
+            skipped,
+            errors: errors.slice(0, 20) // Limit error details
+        }, `Import complete: ${created} created, ${updated} updated, ${skipped} skipped`);
     } catch (error) {
         next(error);
     }
 });
+
+// Helper: normalize phone number (strip non-digit except leading +)
+function normalizePhone(phone) {
+    if (!phone) return '';
+    let clean = phone.trim().replace(/^["']|["']$/g, '');
+    // Keep leading + if present, strip all other non-digits
+    if (clean.startsWith('+')) {
+        clean = '+' + clean.slice(1).replace(/\D/g, '');
+    } else {
+        clean = clean.replace(/\D/g, '');
+    }
+    return clean.length >= 7 ? clean : '';
+}
+
+// Helper: parse a single CSV line (handles quoted fields)
+function parseCSVLine(line) {
+    const result = [];
+    let current = '';
+    let inQuotes = false;
+
+    for (let i = 0; i < line.length; i++) {
+        const ch = line[i];
+        if (ch === '"' || ch === "'") {
+            if (inQuotes && i + 1 < line.length && line[i + 1] === ch) {
+                current += ch;
+                i++; // skip escaped quote
+            } else {
+                inQuotes = !inQuotes;
+            }
+        } else if (ch === ',' && !inQuotes) {
+            result.push(current.trim());
+            current = '';
+        } else {
+            current += ch;
+        }
+    }
+    result.push(current.trim());
+    return result;
+}
 
 module.exports = router;
 

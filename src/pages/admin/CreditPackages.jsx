@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Plus, Edit2, Trash2, Star, DollarSign, Package, ToggleLeft, ToggleRight, Gift, AlertTriangle, Zap } from 'lucide-react';
+import { Plus, Edit2, Trash2, Star, DollarSign, Package, ToggleLeft, ToggleRight, Gift, AlertTriangle, Zap, Search } from 'lucide-react';
 import api from '../../services/api';
 
 const CreditPackages = () => {
@@ -9,6 +9,7 @@ const CreditPackages = () => {
     const [editingItem, setEditingItem] = useState(null);
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
+    const [searchTerm, setSearchTerm] = useState('');
 
     const [formData, setFormData] = useState({
         name: '',
@@ -161,76 +162,91 @@ const CreditPackages = () => {
             {error && <div className="alert alert-error"><AlertTriangle size={20} />{error}</div>}
             {success && <div className="alert alert-success"><Zap size={20} />{success}</div>}
 
+            {/* Search */}
+            <div style={{ marginBottom: 'var(--spacing-lg)' }}>
+                <div className="search-box">
+                    <Search size={18} />
+                    <input
+                        type="text"
+                        placeholder="Search packages by name..."
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                    />
+                </div>
+            </div>
+
             {/* Packages Grid */}
             <div className="packages-grid">
-                {packages.map(pkg => (
-                    <div key={pkg.id} className={`package-card ${pkg.isFeatured ? 'featured' : ''} ${!pkg.isActive ? 'inactive' : ''}`}>
-                        {pkg.isFeatured && (
-                            <div className="featured-badge">
-                                <Star size={14} /> Featured
-                            </div>
-                        )}
-
-                        <div className="package-header">
-                            <h3>{pkg.name}</h3>
-                            {!pkg.isActive && <span className="badge badge-warning">Inactive</span>}
-                        </div>
-
-                        <div className="package-price">
-                            <span className="currency">$</span>
-                            <span className="amount">{pkg.price}</span>
-                        </div>
-
-                        <div className="package-credits">
-                            <div className="credits-main">
-                                <strong>{pkg.credits.toLocaleString()}</strong> credits
-                            </div>
-                            {pkg.bonusCredits > 0 && (
-                                <div className="credits-bonus">
-                                    <Gift size={14} /> +{pkg.bonusCredits.toLocaleString()} bonus
+                {packages
+                    .filter(pkg => !searchTerm || pkg.name.toLowerCase().includes(searchTerm.toLowerCase()) || (pkg.description && pkg.description.toLowerCase().includes(searchTerm.toLowerCase())))
+                    .map(pkg => (
+                        <div key={pkg.id} className={`package-card ${pkg.isFeatured ? 'featured' : ''} ${!pkg.isActive ? 'inactive' : ''}`}>
+                            {pkg.isFeatured && (
+                                <div className="featured-badge">
+                                    <Star size={14} /> Featured
                                 </div>
                             )}
-                            {pkg.discountPct > 0 && (
-                                <div className="credits-discount">
-                                    {pkg.discountPct}% off
+
+                            <div className="package-header">
+                                <h3>{pkg.name}</h3>
+                                {!pkg.isActive && <span className="badge badge-warning">Inactive</span>}
+                            </div>
+
+                            <div className="package-price">
+                                <span className="currency">$</span>
+                                <span className="amount">{pkg.price}</span>
+                            </div>
+
+                            <div className="package-credits">
+                                <div className="credits-main">
+                                    <strong>{pkg.credits.toLocaleString()}</strong> credits
                                 </div>
+                                {pkg.bonusCredits > 0 && (
+                                    <div className="credits-bonus">
+                                        <Gift size={14} /> +{pkg.bonusCredits.toLocaleString()} bonus
+                                    </div>
+                                )}
+                                {pkg.discountPct > 0 && (
+                                    <div className="credits-discount">
+                                        {pkg.discountPct}% off
+                                    </div>
+                                )}
+                            </div>
+
+                            <div className="package-value">
+                                <small>
+                                    {pkg.creditsPerDollar?.toFixed(0)} credits/$ • ${pkg.costPerCredit?.toFixed(4)}/credit
+                                </small>
+                            </div>
+
+                            {pkg.description && (
+                                <p className="package-description">{pkg.description}</p>
                             )}
-                        </div>
 
-                        <div className="package-value">
-                            <small>
-                                {pkg.creditsPerDollar?.toFixed(0)} credits/$ • ${pkg.costPerCredit?.toFixed(4)}/credit
-                            </small>
+                            <div className="package-actions">
+                                <button
+                                    className={`btn btn-ghost btn-icon ${pkg.isActive ? 'text-success' : 'text-muted'}`}
+                                    onClick={() => handleToggle(pkg.id)}
+                                    title={pkg.isActive ? 'Active' : 'Inactive'}
+                                >
+                                    {pkg.isActive ? <ToggleRight size={20} /> : <ToggleLeft size={20} />}
+                                </button>
+                                <button
+                                    className={`btn btn-ghost btn-icon ${pkg.isFeatured ? 'text-warning' : 'text-muted'}`}
+                                    onClick={() => handleFeature(pkg.id)}
+                                    title={pkg.isFeatured ? 'Featured' : 'Not Featured'}
+                                >
+                                    <Star size={18} />
+                                </button>
+                                <button className="btn btn-ghost btn-icon" onClick={() => handleEdit(pkg)}>
+                                    <Edit2 size={16} />
+                                </button>
+                                <button className="btn btn-ghost btn-icon text-danger" onClick={() => handleDelete(pkg.id)}>
+                                    <Trash2 size={16} />
+                                </button>
+                            </div>
                         </div>
-
-                        {pkg.description && (
-                            <p className="package-description">{pkg.description}</p>
-                        )}
-
-                        <div className="package-actions">
-                            <button
-                                className={`btn btn-ghost btn-icon ${pkg.isActive ? 'text-success' : 'text-muted'}`}
-                                onClick={() => handleToggle(pkg.id)}
-                                title={pkg.isActive ? 'Active' : 'Inactive'}
-                            >
-                                {pkg.isActive ? <ToggleRight size={20} /> : <ToggleLeft size={20} />}
-                            </button>
-                            <button
-                                className={`btn btn-ghost btn-icon ${pkg.isFeatured ? 'text-warning' : 'text-muted'}`}
-                                onClick={() => handleFeature(pkg.id)}
-                                title={pkg.isFeatured ? 'Featured' : 'Not Featured'}
-                            >
-                                <Star size={18} />
-                            </button>
-                            <button className="btn btn-ghost btn-icon" onClick={() => handleEdit(pkg)}>
-                                <Edit2 size={16} />
-                            </button>
-                            <button className="btn btn-ghost btn-icon text-danger" onClick={() => handleDelete(pkg.id)}>
-                                <Trash2 size={16} />
-                            </button>
-                        </div>
-                    </div>
-                ))}
+                    ))}
             </div>
 
             {/* Modal */}

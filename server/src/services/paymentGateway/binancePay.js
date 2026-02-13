@@ -389,6 +389,22 @@ class BinancePayService {
 
         console.log(`[BinancePay] Payment completed: ${paymentId}, credited: $${result.totalCredit}`);
 
+        // Auto-generate invoice
+        try {
+            const invoiceService = require('../invoiceService');
+            await invoiceService.createFromPayment({
+                paymentId,
+                userId: payment.userId,
+                amount: result.totalCredit,
+                currency: payment.currency || 'USD',
+                method: 'BINANCE',
+                description: `Credit Top-Up via Binance${result.bonusAmount > 0 ? ` (includes $${result.bonusAmount.toFixed(2)} bonus)` : ''}`,
+                metadata: { gateway: 'binance', bonusAmount: result.bonusAmount }
+            });
+        } catch (invoiceError) {
+            console.error('[BinancePay] Invoice generation failed:', invoiceError.message);
+        }
+
         return {
             success: true,
             message: 'Payment verified and credited successfully!',

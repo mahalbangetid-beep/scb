@@ -20,6 +20,7 @@ import PanelConnections from './pages/PanelConnections'
 import Orders from './pages/Orders'
 import ProviderGroups from './pages/ProviderGroups'
 import Wallet from './pages/Wallet'
+import Invoices from './pages/Invoices'
 import Reports from './pages/Reports'
 import TelegramBots from './pages/TelegramBots'
 import CommandTemplates from './pages/CommandTemplates'
@@ -32,6 +33,9 @@ import LandingPage from './pages/LandingPage'
 import ResponseTemplates from './pages/ResponseTemplates'
 import ProviderForwarding from './pages/ProviderForwarding'
 import SystemBots from './pages/SystemBots'
+import MyStaff from './pages/MyStaff'
+import ActivityLogs from './pages/ActivityLogs'
+import Watermarks from './pages/Watermarks'
 import './styles/landing.css'
 // Admin Pages
 import UserManagement from './pages/admin/UserManagement'
@@ -44,6 +48,7 @@ import CreditPackages from './pages/admin/CreditPackages'
 import ContactBackups from './pages/admin/ContactBackups'
 import SystemBotManagement from './pages/admin/SystemBotManagement'
 import AdminDashboard from './pages/admin/AdminDashboard'
+import EmailSettings from './pages/admin/EmailSettings'
 import './index.css'
 
 
@@ -117,6 +122,7 @@ function AppContent() {
           <Route path="/provider-groups" element={<ProtectedRoute><ProviderGroups /></ProtectedRoute>} />
           <Route path="/command-templates" element={<ProtectedRoute><CommandTemplates /></ProtectedRoute>} />
           <Route path="/wallet" element={<ProtectedRoute><Wallet /></ProtectedRoute>} />
+          <Route path="/invoices" element={<ProtectedRoute><Invoices /></ProtectedRoute>} />
           <Route path="/reports" element={<ProtectedRoute><Reports /></ProtectedRoute>} />
           <Route path="/broadcast" element={<ProtectedRoute><Broadcast /></ProtectedRoute>} />
           <Route path="/auto-reply" element={<ProtectedRoute><AutoReply /></ProtectedRoute>} />
@@ -134,6 +140,9 @@ function AppContent() {
           <Route path="/response-templates" element={<ProtectedRoute><ResponseTemplates /></ProtectedRoute>} />
           <Route path="/provider-forwarding" element={<ProtectedRoute><ProviderForwarding /></ProtectedRoute>} />
           <Route path="/system-bots" element={<ProtectedRoute><SystemBots /></ProtectedRoute>} />
+          <Route path="/my-staff" element={<ProtectedRoute><MyStaff /></ProtectedRoute>} />
+          <Route path="/activity-logs" element={<ProtectedRoute><ActivityLogs /></ProtectedRoute>} />
+          <Route path="/watermarks" element={<ProtectedRoute><Watermarks /></ProtectedRoute>} />
 
           {/* Admin Routes */}
           <Route path="/admin/dashboard" element={<AdminRoute><AdminDashboard /></AdminRoute>} />
@@ -146,6 +155,7 @@ function AppContent() {
           <Route path="/admin/credit-packages" element={<AdminRoute><CreditPackages /></AdminRoute>} />
           <Route path="/admin/contact-backups" element={<AdminRoute><ContactBackups /></AdminRoute>} />
           <Route path="/admin/system-bots" element={<AdminRoute><SystemBotManagement /></AdminRoute>} />
+          <Route path="/admin/email-settings" element={<AdminRoute><EmailSettings /></AdminRoute>} />
 
           {/* Catch all */}
           <Route path="*" element={<Navigate to="/" replace />} />

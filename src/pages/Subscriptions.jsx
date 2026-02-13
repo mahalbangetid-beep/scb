@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { CreditCard, Calendar, AlertTriangle, Zap, Play, Pause, XCircle, RefreshCw, DollarSign } from 'lucide-react';
+import { CreditCard, Calendar, AlertTriangle, Zap, Play, Pause, XCircle, RefreshCw, DollarSign, Search } from 'lucide-react';
 import api from '../services/api';
 
 const Subscriptions = () => {
@@ -9,6 +9,7 @@ const Subscriptions = () => {
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
     const [actionLoading, setActionLoading] = useState(null);
+    const [searchTerm, setSearchTerm] = useState('');
 
     useEffect(() => {
         fetchData();
@@ -196,62 +197,75 @@ const Subscriptions = () => {
                     </div>
                 ) : (
                     <div className="subscriptions-list">
-                        {summary.subscriptions.map(sub => {
-                            const daysUntil = getDaysUntil(sub.nextBilling);
-                            const isExpiringSoon = daysUntil !== null && daysUntil <= 3 && sub.status === 'ACTIVE';
+                        <div style={{ marginBottom: 'var(--spacing-md)' }}>
+                            <div className="search-box">
+                                <Search size={18} />
+                                <input
+                                    type="text"
+                                    placeholder="Search subscriptions..."
+                                    value={searchTerm}
+                                    onChange={(e) => setSearchTerm(e.target.value)}
+                                />
+                            </div>
+                        </div>
+                        {summary.subscriptions
+                            .filter(sub => !searchTerm || (sub.name || '').toLowerCase().includes(searchTerm.toLowerCase()) || (sub.type || '').toLowerCase().includes(searchTerm.toLowerCase()))
+                            .map(sub => {
+                                const daysUntil = getDaysUntil(sub.nextBilling);
+                                const isExpiringSoon = daysUntil !== null && daysUntil <= 3 && sub.status === 'ACTIVE';
 
-                            return (
-                                <div key={sub.id} className={`subscription-item ${sub.status.toLowerCase()}`}>
-                                    <div className="subscription-info">
-                                        <div className="subscription-icon">
-                                            {getResourceIcon(sub.type)}
-                                        </div>
-                                        <div className="subscription-details">
-                                            <h4>{sub.name}</h4>
-                                            <span className="subscription-type">{sub.type.replace('_', ' ')}</span>
-                                        </div>
-                                    </div>
-
-                                    <div className="subscription-status">
-                                        {getStatusBadge(sub.status)}
-                                    </div>
-
-                                    <div className="subscription-billing">
-                                        <div className="billing-amount">${sub.fee}/mo</div>
-                                        {sub.status === 'ACTIVE' && sub.nextBilling && (
-                                            <div className={`billing-date ${isExpiringSoon ? 'warning' : ''}`}>
-                                                {isExpiringSoon && <AlertTriangle size={12} />}
-                                                {daysUntil <= 0 ? 'Due today' : `${daysUntil} days left`}
+                                return (
+                                    <div key={sub.id} className={`subscription-item ${sub.status.toLowerCase()}`}>
+                                        <div className="subscription-info">
+                                            <div className="subscription-icon">
+                                                {getResourceIcon(sub.type)}
                                             </div>
-                                        )}
-                                    </div>
+                                            <div className="subscription-details">
+                                                <h4>{sub.name}</h4>
+                                                <span className="subscription-type">{sub.type.replace('_', ' ')}</span>
+                                            </div>
+                                        </div>
 
-                                    <div className="subscription-actions">
-                                        {sub.status === 'PAUSED' && (
-                                            <button
-                                                className="btn btn-sm btn-primary"
-                                                onClick={() => handleResume(sub.id)}
-                                                disabled={actionLoading === sub.id}
-                                            >
-                                                <Play size={14} /> Resume
-                                            </button>
-                                        )}
-                                        {sub.status === 'ACTIVE' && (
-                                            <button
-                                                className="btn btn-sm btn-ghost text-danger"
-                                                onClick={() => handleCancel(sub.id)}
-                                                disabled={actionLoading === sub.id}
-                                            >
-                                                <XCircle size={14} /> Cancel
-                                            </button>
-                                        )}
-                                        {sub.status === 'CANCELLED' && (
-                                            <span className="text-muted">Cancelled</span>
-                                        )}
+                                        <div className="subscription-status">
+                                            {getStatusBadge(sub.status)}
+                                        </div>
+
+                                        <div className="subscription-billing">
+                                            <div className="billing-amount">${sub.fee}/mo</div>
+                                            {sub.status === 'ACTIVE' && sub.nextBilling && (
+                                                <div className={`billing-date ${isExpiringSoon ? 'warning' : ''}`}>
+                                                    {isExpiringSoon && <AlertTriangle size={12} />}
+                                                    {daysUntil <= 0 ? 'Due today' : `${daysUntil} days left`}
+                                                </div>
+                                            )}
+                                        </div>
+
+                                        <div className="subscription-actions">
+                                            {sub.status === 'PAUSED' && (
+                                                <button
+                                                    className="btn btn-sm btn-primary"
+                                                    onClick={() => handleResume(sub.id)}
+                                                    disabled={actionLoading === sub.id}
+                                                >
+                                                    <Play size={14} /> Resume
+                                                </button>
+                                            )}
+                                            {sub.status === 'ACTIVE' && (
+                                                <button
+                                                    className="btn btn-sm btn-ghost text-danger"
+                                                    onClick={() => handleCancel(sub.id)}
+                                                    disabled={actionLoading === sub.id}
+                                                >
+                                                    <XCircle size={14} /> Cancel
+                                                </button>
+                                            )}
+                                            {sub.status === 'CANCELLED' && (
+                                                <span className="text-muted">Cancelled</span>
+                                            )}
+                                        </div>
                                     </div>
-                                </div>
-                            );
-                        })}
+                                );
+                            })}
                     </div>
                 )}
             </div>

@@ -189,6 +189,21 @@ class ManualPaymentService {
 
             console.log(`[ManualPayment] Approved: ${transactionId}, credited ${transaction.amount} to ${transaction.userId}`);
 
+            // Auto-generate invoice
+            try {
+                const invoiceService = require('../invoiceService');
+                await invoiceService.createFromPayment({
+                    userId: transaction.userId,
+                    amount: transaction.amount,
+                    currency: 'USD',
+                    method: 'MANUAL',
+                    description: `Credit Top-Up via Manual Payment`,
+                    metadata: { gateway: 'manual', approvedBy: adminId }
+                });
+            } catch (invoiceError) {
+                console.error('[ManualPayment] Invoice generation failed:', invoiceError.message);
+            }
+
             return {
                 success: true,
                 transactionId,

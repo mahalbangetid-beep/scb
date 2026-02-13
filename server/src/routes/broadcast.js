@@ -4,7 +4,40 @@ const prisma = require('../utils/prisma');
 const { authenticate } = require('../middleware/auth');
 const { AppError } = require('../middleware/errorHandler');
 const { successResponse, paginatedResponse, parsePagination } = require('../utils/response');
+const multer = require('multer');
+const path = require('path');
+const fs = require('fs');
 
+// Setup multer for broadcast media uploads
+const UPLOAD_DIR = path.join(__dirname, '../../uploads/broadcast');
+try {
+    if (!fs.existsSync(UPLOAD_DIR)) {
+        fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+    }
+} catch (err) {
+    console.warn(`[Broadcast] Could not create upload dir: ${err.message}. Image uploads may fail.`);
+}
+
+const storage = multer.diskStorage({
+    destination: (req, file, cb) => cb(null, UPLOAD_DIR),
+    filename: (req, file, cb) => {
+        const ext = path.extname(file.originalname);
+        cb(null, `broadcast-${Date.now()}-${Math.random().toString(36).slice(2, 8)}${ext}`);
+    }
+});
+
+const upload = multer({
+    storage,
+    limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
+    fileFilter: (req, file, cb) => {
+        const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+        if (allowedTypes.includes(file.mimetype)) {
+            cb(null, true);
+        } else {
+            cb(new AppError('Only image files (JPEG, PNG, GIF, WebP) are allowed', 400));
+        }
+    }
+});
 // GET /api/broadcast - List all campaigns for user
 router.get('/', authenticate, async (req, res, next) => {
     try {
@@ -68,9 +101,17 @@ router.get('/:id', authenticate, async (req, res, next) => {
 });
 
 // POST /api/broadcast - Create and send broadcast
-router.post('/', authenticate, async (req, res, next) => {
+router.post('/', authenticate, upload.single('media'), async (req, res, next) => {
     try {
-        const { name, deviceId, recipients, message, mediaUrl, scheduledAt } = req.body;
+        const { name, deviceId, message, scheduledAt } = req.body;
+        let { recipients, mediaUrl } = req.body;
+
+        // Handle recipients from form data (recipients[]) or JSON array
+        if (!recipients && req.body['recipients[]']) {
+            recipients = Array.isArray(req.body['recipients[]'])
+                ? req.body['recipients[]']
+                : [req.body['recipients[]']];
+        }
 
         if (!name || !deviceId || !recipients || !message) {
             throw new AppError('name, deviceId, recipients, and message are required', 400);
@@ -78,6 +119,11 @@ router.post('/', authenticate, async (req, res, next) => {
 
         if (!Array.isArray(recipients) || recipients.length === 0) {
             throw new AppError('recipients must be a non-empty array', 400);
+        }
+
+        // If file was uploaded via multer, use its path as mediaUrl
+        if (req.file && !mediaUrl) {
+            mediaUrl = req.file.path; // Absolute file path — Baileys accepts local file paths
         }
 
         // Verify device ownership
@@ -118,7 +164,7 @@ router.post('/', authenticate, async (req, res, next) => {
 
         // Process broadcast in background (don't await)
         if (!scheduledAt) {
-            processBroadcast(req.app.get('whatsapp'), campaign.id, deviceId, message, mediaUrl)
+            processBroadcast(req.app.get('whatsapp'), campaign.id, deviceId, message, mediaUrl, req.user.id)
                 .catch(err => console.error('[Broadcast] Error:', err.message));
         }
 
@@ -129,7 +175,7 @@ router.post('/', authenticate, async (req, res, next) => {
 });
 
 // Background broadcast processor
-async function processBroadcast(whatsapp, broadcastId, deviceId, message, mediaUrl) {
+async function processBroadcast(whatsapp, broadcastId, deviceId, message, mediaUrl, userId) {
     const recipients = await prisma.broadcastRecipient.findMany({
         where: { broadcastId, status: 'pending' }
     });
@@ -139,9 +185,22 @@ async function processBroadcast(whatsapp, broadcastId, deviceId, message, mediaU
     for (const recipient of recipients) {
         try {
             if (mediaUrl) {
-                await whatsapp.sendImage(deviceId, recipient.phone, mediaUrl, message);
+                // Embed watermark in caption for image broadcasts
+                let finalCaption = message;
+                if (userId) {
+                    try {
+                        const { watermarkService } = require('../services/watermarkService');
+                        const result = await watermarkService.createAndEmbed({
+                            text: message, userId, deviceId, recipientId: recipient.phone, broadcastId
+                        });
+                        finalCaption = result.watermarkedText;
+                    } catch (e) { /* watermark is non-critical */ }
+                }
+                await whatsapp.sendImage(deviceId, recipient.phone, mediaUrl, finalCaption);
             } else {
-                await whatsapp.sendMessage(deviceId, recipient.phone, message);
+                await whatsapp.sendMessage(deviceId, recipient.phone, message,
+                    userId ? { userId, broadcastId } : null
+                );
             }
 
             await prisma.broadcastRecipient.update({
@@ -166,8 +225,8 @@ async function processBroadcast(whatsapp, broadcastId, deviceId, message, mediaU
         where: { id: broadcastId },
         data: {
             status: failed === recipients.length ? 'failed' : 'completed',
-            sentCount: sent,
-            failedCount: failed,
+            sent,
+            failed,
             completedAt: new Date()
         }
     });
@@ -221,7 +280,7 @@ router.get('/:id/recipients', authenticate, async (req, res, next) => {
                 where,
                 skip,
                 take: limit,
-                orderBy: { createdAt: 'asc' }
+                orderBy: { id: 'asc' }
             }),
             prisma.broadcastRecipient.count({ where })
         ]);

@@ -16,6 +16,80 @@ const { AppError } = require('../middleware/errorHandler');
 router.use(authenticate);
 
 /**
+ * GET /api/tickets/staff/all
+ * Staff: Get all tickets from users they manage
+ * Requires support permission
+ */
+router.get('/staff/all', async (req, res, next) => {
+    try {
+        const prismaClient = require('../utils/prisma');
+
+        // Check if user is staff with support permission
+        if (req.user.role !== 'STAFF' && req.user.role !== 'ADMIN' && req.user.role !== 'MASTER_ADMIN') {
+            throw new AppError('Not authorized', 403);
+        }
+
+        let targetUserIds = [];
+
+        if (req.user.role === 'ADMIN' || req.user.role === 'MASTER_ADMIN') {
+            // Admins see all tickets — no userId filter
+            targetUserIds = null;
+        } else {
+            // Staff: find which users they manage (from staffPermissions)
+            const perms = await prismaClient.staffPermission.findMany({
+                where: { staffId: req.user.id, permission: 'support' },
+                select: { userId: true }
+            });
+
+            if (perms.length === 0) {
+                throw new AppError('No support permission', 403);
+            }
+
+            // Get user IDs this staff can manage
+            targetUserIds = perms.map(p => p.userId).filter(Boolean);
+            // If any permission has null userId, it means all users
+            if (perms.some(p => !p.userId)) {
+                targetUserIds = null;
+            }
+        }
+
+        const { status, category, priority, search, limit, offset } = req.query;
+
+        const where = {};
+        if (targetUserIds) {
+            where.userId = { in: targetUserIds };
+        }
+        if (status) where.status = status;
+        if (category) where.category = category;
+        if (priority) where.priority = priority;
+        if (search) {
+            where.OR = [
+                { ticketNumber: { contains: search } },
+                { subject: { contains: search, mode: 'insensitive' } },
+                { customerUsername: { contains: search, mode: 'insensitive' } }
+            ];
+        }
+
+        const tickets = await prismaClient.ticket.findMany({
+            where,
+            orderBy: { createdAt: 'desc' },
+            take: parseInt(limit) || 50,
+            skip: parseInt(offset) || 0
+        });
+
+        const total = await prismaClient.ticket.count({ where });
+
+        successResponse(res, {
+            tickets: tickets.map(t => ticketService.parseTicket(t)),
+            total,
+            isStaffView: true
+        });
+    } catch (error) {
+        next(error);
+    }
+});
+
+/**
  * GET /api/tickets
  * Get tickets for current user
  */
@@ -151,6 +225,25 @@ router.post('/:id/reply', async (req, res, next) => {
             content,
             type || 'STAFF'
         );
+
+        // Send email notification for ticket reply (non-blocking)
+        try {
+            const emailService = require('../services/emailService');
+            const prisma = require('../utils/prisma');
+            const ticketOwner = await prisma.user.findUnique({
+                where: { id: ticket.userId },
+                select: { email: true, username: true }
+            });
+            if (ticketOwner && ticketOwner.email) {
+                const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+                emailService.sendTemplateEmail('ticket_reply', ticketOwner.email, {
+                    username: ticketOwner.username,
+                    ticketSubject: ticket.subject || `Ticket #${ticket.ticketNumber}`,
+                    replyContent: content,
+                    ticketUrl: `${frontendUrl}/tickets`
+                }, ticket.userId).catch(() => { });
+            }
+        } catch (e) { /* email is non-critical */ }
 
         successResponse(res, ticketService.parseTicket(ticket), 'Reply added');
     } catch (error) {

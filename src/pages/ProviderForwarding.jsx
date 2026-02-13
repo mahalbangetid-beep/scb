@@ -18,7 +18,8 @@ import {
     EyeOff,
     Copy,
     ChevronDown,
-    ChevronRight
+    ChevronRight,
+    Search
 } from 'lucide-react'
 import api from '../services/api'
 
@@ -28,6 +29,7 @@ export default function ProviderForwarding() {
     const [logs, setLogs] = useState([])
     const [showModal, setShowModal] = useState(false)
     const [editingConfig, setEditingConfig] = useState(null)
+    const [searchTerm, setSearchTerm] = useState('')
     const [saving, setSaving] = useState(false)
     const [testing, setTesting] = useState(null)
     const [saved, setSaved] = useState(false)
@@ -471,94 +473,105 @@ export default function ProviderForwarding() {
                         </div>
                     ) : (
                         <div style={{ display: 'grid', gap: 'var(--spacing-md)' }}>
-                            {configs.map(config => (
-                                <div key={config.id} className="card" style={{ padding: 'var(--spacing-lg)' }}>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                                        <div>
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--spacing-sm)', marginBottom: 'var(--spacing-xs)' }}>
-                                                <h3 style={{ margin: 0 }}>{config.providerName}</h3>
-                                                {config.alias && <span style={{ color: 'var(--primary-500)', fontWeight: 500 }}>({config.alias})</span>}
-                                                <span className={`badge ${config.isActive ? 'badge-success' : 'badge-warning'}`}>
-                                                    {config.isActive ? 'Active' : 'Inactive'}
-                                                </span>
-                                            </div>
-                                            {/* Show alias as primary, only show domain hint if no alias */}
-                                            {!config.alias && config.providerDomain && (
-                                                <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: '0 0 var(--spacing-sm)', fontStyle: 'italic' }}>
-                                                    Auto-match: {config.providerDomain.replace(/https?:\/\//, '')}
-                                                </p>
-                                            )}
+                            <div className="search-box">
+                                <Search size={18} />
+                                <input
+                                    type="text"
+                                    placeholder="Search configs by provider name..."
+                                    value={searchTerm}
+                                    onChange={(e) => setSearchTerm(e.target.value)}
+                                />
+                            </div>
+                            {configs
+                                .filter(c => !searchTerm || c.providerName.toLowerCase().includes(searchTerm.toLowerCase()) || (c.alias && c.alias.toLowerCase().includes(searchTerm.toLowerCase())))
+                                .map(config => (
+                                    <div key={config.id} className="card" style={{ padding: 'var(--spacing-lg)' }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                                            <div>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--spacing-sm)', marginBottom: 'var(--spacing-xs)' }}>
+                                                    <h3 style={{ margin: 0 }}>{config.providerName}</h3>
+                                                    {config.alias && <span style={{ color: 'var(--primary-500)', fontWeight: 500 }}>({config.alias})</span>}
+                                                    <span className={`badge ${config.isActive ? 'badge-success' : 'badge-warning'}`}>
+                                                        {config.isActive ? 'Active' : 'Inactive'}
+                                                    </span>
+                                                </div>
+                                                {/* Show alias as primary, only show domain hint if no alias */}
+                                                {!config.alias && config.providerDomain && (
+                                                    <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: '0 0 var(--spacing-sm)', fontStyle: 'italic' }}>
+                                                        Auto-match: {config.providerDomain.replace(/https?:\/\//, '')}
+                                                    </p>
+                                                )}
 
-                                            <div style={{ display: 'flex', gap: 'var(--spacing-sm)', flexWrap: 'wrap', marginTop: 'var(--spacing-sm)' }}>
-                                                {config.forwardRefill && <span className="badge badge-info">Refill</span>}
-                                                {config.forwardCancel && <span className="badge badge-error">Cancel</span>}
-                                                {config.forwardSpeedup && <span className="badge badge-warning">Speedup</span>}
+                                                <div style={{ display: 'flex', gap: 'var(--spacing-sm)', flexWrap: 'wrap', marginTop: 'var(--spacing-sm)' }}>
+                                                    {config.forwardRefill && <span className="badge badge-info">Refill</span>}
+                                                    {config.forwardCancel && <span className="badge badge-error">Cancel</span>}
+                                                    {config.forwardSpeedup && <span className="badge badge-warning">Speedup</span>}
+                                                </div>
+                                            </div>
+
+                                            <div style={{ display: 'flex', gap: 'var(--spacing-xs)' }}>
+                                                <button className="btn btn-sm btn-secondary" onClick={() => handleEdit(config)}>
+                                                    <Edit3 size={14} />
+                                                </button>
+                                                <button className="btn btn-sm btn-secondary" onClick={() => handleDelete(config)}>
+                                                    <Trash2 size={14} />
+                                                </button>
                                             </div>
                                         </div>
 
-                                        <div style={{ display: 'flex', gap: 'var(--spacing-xs)' }}>
-                                            <button className="btn btn-sm btn-secondary" onClick={() => handleEdit(config)}>
-                                                <Edit3 size={14} />
-                                            </button>
-                                            <button className="btn btn-sm btn-secondary" onClick={() => handleDelete(config)}>
-                                                <Trash2 size={14} />
-                                            </button>
+                                        {/* Destinations */}
+                                        <div style={{ marginTop: 'var(--spacing-md)', padding: 'var(--spacing-md)', background: 'var(--bg-tertiary)', borderRadius: 'var(--radius-md)' }}>
+                                            <h4 style={{ fontSize: '0.85rem', marginBottom: 'var(--spacing-sm)' }}>Destinations</h4>
+                                            <div style={{ display: 'flex', gap: 'var(--spacing-lg)', flexWrap: 'wrap' }}>
+                                                {config.whatsappGroupJid && (
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--spacing-sm)' }}>
+                                                        <MessageSquare size={16} style={{ color: '#25D366' }} />
+                                                        <span style={{ fontSize: '0.85rem' }}>WA Group: {config.whatsappGroupJid.substring(0, 15)}...</span>
+                                                        <button
+                                                            className="btn btn-xs"
+                                                            onClick={() => handleTest(config, 'whatsapp_group')}
+                                                            disabled={testing === `${config.id}-whatsapp_group`}
+                                                            style={{ padding: '2px 6px', fontSize: '0.7rem' }}
+                                                        >
+                                                            {testing === `${config.id}-whatsapp_group` ? <Loader2 size={12} className="animate-spin" /> : <TestTube size={12} />}
+                                                        </button>
+                                                    </div>
+                                                )}
+                                                {config.whatsappNumber && (
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--spacing-sm)' }}>
+                                                        <PhoneCall size={16} style={{ color: '#25D366' }} />
+                                                        <span style={{ fontSize: '0.85rem' }}>WA: {config.whatsappNumber}</span>
+                                                        <button
+                                                            className="btn btn-xs"
+                                                            onClick={() => handleTest(config, 'whatsapp_number')}
+                                                            disabled={testing === `${config.id}-whatsapp_number`}
+                                                            style={{ padding: '2px 6px', fontSize: '0.7rem' }}
+                                                        >
+                                                            {testing === `${config.id}-whatsapp_number` ? <Loader2 size={12} className="animate-spin" /> : <TestTube size={12} />}
+                                                        </button>
+                                                    </div>
+                                                )}
+                                                {config.telegramChatId && (
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--spacing-sm)' }}>
+                                                        <Send size={16} style={{ color: '#0088cc' }} />
+                                                        <span style={{ fontSize: '0.85rem' }}>Telegram: {config.telegramChatId}</span>
+                                                        <button
+                                                            className="btn btn-xs"
+                                                            onClick={() => handleTest(config, 'telegram')}
+                                                            disabled={testing === `${config.id}-telegram`}
+                                                            style={{ padding: '2px 6px', fontSize: '0.7rem' }}
+                                                        >
+                                                            {testing === `${config.id}-telegram` ? <Loader2 size={12} className="animate-spin" /> : <TestTube size={12} />}
+                                                        </button>
+                                                    </div>
+                                                )}
+                                                {!config.whatsappGroupJid && !config.whatsappNumber && !config.telegramChatId && (
+                                                    <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>No destinations configured</span>
+                                                )}
+                                            </div>
                                         </div>
                                     </div>
-
-                                    {/* Destinations */}
-                                    <div style={{ marginTop: 'var(--spacing-md)', padding: 'var(--spacing-md)', background: 'var(--bg-tertiary)', borderRadius: 'var(--radius-md)' }}>
-                                        <h4 style={{ fontSize: '0.85rem', marginBottom: 'var(--spacing-sm)' }}>Destinations</h4>
-                                        <div style={{ display: 'flex', gap: 'var(--spacing-lg)', flexWrap: 'wrap' }}>
-                                            {config.whatsappGroupJid && (
-                                                <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--spacing-sm)' }}>
-                                                    <MessageSquare size={16} style={{ color: '#25D366' }} />
-                                                    <span style={{ fontSize: '0.85rem' }}>WA Group: {config.whatsappGroupJid.substring(0, 15)}...</span>
-                                                    <button
-                                                        className="btn btn-xs"
-                                                        onClick={() => handleTest(config, 'whatsapp_group')}
-                                                        disabled={testing === `${config.id}-whatsapp_group`}
-                                                        style={{ padding: '2px 6px', fontSize: '0.7rem' }}
-                                                    >
-                                                        {testing === `${config.id}-whatsapp_group` ? <Loader2 size={12} className="animate-spin" /> : <TestTube size={12} />}
-                                                    </button>
-                                                </div>
-                                            )}
-                                            {config.whatsappNumber && (
-                                                <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--spacing-sm)' }}>
-                                                    <PhoneCall size={16} style={{ color: '#25D366' }} />
-                                                    <span style={{ fontSize: '0.85rem' }}>WA: {config.whatsappNumber}</span>
-                                                    <button
-                                                        className="btn btn-xs"
-                                                        onClick={() => handleTest(config, 'whatsapp_number')}
-                                                        disabled={testing === `${config.id}-whatsapp_number`}
-                                                        style={{ padding: '2px 6px', fontSize: '0.7rem' }}
-                                                    >
-                                                        {testing === `${config.id}-whatsapp_number` ? <Loader2 size={12} className="animate-spin" /> : <TestTube size={12} />}
-                                                    </button>
-                                                </div>
-                                            )}
-                                            {config.telegramChatId && (
-                                                <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--spacing-sm)' }}>
-                                                    <Send size={16} style={{ color: '#0088cc' }} />
-                                                    <span style={{ fontSize: '0.85rem' }}>Telegram: {config.telegramChatId}</span>
-                                                    <button
-                                                        className="btn btn-xs"
-                                                        onClick={() => handleTest(config, 'telegram')}
-                                                        disabled={testing === `${config.id}-telegram`}
-                                                        style={{ padding: '2px 6px', fontSize: '0.7rem' }}
-                                                    >
-                                                        {testing === `${config.id}-telegram` ? <Loader2 size={12} className="animate-spin" /> : <TestTube size={12} />}
-                                                    </button>
-                                                </div>
-                                            )}
-                                            {!config.whatsappGroupJid && !config.whatsappNumber && !config.telegramChatId && (
-                                                <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>No destinations configured</span>
-                                            )}
-                                        </div>
-                                    </div>
-                                </div>
-                            ))}
+                                ))}
                         </div>
                     )}
                 </>

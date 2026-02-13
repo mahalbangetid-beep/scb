@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import {
     Users,
     Plus,
@@ -19,7 +19,10 @@ import {
     Loader2,
     ChevronLeft,
     ChevronRight,
-    Search as SearchIcon
+    Search as SearchIcon,
+    FileText,
+    AlertTriangle,
+    Zap
 } from 'lucide-react'
 import api from '../services/api'
 import { formatDistanceToNow } from 'date-fns'
@@ -33,6 +36,8 @@ const tagColors = {
     blocked: '#ef4444',
 }
 
+const getTagColor = (name) => tagColors[(name || '').toLowerCase()] || '#6366f1'
+
 export default function Contacts() {
     const [contacts, setContacts] = useState([])
     const [pagination, setPagination] = useState({ page: 1, limit: 10, total: 0, totalPages: 0 })
@@ -43,11 +48,24 @@ export default function Contacts() {
     const [showModal, setShowModal] = useState(false)
     const [selectedContacts, setSelectedContacts] = useState([])
     const [tags, setTags] = useState([])
+    const [error, setError] = useState('')
+    const [success, setSuccess] = useState('')
 
     // Form state
     const [formData, setFormData] = useState({ name: '', phone: '', email: '', notes: '', tags: [] })
     const [submitting, setSubmitting] = useState(false)
     const [editId, setEditId] = useState(null)
+
+    // CSV Import state
+    const [showImportModal, setShowImportModal] = useState(false)
+    const [csvText, setCsvText] = useState('')
+    const [csvFileName, setCsvFileName] = useState('')
+    const [csvPreview, setCsvPreview] = useState(null)
+    const [importTags, setImportTags] = useState('')
+    const [importing, setImporting] = useState(false)
+    const [importResult, setImportResult] = useState(null)
+    const [importError, setImportError] = useState('')
+    const fileInputRef = useRef(null)
 
     const fetchContacts = async (page = 1) => {
         try {
@@ -64,8 +82,11 @@ export default function Contacts() {
 
             // Extract unique tags
             const allTags = new Set()
-            res.data?.forEach(c => c.tags?.forEach(t => allTags.add(t.name)))
-            setTags(Array.from(allTags).map(t => ({ name: t, color: tagColors[t] || '#6366f1' })))
+                ; (res.data || []).forEach(c => (c.tags || []).forEach(t => {
+                    const tagName = typeof t === 'string' ? t : t.name
+                    if (tagName) allTags.add(tagName)
+                }))
+            setTags(Array.from(allTags).map(t => ({ name: t, color: getTagColor(t) })))
         } catch (error) {
             console.error('Failed to fetch contacts:', error)
         } finally {
@@ -87,14 +108,18 @@ export default function Contacts() {
         try {
             if (editId) {
                 await api.put(`/contacts/${editId}`, formData)
+                setSuccess('Contact updated')
             } else {
                 await api.post('/contacts', formData)
+                setSuccess('Contact created')
             }
             setShowModal(false)
             setFormData({ name: '', phone: '', email: '', notes: '', tags: [] })
             setEditId(null)
             fetchContacts(pagination.page)
+            setTimeout(() => setSuccess(''), 3000)
         } catch (error) {
+            setError(error.message || 'Failed to save contact')
             console.error('Failed to save contact:', error)
         } finally {
             setSubmitting(false)
@@ -117,7 +142,7 @@ export default function Contacts() {
             phone: contact.phone,
             email: contact.email || '',
             notes: contact.notes || '',
-            tags: contact.tags?.map(t => t.name) || []
+            tags: (contact.tags || []).map(t => typeof t === 'string' ? t : t.name)
         })
         setEditId(contact.id)
         setShowModal(true)
@@ -141,6 +166,137 @@ export default function Contacts() {
         }
     }
 
+    // ===== CSV Import Handlers =====
+
+    const handleFileSelect = (e) => {
+        const file = e.target.files[0]
+        if (!file) return
+
+        if (!file.name.endsWith('.csv') && !file.name.endsWith('.txt')) {
+            setError('Please select a CSV or TXT file')
+            return
+        }
+
+        if (file.size > 5 * 1024 * 1024) {
+            setError('File too large (max 5MB)')
+            return
+        }
+
+        setCsvFileName(file.name)
+        const reader = new FileReader()
+        reader.onload = (evt) => {
+            const text = evt.target.result
+            setCsvText(text)
+            parsePreview(text)
+        }
+        reader.readAsText(file)
+
+        // Reset file input
+        e.target.value = ''
+    }
+
+    const parsePreview = (text) => {
+        const lines = text.split('\n').map(l => l.trim()).filter(Boolean)
+        if (lines.length < 2) {
+            setCsvPreview(null)
+            return
+        }
+
+        const headers = lines[0].split(',').map(h => h.trim().replace(/^["']|["']$/g, ''))
+        const previewRows = []
+        for (let i = 1; i < Math.min(lines.length, 6); i++) {
+            const values = parseCSVLine(lines[i])
+            const row = {}
+            headers.forEach((h, idx) => { row[h] = values[idx] || '' })
+            previewRows.push(row)
+        }
+
+        setCsvPreview({
+            headers,
+            rows: previewRows,
+            totalRows: lines.length - 1,
+            hasPhone: headers.some(h =>
+                ['phone', 'phone number', 'phonenumber', 'nomor', 'no', 'whatsapp', 'wa'].includes(h.toLowerCase())
+            )
+        })
+    }
+
+    const parseCSVLine = (line) => {
+        const result = []
+        let current = ''
+        let inQuotes = false
+        for (let i = 0; i < line.length; i++) {
+            const ch = line[i]
+            if (ch === '"' || ch === "'") {
+                if (inQuotes && i + 1 < line.length && line[i + 1] === ch) {
+                    current += ch
+                    i++
+                } else {
+                    inQuotes = !inQuotes
+                }
+            } else if (ch === ',' && !inQuotes) {
+                result.push(current.trim())
+                current = ''
+            } else {
+                current += ch
+            }
+        }
+        result.push(current.trim())
+        return result
+    }
+
+    const handleImport = async () => {
+        if (!csvText) {
+            setImportError('No CSV data to import')
+            return
+        }
+
+        setImporting(true)
+        setImportResult(null)
+        setImportError('')
+        try {
+            const tagsArray = importTags
+                .split(',')
+                .map(t => t.trim())
+                .filter(Boolean)
+
+            const res = await api.post('/contacts/import', {
+                csv: csvText,
+                tags: tagsArray.length > 0 ? tagsArray : undefined
+            })
+
+            setImportResult(res.data || res)
+            fetchContacts(1)
+            setSuccess(res.message || 'Import complete')
+            setTimeout(() => setSuccess(''), 5000)
+        } catch (err) {
+            setImportError(err.message || err.error?.message || 'Import failed')
+        } finally {
+            setImporting(false)
+        }
+    }
+
+    const resetImportModal = () => {
+        setCsvText('')
+        setCsvFileName('')
+        setCsvPreview(null)
+        setImportTags('')
+        setImportResult(null)
+        setImportError('')
+        setShowImportModal(false)
+    }
+
+    const handleDownloadTemplate = () => {
+        const template = 'name,phone,email,tags\nJohn Doe,+6281234567890,john@example.com,customer;vip\nJane Smith,+6289876543210,jane@example.com,lead\n'
+        const blob = new Blob([template], { type: 'text/csv' })
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = 'contacts_template.csv'
+        a.click()
+        URL.revokeObjectURL(url)
+    }
+
     if (loading && !refreshing) {
         return (
             <div className="flex items-center justify-center min-h-[400px]">
@@ -157,9 +313,9 @@ export default function Contacts() {
                     <p className="page-subtitle">Manage your contact list and groups</p>
                 </div>
                 <div style={{ display: 'flex', gap: 'var(--spacing-md)' }}>
-                    <button className="btn btn-secondary">
+                    <button className="btn btn-secondary" onClick={() => setShowImportModal(true)}>
                         <Upload size={16} />
-                        Import
+                        Import CSV
                     </button>
                     <button className="btn btn-secondary" onClick={() => fetchContacts(pagination.page)}>
                         <RefreshCw size={16} className={refreshing ? 'animate-spin' : ''} />
@@ -174,6 +330,21 @@ export default function Contacts() {
                     </button>
                 </div>
             </div>
+
+            {/* Alerts */}
+            {error && (
+                <div className="alert alert-error" style={{ marginBottom: 'var(--spacing-md)' }}>
+                    <AlertTriangle size={18} />
+                    <span>{error}</span>
+                    <button onClick={() => setError('')} style={{ marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer', color: 'inherit' }}><X size={16} /></button>
+                </div>
+            )}
+            {success && (
+                <div className="alert alert-success" style={{ marginBottom: 'var(--spacing-md)' }}>
+                    <Zap size={18} />
+                    <span>{success}</span>
+                </div>
+            )}
 
             {/* Filters */}
             <div className="card" style={{ marginBottom: 'var(--spacing-lg)' }}>
@@ -259,11 +430,14 @@ export default function Contacts() {
                                     <td style={{ fontFamily: 'var(--font-mono)', fontSize: '0.875rem' }}>{contact.phone}</td>
                                     <td>
                                         <div style={{ display: 'flex', gap: 'var(--spacing-xs)', flexWrap: 'wrap' }}>
-                                            {contact.tags?.map((t, idx) => (
-                                                <span key={idx} style={{ padding: '2px 8px', fontSize: '0.625rem', fontWeight: 500, borderRadius: 'var(--radius-full)', background: `${tagColors[t.name] || '#6366f1'}20`, color: tagColors[t.name] || '#6366f1' }}>
-                                                    {t.name}
-                                                </span>
-                                            ))}
+                                            {(contact.tags || []).map((t, idx) => {
+                                                const tagName = typeof t === 'string' ? t : t.name
+                                                return (
+                                                    <span key={idx} style={{ padding: '2px 8px', fontSize: '0.625rem', fontWeight: 500, borderRadius: 'var(--radius-full)', background: `${getTagColor(tagName)}20`, color: getTagColor(tagName) }}>
+                                                        {tagName}
+                                                    </span>
+                                                )
+                                            })}
                                         </div>
                                     </td>
                                     <td style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
@@ -306,7 +480,7 @@ export default function Contacts() {
                 )}
             </div>
 
-            {/* Modal */}
+            {/* Add/Edit Contact Modal */}
             {showModal && (
                 <div className="modal-overlay open" onClick={() => setShowModal(false)}>
                     <div className="modal" onClick={e => e.stopPropagation()}>
@@ -338,6 +512,218 @@ export default function Contacts() {
                                 {submitting ? <Loader2 className="animate-spin" size={16} /> : <Plus size={16} />}
                                 {editId ? 'Update Contact' : 'Add Contact'}
                             </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* CSV Import Modal */}
+            {showImportModal && (
+                <div className="modal-overlay open" onClick={() => resetImportModal()}>
+                    <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '680px' }}>
+                        <div className="modal-header">
+                            <h3 className="modal-title"><Upload size={20} /> Import Contacts from CSV</h3>
+                            <button className="btn btn-ghost btn-icon" onClick={() => resetImportModal()}><X size={20} /></button>
+                        </div>
+                        <div className="modal-body">
+                            {/* Import Error */}
+                            {importError && (
+                                <div style={{
+                                    padding: '0.75rem 1rem',
+                                    borderRadius: '8px',
+                                    marginBottom: '1rem',
+                                    background: 'rgba(239, 68, 68, 0.08)',
+                                    border: '1px solid rgba(239, 68, 68, 0.2)',
+                                    color: '#ef4444',
+                                    fontSize: '0.85rem',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '0.5rem'
+                                }}>
+                                    <AlertTriangle size={16} />
+                                    <span style={{ flex: 1 }}>{importError}</span>
+                                    <button onClick={() => setImportError('')} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'inherit', padding: '2px' }}><X size={14} /></button>
+                                </div>
+                            )}
+                            {/* Import Result */}
+                            {importResult && (
+                                <div style={{
+                                    padding: '1rem',
+                                    borderRadius: '10px',
+                                    marginBottom: '1rem',
+                                    background: 'rgba(34, 197, 94, 0.08)',
+                                    border: '1px solid rgba(34, 197, 94, 0.2)'
+                                }}>
+                                    <div style={{ fontWeight: 600, marginBottom: '0.5rem', color: '#22c55e' }}>
+                                        <CheckCircle size={16} style={{ display: 'inline', marginRight: '6px' }} />
+                                        Import Complete
+                                    </div>
+                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.5rem', fontSize: '0.85rem' }}>
+                                        <div><strong>{importResult.created || 0}</strong> created</div>
+                                        <div><strong>{importResult.updated || 0}</strong> updated</div>
+                                        <div><strong>{importResult.skipped || 0}</strong> skipped</div>
+                                    </div>
+                                    {importResult.errors?.length > 0 && (
+                                        <div style={{ marginTop: '0.75rem', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                                            <div style={{ fontWeight: 500, marginBottom: '0.25rem' }}>Errors:</div>
+                                            {importResult.errors.slice(0, 5).map((e, i) => (
+                                                <div key={i} style={{ color: '#ef4444' }}>• {e.phone}: {e.error}</div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
+                            {/* File Upload Area */}
+                            {!importResult && (
+                                <>
+                                    <input
+                                        type="file"
+                                        ref={fileInputRef}
+                                        accept=".csv,.txt"
+                                        style={{ display: 'none' }}
+                                        onChange={handleFileSelect}
+                                    />
+
+                                    <div
+                                        onClick={() => fileInputRef.current?.click()}
+                                        style={{
+                                            border: '2px dashed var(--border-color)',
+                                            borderRadius: '12px',
+                                            padding: '2rem',
+                                            textAlign: 'center',
+                                            cursor: 'pointer',
+                                            transition: 'all 0.2s',
+                                            background: csvFileName ? 'rgba(37, 211, 102, 0.04)' : 'transparent',
+                                            borderColor: csvFileName ? 'var(--primary-color)' : 'var(--border-color)',
+                                            marginBottom: '1rem'
+                                        }}
+                                        onDragOver={(e) => { e.preventDefault(); e.currentTarget.style.borderColor = 'var(--primary-color)' }}
+                                        onDragLeave={(e) => { e.currentTarget.style.borderColor = csvFileName ? 'var(--primary-color)' : 'var(--border-color)' }}
+                                        onDrop={(e) => {
+                                            e.preventDefault()
+                                            e.currentTarget.style.borderColor = 'var(--border-color)'
+                                            const file = e.dataTransfer.files[0]
+                                            if (file) {
+                                                const fakeEvent = { target: { files: [file], value: '' } }
+                                                handleFileSelect(fakeEvent)
+                                            }
+                                        }}
+                                    >
+                                        {csvFileName ? (
+                                            <div>
+                                                <FileText size={32} style={{ color: 'var(--primary-color)', marginBottom: '0.5rem' }} />
+                                                <div style={{ fontWeight: 600 }}>{csvFileName}</div>
+                                                <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
+                                                    {csvPreview ? `${csvPreview.totalRows} contacts found` : 'Parsing...'}
+                                                </div>
+                                                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.5rem' }}>
+                                                    Click to select a different file
+                                                </div>
+                                            </div>
+                                        ) : (
+                                            <div>
+                                                <Upload size={32} style={{ color: 'var(--text-muted)', marginBottom: '0.5rem' }} />
+                                                <div style={{ fontWeight: 500 }}>Click or drag CSV file here</div>
+                                                <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
+                                                    Supports .csv and .txt files (max 5MB)
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {/* Template download */}
+                                    <button
+                                        className="btn btn-ghost"
+                                        onClick={handleDownloadTemplate}
+                                        style={{ fontSize: '0.8rem', marginBottom: '1rem' }}
+                                    >
+                                        <Download size={14} /> Download CSV Template
+                                    </button>
+
+                                    {/* CSV Preview */}
+                                    {csvPreview && (
+                                        <div style={{ marginBottom: '1rem' }}>
+                                            {!csvPreview.hasPhone && (
+                                                <div style={{
+                                                    padding: '0.75rem',
+                                                    borderRadius: '8px',
+                                                    background: 'rgba(239, 68, 68, 0.08)',
+                                                    border: '1px solid rgba(239, 68, 68, 0.2)',
+                                                    color: '#ef4444',
+                                                    fontSize: '0.85rem',
+                                                    marginBottom: '0.75rem',
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    gap: '0.5rem'
+                                                }}>
+                                                    <AlertTriangle size={16} />
+                                                    No "phone" column found! CSV must have a column named "phone", "wa", "whatsapp", or "nomor".
+                                                </div>
+                                            )}
+
+                                            <div style={{ fontSize: '0.8rem', fontWeight: 600, marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>
+                                                Preview (first {csvPreview.rows.length} of {csvPreview.totalRows} rows)
+                                            </div>
+                                            <div style={{ overflowX: 'auto', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
+                                                <table className="table" style={{ fontSize: '0.8rem', margin: 0 }}>
+                                                    <thead>
+                                                        <tr>
+                                                            {csvPreview.headers.map((h, i) => (
+                                                                <th key={i} style={{ padding: '0.5rem 0.75rem', whiteSpace: 'nowrap' }}>{h}</th>
+                                                            ))}
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        {csvPreview.rows.map((row, i) => (
+                                                            <tr key={i}>
+                                                                {csvPreview.headers.map((h, j) => (
+                                                                    <td key={j} style={{ padding: '0.4rem 0.75rem', maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                                                        {row[h] || ''}
+                                                                    </td>
+                                                                ))}
+                                                            </tr>
+                                                        ))}
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* Optional Tags */}
+                                    <div className="form-group" style={{ marginBottom: 0 }}>
+                                        <label className="form-label">
+                                            <Tag size={14} style={{ display: 'inline', marginRight: '4px' }} />
+                                            Apply Tags to All Imported Contacts (Optional)
+                                        </label>
+                                        <input
+                                            type="text"
+                                            className="form-input"
+                                            placeholder="e.g. customer, lead (comma-separated)"
+                                            value={importTags}
+                                            onChange={(e) => setImportTags(e.target.value)}
+                                        />
+                                        <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '4px', display: 'block' }}>
+                                            These tags will be applied to all imported contacts in addition to any tags in the CSV.
+                                        </span>
+                                    </div>
+                                </>
+                            )}
+                        </div>
+                        <div className="modal-footer">
+                            <button className="btn btn-secondary" onClick={() => resetImportModal()}>
+                                {importResult ? 'Close' : 'Cancel'}
+                            </button>
+                            {!importResult && (
+                                <button
+                                    className="btn btn-primary"
+                                    onClick={handleImport}
+                                    disabled={importing || !csvText || (csvPreview && !csvPreview.hasPhone)}
+                                >
+                                    {importing ? <Loader2 className="animate-spin" size={16} /> : <Upload size={16} />}
+                                    {importing ? 'Importing...' : `Import ${csvPreview ? csvPreview.totalRows : 0} Contacts`}
+                                </button>
+                            )}
                         </div>
                     </div>
                 </div>

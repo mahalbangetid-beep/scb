@@ -539,7 +539,7 @@ class TelegramService {
             // Log outgoing message
             await prisma.message.create({
                 data: {
-                    deviceId: botId,
+                    telegramBotId: botId,
                     platform: 'TELEGRAM',
                     type: 'outgoing',
                     to: chatId,

@@ -327,11 +327,28 @@ class CryptomusService {
                 });
 
                 console.log(`[Cryptomus] Credited ${transaction.amount} to user ${transaction.userId}`);
-                return { credited: true };
+                return { credited: true, amount: transaction.amount, userId: transaction.userId };
             }
 
             return { credited: false };
         });
+
+        // Auto-generate invoice if credited
+        if (result.credited) {
+            try {
+                const invoiceService = require('../invoiceService');
+                await invoiceService.createFromPayment({
+                    userId: result.userId,
+                    amount: result.amount,
+                    currency: 'USD',
+                    method: 'CRYPTOMUS',
+                    description: `Credit Top-Up via Cryptomus`,
+                    metadata: { gateway: 'cryptomus', uuid }
+                });
+            } catch (invoiceError) {
+                console.error('[Cryptomus] Invoice generation failed:', invoiceError.message);
+            }
+        }
 
         return {
             success: true,

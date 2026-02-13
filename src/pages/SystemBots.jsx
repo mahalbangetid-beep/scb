@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import {
     Bot, CreditCard, Zap, AlertTriangle, Users, MessageSquare,
     CheckCircle, XCircle, ArrowRightLeft, Clock, DollarSign,
-    Loader2, Shield, RefreshCw, X, Signal
+    Loader2, Shield, RefreshCw, X, Signal, Search
 } from 'lucide-react';
 import api from '../services/api';
 
@@ -15,6 +15,7 @@ const SystemBots = () => {
     const [success, setSuccess] = useState('');
     const [showSwitchModal, setShowSwitchModal] = useState(null);
     const [tab, setTab] = useState('available'); // available, my-subscriptions
+    const [searchTerm, setSearchTerm] = useState('');
 
     useEffect(() => {
         fetchData();
@@ -159,122 +160,137 @@ const SystemBots = () => {
                             <p>Check back later for available bots.</p>
                         </div>
                     ) : (
-                        <div className="system-bots-grid">
-                            {bots.map(bot => (
-                                <div key={bot.id} className={`system-bot-card ${bot.isSubscribed ? 'subscribed' : ''} ${bot.isFull ? 'full' : ''}`}>
-                                    {bot.isSubscribed && (
-                                        <div className="subscribed-badge">
-                                            <CheckCircle size={14} /> Subscribed
-                                        </div>
-                                    )}
-                                    {bot.isFull && !bot.isSubscribed && (
-                                        <div className="full-badge">
-                                            <XCircle size={14} /> Full
-                                        </div>
-                                    )}
-
-                                    <div className="sbot-header">
-                                        <div className="sbot-icon">
-                                            <Bot size={24} />
-                                        </div>
-                                        <div>
-                                            <h3>{bot.name}</h3>
-                                            <div className="sbot-phone">
-                                                <Signal size={12} style={{ color: '#10b981' }} />
-                                                {bot.phone || 'Not connected'}
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    <div className="sbot-price">
-                                        <span className="price-currency">$</span>
-                                        <span className="price-amount">{(bot.monthlyPrice || 0).toFixed(2)}</span>
-                                        <span className="price-period">/month</span>
-                                    </div>
-
-                                    <div className="sbot-features">
-                                        <div className="sbot-feature">
-                                            <MessageSquare size={14} />
-                                            <span>{bot.usageLimit ? `${bot.usageLimit.toLocaleString()} msgs/mo` : 'Unlimited messages'}</span>
-                                        </div>
-                                        <div className="sbot-feature">
-                                            <Users size={14} />
-                                            <span>
-                                                {bot.activeSubscribers}{bot.maxSubscribers ? `/${bot.maxSubscribers}` : ''} subscribers
-                                            </span>
-                                        </div>
-                                        <div className="sbot-feature">
-                                            <Shield size={14} />
-                                            <span>Group-only access</span>
-                                        </div>
-                                    </div>
-
-                                    {bot.isSubscribed && bot.mySubscription && (
-                                        <div className="sbot-my-usage">
-                                            <div className="usage-header">
-                                                <span>My Usage</span>
-                                                <span>{bot.mySubscription.usageCount}{bot.mySubscription.usageLimit ? `/${bot.mySubscription.usageLimit}` : ''}</span>
-                                            </div>
-                                            {bot.mySubscription.usageLimit && (
-                                                <div className="usage-bar">
-                                                    <div
-                                                        className="usage-fill"
-                                                        style={{
-                                                            width: `${Math.min(100, (bot.mySubscription.usageCount / bot.mySubscription.usageLimit) * 100)}%`,
-                                                            background: bot.mySubscription.usageCount / bot.mySubscription.usageLimit > 0.8
-                                                                ? '#ef4444'
-                                                                : 'var(--primary-color)'
-                                                        }}
-                                                    />
+                        <>
+                            <div style={{ marginBottom: 'var(--spacing-md)' }}>
+                                <div className="search-box">
+                                    <Search size={18} />
+                                    <input
+                                        type="text"
+                                        placeholder="Search bots by name..."
+                                        value={searchTerm}
+                                        onChange={(e) => setSearchTerm(e.target.value)}
+                                    />
+                                </div>
+                            </div>
+                            <div className="system-bots-grid">
+                                {bots
+                                    .filter(bot => !searchTerm || bot.name.toLowerCase().includes(searchTerm.toLowerCase()))
+                                    .map(bot => (
+                                        <div key={bot.id} className={`system-bot-card ${bot.isSubscribed ? 'subscribed' : ''} ${bot.isFull ? 'full' : ''}`}>
+                                            {bot.isSubscribed && (
+                                                <div className="subscribed-badge">
+                                                    <CheckCircle size={14} /> Subscribed
                                                 </div>
                                             )}
-                                            <small style={{ color: 'var(--text-secondary)' }}>
-                                                <Clock size={12} /> Next billing: {new Date(bot.mySubscription.nextBillingDate).toLocaleDateString()}
-                                            </small>
-                                        </div>
-                                    )}
+                                            {bot.isFull && !bot.isSubscribed && (
+                                                <div className="full-badge">
+                                                    <XCircle size={14} /> Full
+                                                </div>
+                                            )}
 
-                                    <div className="sbot-actions">
-                                        {bot.isSubscribed ? (
-                                            <>
-                                                <button
-                                                    className="btn btn-secondary btn-sm"
-                                                    style={{ flex: 1 }}
-                                                    onClick={() => setShowSwitchModal(bot)}
-                                                    disabled={actionLoading === bot.id}
-                                                >
-                                                    <ArrowRightLeft size={14} /> Switch
-                                                </button>
-                                                <button
-                                                    className="btn btn-danger btn-sm"
-                                                    style={{ flex: 1 }}
-                                                    onClick={() => handleUnsubscribe(bot.id, bot.name)}
-                                                    disabled={actionLoading === bot.id}
-                                                >
-                                                    {actionLoading === bot.id ? <Loader2 size={14} className="spin" /> : <XCircle size={14} />}
-                                                    Cancel
-                                                </button>
-                                            </>
-                                        ) : (
-                                            <button
-                                                className="btn btn-primary"
-                                                style={{ width: '100%' }}
-                                                onClick={() => handleSubscribe(bot.id, bot.name, bot.monthlyPrice || 5)}
-                                                disabled={bot.isFull || actionLoading === bot.id}
-                                            >
-                                                {actionLoading === bot.id ? (
-                                                    <><Loader2 size={14} className="spin" /> Processing...</>
-                                                ) : bot.isFull ? (
-                                                    'Bot Full'
+                                            <div className="sbot-header">
+                                                <div className="sbot-icon">
+                                                    <Bot size={24} />
+                                                </div>
+                                                <div>
+                                                    <h3>{bot.name}</h3>
+                                                    <div className="sbot-phone">
+                                                        <Signal size={12} style={{ color: '#10b981' }} />
+                                                        {bot.phone || 'Not connected'}
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div className="sbot-price">
+                                                <span className="price-currency">$</span>
+                                                <span className="price-amount">{(bot.monthlyPrice || 0).toFixed(2)}</span>
+                                                <span className="price-period">/month</span>
+                                            </div>
+
+                                            <div className="sbot-features">
+                                                <div className="sbot-feature">
+                                                    <MessageSquare size={14} />
+                                                    <span>{bot.usageLimit ? `${bot.usageLimit.toLocaleString()} msgs/mo` : 'Unlimited messages'}</span>
+                                                </div>
+                                                <div className="sbot-feature">
+                                                    <Users size={14} />
+                                                    <span>
+                                                        {bot.activeSubscribers}{bot.maxSubscribers ? `/${bot.maxSubscribers}` : ''} subscribers
+                                                    </span>
+                                                </div>
+                                                <div className="sbot-feature">
+                                                    <Shield size={14} />
+                                                    <span>Group-only access</span>
+                                                </div>
+                                            </div>
+
+                                            {bot.isSubscribed && bot.mySubscription && (
+                                                <div className="sbot-my-usage">
+                                                    <div className="usage-header">
+                                                        <span>My Usage</span>
+                                                        <span>{bot.mySubscription.usageCount}{bot.mySubscription.usageLimit ? `/${bot.mySubscription.usageLimit}` : ''}</span>
+                                                    </div>
+                                                    {bot.mySubscription.usageLimit && (
+                                                        <div className="usage-bar">
+                                                            <div
+                                                                className="usage-fill"
+                                                                style={{
+                                                                    width: `${Math.min(100, (bot.mySubscription.usageCount / bot.mySubscription.usageLimit) * 100)}%`,
+                                                                    background: bot.mySubscription.usageCount / bot.mySubscription.usageLimit > 0.8
+                                                                        ? '#ef4444'
+                                                                        : 'var(--primary-color)'
+                                                                }}
+                                                            />
+                                                        </div>
+                                                    )}
+                                                    <small style={{ color: 'var(--text-secondary)' }}>
+                                                        <Clock size={12} /> Next billing: {new Date(bot.mySubscription.nextBillingDate).toLocaleDateString()}
+                                                    </small>
+                                                </div>
+                                            )}
+
+                                            <div className="sbot-actions">
+                                                {bot.isSubscribed ? (
+                                                    <>
+                                                        <button
+                                                            className="btn btn-secondary btn-sm"
+                                                            style={{ flex: 1 }}
+                                                            onClick={() => setShowSwitchModal(bot)}
+                                                            disabled={actionLoading === bot.id}
+                                                        >
+                                                            <ArrowRightLeft size={14} /> Switch
+                                                        </button>
+                                                        <button
+                                                            className="btn btn-danger btn-sm"
+                                                            style={{ flex: 1 }}
+                                                            onClick={() => handleUnsubscribe(bot.id, bot.name)}
+                                                            disabled={actionLoading === bot.id}
+                                                        >
+                                                            {actionLoading === bot.id ? <Loader2 size={14} className="spin" /> : <XCircle size={14} />}
+                                                            Cancel
+                                                        </button>
+                                                    </>
                                                 ) : (
-                                                    <><CreditCard size={14} /> Subscribe — ${(bot.monthlyPrice || 5).toFixed(2)}/mo</>
+                                                    <button
+                                                        className="btn btn-primary"
+                                                        style={{ width: '100%' }}
+                                                        onClick={() => handleSubscribe(bot.id, bot.name, bot.monthlyPrice || 5)}
+                                                        disabled={bot.isFull || actionLoading === bot.id}
+                                                    >
+                                                        {actionLoading === bot.id ? (
+                                                            <><Loader2 size={14} className="spin" /> Processing...</>
+                                                        ) : bot.isFull ? (
+                                                            'Bot Full'
+                                                        ) : (
+                                                            <><CreditCard size={14} /> Subscribe — ${(bot.monthlyPrice || 5).toFixed(2)}/mo</>
+                                                        )}
+                                                    </button>
                                                 )}
-                                            </button>
-                                        )}
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
+                                            </div>
+                                        </div>
+                                    ))}
+                            </div>
+                        </>
                     )}
                 </>
             )}

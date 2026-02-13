@@ -13,6 +13,7 @@ import {
     EyeOff,
     Code,
     Zap,
+    Search,
     Clock,
     X,
     AlertCircle,
@@ -43,6 +44,7 @@ export default function Webhook() {
     const [activeTab, setActiveTab] = useState('webhooks')
     const [showSecret, setShowSecret] = useState(false)
     const [submitting, setSubmitting] = useState(false)
+    const [searchTerm, setSearchTerm] = useState('')
 
     // Form state
     const [formData, setFormData] = useState({
@@ -223,49 +225,61 @@ export default function Webhook() {
 
             {activeTab === 'webhooks' && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-md)' }}>
-                    {webhooks.length > 0 ? webhooks.map((webhook) => (
-                        <div key={webhook.id} className="card">
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                                <div style={{ flex: 1 }}>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--spacing-md)', marginBottom: 'var(--spacing-sm)' }}>
-                                        <h4 style={{ margin: 0 }}>{webhook.name}</h4>
-                                        <span className={`badge ${webhook.isActive ? 'badge-success' : 'badge-neutral'}`}>
-                                            <span className={`status-dot ${webhook.isActive ? 'online' : 'offline'}`}></span>
-                                            {webhook.isActive ? 'Active' : 'Inactive'}
-                                        </span>
+                    <div className="search-box">
+                        <Search size={18} />
+                        <input
+                            type="text"
+                            placeholder="Search webhooks by name or URL..."
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                        />
+                    </div>
+                    {(() => {
+                        const filtered = webhooks.filter(w => !searchTerm || w.name.toLowerCase().includes(searchTerm.toLowerCase()) || w.url.toLowerCase().includes(searchTerm.toLowerCase()));
+                        return filtered.length > 0 ? filtered.map((webhook) => (
+                            <div key={webhook.id} className="card">
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                                    <div style={{ flex: 1 }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--spacing-md)', marginBottom: 'var(--spacing-sm)' }}>
+                                            <h4 style={{ margin: 0 }}>{webhook.name}</h4>
+                                            <span className={`badge ${webhook.isActive ? 'badge-success' : 'badge-neutral'}`}>
+                                                <span className={`status-dot ${webhook.isActive ? 'online' : 'offline'}`}></span>
+                                                {webhook.isActive ? 'Active' : 'Inactive'}
+                                            </span>
+                                        </div>
+
+                                        <div style={{
+                                            display: 'flex', alignItems: 'center', gap: 'var(--spacing-sm)', padding: 'var(--spacing-sm) var(--spacing-md)',
+                                            background: 'var(--bg-tertiary)', borderRadius: 'var(--radius-md)', marginBottom: 'var(--spacing-md)', maxWidth: 'fit-content'
+                                        }}>
+                                            <Code size={14} style={{ color: 'var(--text-muted)' }} />
+                                            <code style={{ fontSize: '0.75rem', color: 'var(--primary-400)', fontFamily: 'var(--font-mono)' }}>{webhook.url}</code>
+                                        </div>
+
+                                        <div style={{ display: 'flex', gap: 'var(--spacing-sm)', flexWrap: 'wrap', marginBottom: 'var(--spacing-md)' }}>
+                                            {webhook.events?.map((event, idx) => (
+                                                <span key={idx} className="badge badge-info" style={{ fontSize: '0.625rem' }}>{event}</span>
+                                            ))}
+                                        </div>
+
+                                        <div style={{ display: 'flex', gap: 'var(--spacing-xl)', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                                            <span>Last triggered: <strong style={{ color: 'var(--text-secondary)' }}>{webhook.lastTriggered ? formatDistanceToNow(new Date(webhook.lastTriggered), { addSuffix: true }) : 'Never'}</strong></span>
+                                            <span>Total calls: <strong style={{ color: 'var(--text-secondary)' }}>{webhook._count?.logs || 0}</strong></span>
+                                        </div>
                                     </div>
 
-                                    <div style={{
-                                        display: 'flex', alignItems: 'center', gap: 'var(--spacing-sm)', padding: 'var(--spacing-sm) var(--spacing-md)',
-                                        background: 'var(--bg-tertiary)', borderRadius: 'var(--radius-md)', marginBottom: 'var(--spacing-md)', maxWidth: 'fit-content'
-                                    }}>
-                                        <Code size={14} style={{ color: 'var(--text-muted)' }} />
-                                        <code style={{ fontSize: '0.75rem', color: 'var(--primary-400)', fontFamily: 'var(--font-mono)' }}>{webhook.url}</code>
+                                    <div style={{ display: 'flex', gap: 'var(--spacing-sm)' }}>
+                                        <button className="btn btn-ghost btn-icon" onClick={() => openEditModal(webhook)}><Edit size={18} /></button>
+                                        <button className="btn btn-ghost btn-icon" style={{ color: 'var(--error)' }} onClick={() => handleDeleteWebhook(webhook.id)}><Trash2 size={18} /></button>
                                     </div>
-
-                                    <div style={{ display: 'flex', gap: 'var(--spacing-sm)', flexWrap: 'wrap', marginBottom: 'var(--spacing-md)' }}>
-                                        {webhook.events?.map((event, idx) => (
-                                            <span key={idx} className="badge badge-info" style={{ fontSize: '0.625rem' }}>{event}</span>
-                                        ))}
-                                    </div>
-
-                                    <div style={{ display: 'flex', gap: 'var(--spacing-xl)', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                                        <span>Last triggered: <strong style={{ color: 'var(--text-secondary)' }}>{webhook.lastTriggered ? formatDistanceToNow(new Date(webhook.lastTriggered), { addSuffix: true }) : 'Never'}</strong></span>
-                                        <span>Total calls: <strong style={{ color: 'var(--text-secondary)' }}>{webhook._count?.logs || 0}</strong></span>
-                                    </div>
-                                </div>
-
-                                <div style={{ display: 'flex', gap: 'var(--spacing-sm)' }}>
-                                    <button className="btn btn-ghost btn-icon" onClick={() => openEditModal(webhook)}><Edit size={18} /></button>
-                                    <button className="btn btn-ghost btn-icon" style={{ color: 'var(--error)' }} onClick={() => handleDeleteWebhook(webhook.id)}><Trash2 size={18} /></button>
                                 </div>
                             </div>
-                        </div>
-                    )) : (
-                        <div className="card" style={{ textAlign: 'center', padding: 'var(--spacing-xl)', color: 'var(--text-muted)' }}>
-                            No webhooks configured
-                        </div>
-                    )}
+                        )) : (
+                            <div className="card" style={{ textAlign: 'center', padding: 'var(--spacing-xl)', color: 'var(--text-muted)' }}>
+                                {searchTerm ? 'No webhooks matching your search' : 'No webhooks configured'}
+                            </div>
+                        );
+                    })()}
                 </div>
             )}
 

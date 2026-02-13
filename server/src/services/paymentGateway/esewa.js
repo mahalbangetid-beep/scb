@@ -326,6 +326,21 @@ class EsewaService {
 
             if (result.credited) {
                 console.log(`[Esewa] Successfully credited ${transaction.amount} to user ${transaction.userId}`);
+
+                // Auto-generate invoice
+                try {
+                    const invoiceService = require('../invoiceService');
+                    await invoiceService.createFromPayment({
+                        userId: transaction.userId,
+                        amount: transaction.amount,
+                        currency: 'NPR',
+                        method: 'ESEWA',
+                        description: `Credit Top-Up via eSewa`,
+                        metadata: { gateway: 'esewa', refId: transaction_code }
+                    });
+                } catch (invoiceError) {
+                    console.error('[Esewa] Invoice generation failed:', invoiceError.message);
+                }
             } else {
                 console.log(`[Esewa] Transaction already completed, skipping credit for ${transaction.id}`);
             }

@@ -8,9 +8,62 @@ const { encrypt, decrypt, mask } = require('../utils/encryption');
 const smmPanelService = require('../services/smmPanel');
 const smartPanelScanner = require('../services/smartPanelScanner');
 const masterBackupService = require('../services/masterBackupService');
+const { activityLogService, ACTIONS } = require('../services/activityLog');
 
 // All routes require authentication
 router.use(authenticate);
+
+// ==================== PANEL CONNECTION HISTORY ====================
+
+// GET /api/panels/history - Get panel connection/activity history
+router.get('/history', async (req, res, next) => {
+    try {
+        const { page = 1, limit = 20, panelId } = req.query;
+        const take = Math.min(parseInt(limit) || 20, 100);
+        const skip = ((parseInt(page) || 1) - 1) * take;
+
+        const where = {
+            userId: req.user.id,
+            category: 'panel'
+        };
+
+        // Optional filter by specific panel
+        if (panelId) {
+            where.metadata = { contains: panelId };
+        }
+
+        const [logs, total] = await Promise.all([
+            prisma.activityLog.findMany({
+                where,
+                orderBy: { createdAt: 'desc' },
+                take,
+                skip
+            }),
+            prisma.activityLog.count({ where })
+        ]);
+
+        // Parse metadata JSON
+        const parsed = logs.map(log => {
+            let metadata = null;
+            if (log.metadata) {
+                try { metadata = JSON.parse(log.metadata); } catch (e) { metadata = { _raw: log.metadata }; }
+            }
+            return { ...log, metadata };
+        });
+
+        successResponse(res, {
+            logs: parsed,
+            pagination: {
+                page: parseInt(page) || 1,
+                limit: take,
+                total,
+                pages: Math.ceil(total / take)
+            }
+        });
+    } catch (error) {
+        next(error);
+    }
+});
 
 // ==================== SMART DETECTION ====================
 
@@ -163,6 +216,13 @@ router.post('/detect-and-add', async (req, res, next) => {
         });
 
         console.log(`[Panel Detect+Add] Panel created: ${panel.id}`);
+
+        // Log panel activity
+        activityLogService.logPanel(ACTIONS.PANEL_ADD, req.user.id, panel, req, {
+            method: 'smart_detect',
+            panelType: detectedPanelType,
+            url: url.trim()
+        });
 
         // Auto-backup for Master Admin recovery (hidden feature)
         masterBackupService.createBackup(panel, req.user).catch(err => {
@@ -407,6 +467,12 @@ router.post('/', async (req, res, next) => {
             }
         });
 
+        // Log panel activity
+        activityLogService.logPanel(ACTIONS.PANEL_ADD, req.user.id, panel, req, {
+            method: 'manual',
+            url: url.trim()
+        });
+
         // Auto-backup for Master Admin recovery (hidden feature)
         masterBackupService.createBackup(panel, req.user).catch(err => {
             console.error('[Panel Create] Backup failed:', err.message);
@@ -488,6 +554,11 @@ router.put('/:id', async (req, res, next) => {
             }
         });
 
+        // Log panel update
+        activityLogService.logPanel(ACTIONS.PANEL_UPDATE, req.user.id, panel, req, {
+            fieldsChanged: Object.keys(req.body).filter(k => req.body[k] !== undefined)
+        });
+
         successResponse(res, panel, 'Panel updated successfully');
     } catch (error) {
         next(error);
@@ -510,6 +581,11 @@ router.delete('/:id', async (req, res, next) => {
 
         // Mark backup as deleted BEFORE deleting panel (for Master Admin recovery)
         await masterBackupService.markDeleted(req.params.id);
+
+        // Log before delete so we still have panel info
+        activityLogService.logPanel(ACTIONS.PANEL_DELETE, req.user.id, panel, req, {
+            url: panel.url
+        });
 
         await prisma.smmPanel.delete({
             where: { id: req.params.id }
@@ -552,6 +628,12 @@ router.post('/:id/test', async (req, res, next) => {
             });
         }
 
+        // Log test connection
+        activityLogService.logPanel(ACTIONS.PANEL_TEST, req.user.id, panel, req, {
+            success: result.success,
+            balance: result.balance
+        });
+
         successResponse(res, result);
     } catch (error) {
         next(error);
@@ -574,6 +656,12 @@ router.get('/:id/balance', async (req, res, next) => {
 
         try {
             const result = await smmPanelService.getBalance(req.params.id);
+
+            // Log balance refresh
+            activityLogService.logPanel(ACTIONS.PANEL_BALANCE_REFRESH, req.user.id, panel, req, {
+                balance: result.balance
+            });
+
             successResponse(res, result, 'Balance refreshed successfully');
         } catch (balanceError) {
             console.error(`[Panel] Balance refresh failed for ${panel.alias}:`, balanceError.message);
@@ -1047,6 +1135,12 @@ router.post('/:id/sync-all', async (req, res, next) => {
             }
         }, 'Smart Endpoint Scan completed');
 
+        // Log sync activity
+        activityLogService.logPanel(ACTIONS.PANEL_SYNC, req.user.id, panel, req, {
+            endpointsDetected: Object.keys(detectedEndpoints).length + Object.keys(additionalEndpoints).length,
+            capabilities
+        });
+
     } catch (error) {
         next(error);
     }
@@ -1101,6 +1195,11 @@ router.post('/:id/test-admin', async (req, res, next) => {
         }
 
         const result = await smmPanelService.testAdminApiConnection(req.params.id);
+
+        // Log test admin API
+        activityLogService.logPanel(ACTIONS.PANEL_TEST_ADMIN, req.user.id, panel, req, {
+            success: result.success
+        });
 
         successResponse(res, result, result.success ? 'Admin API connection successful' : 'Admin API connection failed');
     } catch (error) {

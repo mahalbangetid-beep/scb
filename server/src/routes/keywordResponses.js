@@ -147,9 +147,78 @@ router.post('/bulk', async (req, res, next) => {
 });
 
 /**
+ * POST /api/keyword-responses/bulk-action
+ * Bulk enable/disable/delete keyword responses
+ * NOTE: Must be before /:id route
+ */
+router.post('/bulk-action', async (req, res, next) => {
+    try {
+        const { ids, action } = req.body;
+
+        if (!Array.isArray(ids) || ids.length === 0) {
+            throw new AppError('IDs array is required', 400);
+        }
+
+        if (!['enable', 'disable', 'delete'].includes(action)) {
+            throw new AppError('Action must be enable, disable, or delete', 400);
+        }
+
+        if (ids.length > 100) {
+            throw new AppError('Maximum 100 items per bulk action', 400);
+        }
+
+        const prisma = require('../utils/prisma');
+
+        // Verify all IDs belong to the current user
+        const owned = await prisma.keywordResponse.findMany({
+            where: { id: { in: ids }, userId: req.user.id },
+            select: { id: true }
+        });
+
+        const ownedIds = owned.map(r => r.id);
+
+        if (ownedIds.length === 0) {
+            throw new AppError('No valid keyword responses found', 404);
+        }
+
+        let result;
+        switch (action) {
+            case 'enable':
+                result = await prisma.keywordResponse.updateMany({
+                    where: { id: { in: ownedIds } },
+                    data: { isActive: true }
+                });
+                break;
+            case 'disable':
+                result = await prisma.keywordResponse.updateMany({
+                    where: { id: { in: ownedIds } },
+                    data: { isActive: false }
+                });
+                break;
+            case 'delete':
+                result = await prisma.keywordResponse.deleteMany({
+                    where: { id: { in: ownedIds } }
+                });
+                break;
+        }
+
+        const actionLabel = action === 'enable' ? 'enabled' : action === 'disable' ? 'disabled' : 'deleted';
+
+        successResponse(res, {
+            action,
+            affected: result.count,
+            requestedCount: ids.length,
+            processedIds: ownedIds
+        }, `${result.count} keyword response(s) ${actionLabel}`);
+    } catch (error) {
+        next(error);
+    }
+});
+
+/**
  * GET /api/keyword-responses/:id
  * Get a single keyword response
- * NOTE: This must be AFTER all named routes like /stats, /test, /bulk
+ * NOTE: This must be AFTER all named routes like /stats, /test, /bulk, /bulk-action
  */
 router.get('/:id', async (req, res, next) => {
     try {

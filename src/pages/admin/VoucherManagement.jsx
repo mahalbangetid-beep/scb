@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import {
     Gift, Plus, Edit3, Trash2, X, Copy, CheckCircle2,
-    Loader2, AlertCircle, Calendar, Users
+    Loader2, AlertCircle, Calendar, Users, Search
 } from 'lucide-react'
 import api from '../../services/api'
 
@@ -15,6 +15,7 @@ export default function VoucherManagement() {
     const [success, setSuccess] = useState(null)
     const [actionLoading, setActionLoading] = useState(false)
     const [copiedCode, setCopiedCode] = useState(null)
+    const [searchTerm, setSearchTerm] = useState('')
 
     const [formData, setFormData] = useState({
         code: '',
@@ -213,61 +214,76 @@ export default function VoucherManagement() {
                     </button>
                 </div>
             ) : (
-                <div className="vouchers-grid">
-                    {vouchers.map(voucher => (
-                        <div key={voucher.id} className={`voucher-card ${!voucher.isActive ? 'inactive' : ''}`}>
-                            <div className="voucher-header">
-                                <div className="voucher-code" onClick={() => copyCode(voucher.code)}>
-                                    <span>{voucher.code}</span>
-                                    {copiedCode === voucher.code ? (
-                                        <CheckCircle2 size={16} className="text-success" />
-                                    ) : (
-                                        <Copy size={16} />
-                                    )}
-                                </div>
-                                <div className="voucher-actions">
-                                    <button className="btn btn-ghost btn-sm" onClick={() => openModal(voucher)}>
-                                        <Edit3 size={16} />
-                                    </button>
-                                    <button className="btn btn-ghost btn-sm text-danger" onClick={() => handleDelete(voucher.id)}>
-                                        <Trash2 size={16} />
-                                    </button>
-                                </div>
-                            </div>
-
-                            <div className="voucher-amount">
-                                ${voucher.amount.toFixed(2)}
-                            </div>
-
-                            <div className="voucher-stats">
-                                <div className="stat">
-                                    <Users size={14} />
-                                    <span>{voucher.usageCount}/{voucher.maxUsage || '∞'} used</span>
-                                </div>
-                                {voucher.expiresAt && (
-                                    <div className="stat">
-                                        <Calendar size={14} />
-                                        <span>Expires {new Date(voucher.expiresAt).toLocaleDateString()}</span>
-                                    </div>
-                                )}
-                            </div>
-
-                            <div className="voucher-footer">
-                                <label className="toggle-small">
-                                    <input
-                                        type="checkbox"
-                                        checked={voucher.isActive}
-                                        onChange={() => handleToggleActive(voucher)}
-                                    />
-                                    <span>{voucher.isActive ? 'Active' : 'Inactive'}</span>
-                                </label>
-                                {voucher.singleUsePerUser && (
-                                    <span className="badge">Single Use</span>
-                                )}
-                            </div>
+                <>
+                    <div style={{ marginBottom: 'var(--spacing-lg)' }}>
+                        <div className="search-box">
+                            <Search size={18} />
+                            <input
+                                type="text"
+                                placeholder="Search by voucher code..."
+                                value={searchTerm}
+                                onChange={(e) => setSearchTerm(e.target.value)}
+                            />
                         </div>
-                    ))}
-                </div>
+                    </div>
+                    <div className="vouchers-grid">
+                        {vouchers
+                            .filter(v => !searchTerm || v.code.toLowerCase().includes(searchTerm.toLowerCase()))
+                            .map(voucher => (
+                                <div key={voucher.id} className={`voucher-card ${!voucher.isActive ? 'inactive' : ''}`}>
+                                    <div className="voucher-header">
+                                        <div className="voucher-code" onClick={() => copyCode(voucher.code)}>
+                                            <span>{voucher.code}</span>
+                                            {copiedCode === voucher.code ? (
+                                                <CheckCircle2 size={16} className="text-success" />
+                                            ) : (
+                                                <Copy size={16} />
+                                            )}
+                                        </div>
+                                        <div className="voucher-actions">
+                                            <button className="btn btn-ghost btn-sm" onClick={() => openModal(voucher)}>
+                                                <Edit3 size={16} />
+                                            </button>
+                                            <button className="btn btn-ghost btn-sm text-danger" onClick={() => handleDelete(voucher.id)}>
+                                                <Trash2 size={16} />
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    <div className="voucher-amount">
+                                        ${voucher.amount.toFixed(2)}
+                                    </div>
+
+                                    <div className="voucher-stats">
+                                        <div className="stat">
+                                            <Users size={14} />
+                                            <span>{voucher.usageCount}/{voucher.maxUsage || '∞'} used</span>
+                                        </div>
+                                        {voucher.expiresAt && (
+                                            <div className="stat">
+                                                <Calendar size={14} />
+                                                <span>Expires {new Date(voucher.expiresAt).toLocaleDateString()}</span>
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    <div className="voucher-footer">
+                                        <label className="toggle-small">
+                                            <input
+                                                type="checkbox"
+                                                checked={voucher.isActive}
+                                                onChange={() => handleToggleActive(voucher)}
+                                            />
+                                            <span>{voucher.isActive ? 'Active' : 'Inactive'}</span>
+                                        </label>
+                                        {voucher.singleUsePerUser && (
+                                            <span className="badge">Single Use</span>
+                                        )}
+                                    </div>
+                                </div>
+                            ))}
+                    </div>
+                </>
             )}
 
             {/* Create/Edit Modal */}

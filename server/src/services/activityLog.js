@@ -29,7 +29,12 @@ const ACTIONS = {
     // SMM Panel actions
     PANEL_ADD: 'PANEL_ADD',
     PANEL_DELETE: 'PANEL_DELETE',
+    PANEL_UPDATE: 'PANEL_UPDATE',
     PANEL_SYNC: 'PANEL_SYNC',
+    PANEL_TEST: 'PANEL_TEST',
+    PANEL_BALANCE_REFRESH: 'PANEL_BALANCE_REFRESH',
+    PANEL_TEST_ADMIN: 'PANEL_TEST_ADMIN',
+    PANEL_DETECT: 'PANEL_DETECT',
 
     // Order actions
     ORDER_CREATE: 'ORDER_CREATE',
@@ -168,6 +173,22 @@ class ActivityLogService {
             category: CATEGORIES.ORDER,
             description: `Order ${orderId}: ${action}`,
             metadata: { orderId, ...metadata }
+        });
+    }
+
+    /**
+     * Log panel activity
+     */
+    async logPanel(action, userId, panelInfo, req, metadata = {}) {
+        return this.log({
+            userId,
+            action,
+            category: CATEGORIES.PANEL,
+            description: `Panel ${panelInfo.name || panelInfo.alias || panelInfo.id}: ${action}`,
+            metadata: { panelId: panelInfo.id, panelName: panelInfo.name, panelAlias: panelInfo.alias, ...metadata },
+            ipAddress: req?.ip,
+            userAgent: req?.headers?.['user-agent'],
+            status: metadata.success === false ? 'failed' : 'success'
         });
     }
 

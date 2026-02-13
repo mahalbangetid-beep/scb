@@ -1,26 +1,20 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import {
     Send,
     Upload,
-    Users,
     FileText,
     Image,
-    Paperclip,
     Clock,
     Calendar,
-    Smartphone,
     CheckCircle,
     XCircle,
-    AlertCircle,
-    Plus,
     X,
-    Eye,
-    Trash2,
     Loader2,
-    RefreshCw
+    RefreshCw,
+    Info
 } from 'lucide-react'
 import api from '../services/api'
-import { formatDistanceToNow } from 'date-fns'
+import { formatDistanceToNow, format } from 'date-fns'
 
 export default function Broadcast() {
     const [activeTab, setActiveTab] = useState('new')
@@ -30,14 +24,20 @@ export default function Broadcast() {
     const [refreshing, setRefreshing] = useState(false)
     const [submitting, setSubmitting] = useState(false)
 
+
     // Form state
     const [formData, setFormData] = useState({
         name: '',
         deviceId: '',
         message: '',
         recipients: '',
-        scheduledAt: null
+        mediaFile: null,
+        mediaPreview: null,
+        scheduleEnabled: false,
+        scheduledAt: ''
     })
+
+    const fileInputRef = useRef(null)
 
     const fetchCampaigns = async () => {
         try {
@@ -66,6 +66,45 @@ export default function Broadcast() {
         fetchDevices()
     }, [])
 
+    const handleFileChange = (e) => {
+        const file = e.target.files[0]
+        if (!file) return
+
+        // Validate file type (images only for now)
+        const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp']
+        if (!allowedTypes.includes(file.type)) {
+            alert('Only image files (JPEG, PNG, GIF, WebP) are supported')
+            return
+        }
+
+        // Max 5MB
+        if (file.size > 5 * 1024 * 1024) {
+            alert('File size must be less than 5MB')
+            return
+        }
+
+        const reader = new FileReader()
+        reader.onloadend = () => {
+            setFormData(prev => ({
+                ...prev,
+                mediaFile: file,
+                mediaPreview: reader.result
+            }))
+        }
+        reader.readAsDataURL(file)
+    }
+
+    const removeMedia = () => {
+        setFormData(prev => ({
+            ...prev,
+            mediaFile: null,
+            mediaPreview: null
+        }))
+        if (fileInputRef.current) {
+            fileInputRef.current.value = ''
+        }
+    }
+
     const handleSendNow = async () => {
         if (!formData.name || !formData.deviceId || !formData.message || !formData.recipients) {
             alert('Please fill in all required fields')
@@ -79,20 +118,47 @@ export default function Broadcast() {
                 .map(r => r.trim())
                 .filter(r => r !== '')
 
-            await api.post('/broadcast', {
-                name: formData.name,
-                deviceId: formData.deviceId,
-                message: formData.message,
-                recipients: recipientList
-            })
+            const scheduledAt = formData.scheduleEnabled && formData.scheduledAt
+                ? new Date(formData.scheduledAt).toISOString()
+                : undefined
 
-            alert('Broadcast campaign created and started!')
+            if (formData.mediaFile) {
+                // Use multipart FormData when there's a file
+                const payload = new FormData()
+                payload.append('name', formData.name)
+                payload.append('deviceId', formData.deviceId)
+                payload.append('message', formData.message)
+                recipientList.forEach(r => payload.append('recipients[]', r))
+                payload.append('media', formData.mediaFile)
+                if (scheduledAt) payload.append('scheduledAt', scheduledAt)
+
+                await api.post('/broadcast', payload, {
+                    headers: { 'Content-Type': 'multipart/form-data' }
+                })
+            } else {
+                // JSON payload when no file
+                const payload = {
+                    name: formData.name,
+                    deviceId: formData.deviceId,
+                    message: formData.message,
+                    recipients: recipientList
+                }
+                if (scheduledAt) payload.scheduledAt = scheduledAt
+
+                await api.post('/broadcast', payload)
+            }
+
+            const isScheduled = formData.scheduleEnabled && formData.scheduledAt
+            alert(isScheduled ? 'Broadcast scheduled successfully!' : 'Broadcast campaign created and started!')
             setActiveTab('campaigns')
             fetchCampaigns()
-            setFormData({ name: '', deviceId: '', message: '', recipients: '', scheduledAt: null })
+            setFormData({
+                name: '', deviceId: '', message: '', recipients: '',
+                mediaFile: null, mediaPreview: null, scheduleEnabled: false, scheduledAt: ''
+            })
         } catch (error) {
             console.error('Failed to start broadcast:', error)
-            alert('Failed to start broadcast')
+            alert(error.response?.data?.message || 'Failed to start broadcast')
         } finally {
             setSubmitting(false)
         }
@@ -115,6 +181,17 @@ export default function Broadcast() {
             default:
                 return <span className="badge badge-neutral">{status}</span>
         }
+    }
+
+    const recipientCount = formData.recipients.split('\n').filter(r => r.trim()).length
+
+    // Get minimum datetime for schedule (now + 5 minutes)
+    const getMinScheduleDate = () => {
+        const now = new Date()
+        now.setMinutes(now.getMinutes() + 5)
+        // datetime-local expects local time, not UTC
+        const pad = (n) => String(n).padStart(2, '0')
+        return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())}`
     }
 
     if (loading && activeTab === 'campaigns') {
@@ -183,7 +260,7 @@ export default function Broadcast() {
                             <label className="form-label">Recipients (one per line)</label>
                             <textarea
                                 className="form-textarea"
-                                placeholder="+62812345678&#10;+62856789012"
+                                placeholder={"+62812345678\n+62856789012"}
                                 value={formData.recipients}
                                 onChange={(e) => setFormData({ ...formData, recipients: e.target.value })}
                                 rows={4}
@@ -201,11 +278,164 @@ export default function Broadcast() {
                             />
                         </div>
 
+                        {/* Media Attachment */}
+                        <div className="form-group">
+                            <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                                <Image size={14} /> Image Attachment
+                                <span style={{ fontWeight: 400, fontSize: '0.75rem', color: 'var(--text-muted)' }}>(optional)</span>
+                            </label>
+
+                            {formData.mediaPreview ? (
+                                <div style={{
+                                    position: 'relative',
+                                    display: 'inline-block',
+                                    borderRadius: 'var(--radius-md)',
+                                    overflow: 'hidden',
+                                    border: '1px solid var(--border-color)'
+                                }}>
+                                    <img
+                                        src={formData.mediaPreview}
+                                        alt="Preview"
+                                        style={{ maxWidth: '200px', maxHeight: '150px', display: 'block' }}
+                                    />
+                                    <button
+                                        onClick={removeMedia}
+                                        style={{
+                                            position: 'absolute',
+                                            top: '4px',
+                                            right: '4px',
+                                            background: 'rgba(0,0,0,0.7)',
+                                            color: '#fff',
+                                            border: 'none',
+                                            borderRadius: '50%',
+                                            width: '24px',
+                                            height: '24px',
+                                            cursor: 'pointer',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center'
+                                        }}
+                                    >
+                                        <X size={14} />
+                                    </button>
+                                    <div style={{
+                                        padding: '4px 8px',
+                                        background: 'var(--bg-secondary)',
+                                        fontSize: '0.7rem',
+                                        color: 'var(--text-muted)'
+                                    }}>
+                                        {formData.mediaFile?.name} ({(formData.mediaFile?.size / 1024).toFixed(0)} KB)
+                                    </div>
+                                </div>
+                            ) : (
+                                <div
+                                    onClick={() => fileInputRef.current?.click()}
+                                    style={{
+                                        border: '2px dashed var(--border-color)',
+                                        borderRadius: 'var(--radius-md)',
+                                        padding: 'var(--spacing-lg)',
+                                        textAlign: 'center',
+                                        cursor: 'pointer',
+                                        transition: 'border-color 0.2s ease, background 0.2s ease'
+                                    }}
+                                    onMouseEnter={(e) => {
+                                        e.currentTarget.style.borderColor = 'var(--primary-color)'
+                                        e.currentTarget.style.background = 'rgba(99,102,241,0.03)'
+                                    }}
+                                    onMouseLeave={(e) => {
+                                        e.currentTarget.style.borderColor = 'var(--border-color)'
+                                        e.currentTarget.style.background = 'transparent'
+                                    }}
+                                >
+                                    <Upload size={24} style={{ color: 'var(--text-muted)', marginBottom: '0.5rem' }} />
+                                    <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                                        Click to upload an image
+                                    </div>
+                                    <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '4px' }}>
+                                        JPEG, PNG, GIF, WebP — Max 5MB
+                                    </div>
+                                </div>
+                            )}
+                            <input
+                                ref={fileInputRef}
+                                type="file"
+                                accept="image/jpeg,image/png,image/gif,image/webp"
+                                onChange={handleFileChange}
+                                style={{ display: 'none' }}
+                            />
+                        </div>
+
+                        {/* Schedule Toggle */}
+                        <div className="form-group" style={{
+                            padding: 'var(--spacing-md)',
+                            borderRadius: 'var(--radius-md)',
+                            border: '1px solid var(--border-color)',
+                            background: formData.scheduleEnabled ? 'rgba(99,102,241,0.03)' : 'transparent',
+                            transition: 'background 0.2s ease'
+                        }}>
+                            <label style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: 'var(--spacing-sm)',
+                                cursor: 'pointer',
+                                marginBottom: formData.scheduleEnabled ? 'var(--spacing-md)' : 0
+                            }}>
+                                <input
+                                    type="checkbox"
+                                    checked={formData.scheduleEnabled}
+                                    onChange={(e) => setFormData(prev => ({
+                                        ...prev,
+                                        scheduleEnabled: e.target.checked,
+                                        scheduledAt: e.target.checked ? prev.scheduledAt : ''
+                                    }))}
+                                />
+                                <Calendar size={16} style={{ color: 'var(--primary-color)' }} />
+                                <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>Schedule for later</span>
+                            </label>
+
+                            {formData.scheduleEnabled && (
+                                <div>
+                                    <label className="form-label" style={{ fontSize: '0.8rem', marginBottom: '4px' }}>
+                                        Select date and time
+                                    </label>
+                                    <input
+                                        type="datetime-local"
+                                        className="form-input"
+                                        value={formData.scheduledAt}
+                                        onChange={(e) => setFormData({ ...formData, scheduledAt: e.target.value })}
+                                        min={getMinScheduleDate()}
+                                        style={{ maxWidth: '300px' }}
+                                    />
+                                    {formData.scheduledAt && (
+                                        <div style={{
+                                            marginTop: '6px',
+                                            fontSize: '0.75rem',
+                                            color: 'var(--text-muted)',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '4px'
+                                        }}>
+                                            <Info size={12} />
+                                            Will be sent on {format(new Date(formData.scheduledAt), 'EEEE, MMM dd yyyy \'at\' HH:mm')}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Action Buttons */}
                         <div style={{ display: 'flex', gap: 'var(--spacing-md)', marginTop: 'var(--spacing-lg)', paddingTop: 'var(--spacing-lg)', borderTop: '1px solid var(--border-color)' }}>
-                            <button className="btn btn-primary" style={{ flex: 1 }} onClick={handleSendNow} disabled={submitting}>
-                                {submitting ? <Loader2 className="animate-spin" size={16} /> : <Send size={16} />}
-                                Send Now
-                            </button>
+                            {formData.scheduleEnabled && formData.scheduledAt ? (
+                                <button className="btn btn-primary" style={{ flex: 1 }} onClick={handleSendNow} disabled={submitting}>
+                                    {submitting ? <Loader2 className="animate-spin" size={16} /> : <Calendar size={16} />}
+                                    Schedule Broadcast
+                                </button>
+                            ) : (
+                                <button className="btn btn-primary" style={{ flex: 1 }} onClick={handleSendNow} disabled={submitting}>
+                                    {submitting ? <Loader2 className="animate-spin" size={16} /> : <Send size={16} />}
+                                    Send Now
+                                </button>
+                            )}
                         </div>
                     </div>
 
@@ -218,15 +448,37 @@ export default function Broadcast() {
                             </div>
                         </div>
                         <div style={{ background: '#075E54', borderRadius: 'var(--radius-lg)', padding: 'var(--spacing-lg)', minHeight: '200px' }}>
-                            <div style={{ background: '#DCF8C6', color: '#000', padding: 'var(--spacing-md)', borderRadius: 'var(--radius-lg)', fontSize: '0.875rem', maxWidth: '90%', marginLeft: 'auto' }}>
-                                {formData.message || 'Your message will appear here...'}
+                            <div style={{ background: '#DCF8C6', color: '#000', borderRadius: 'var(--radius-lg)', maxWidth: '90%', marginLeft: 'auto', overflow: 'hidden' }}>
+                                {/* Image Preview */}
+                                {formData.mediaPreview && (
+                                    <img
+                                        src={formData.mediaPreview}
+                                        alt="Media"
+                                        style={{ width: '100%', display: 'block' }}
+                                    />
+                                )}
+                                <div style={{ padding: 'var(--spacing-md)', fontSize: '0.875rem' }}>
+                                    {formData.message || 'Your message will appear here...'}
+                                </div>
                             </div>
                         </div>
                         <div style={{ marginTop: 'var(--spacing-lg)' }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.875rem' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.875rem', marginBottom: '4px' }}>
                                 <span>Recipients:</span>
-                                <strong>{formData.recipients.split('\n').filter(r => r.trim()).length}</strong>
+                                <strong>{recipientCount}</strong>
                             </div>
+                            {formData.mediaFile && (
+                                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.875rem', marginBottom: '4px' }}>
+                                    <span>Attachment:</span>
+                                    <strong style={{ fontSize: '0.8rem' }}>📷 Image</strong>
+                                </div>
+                            )}
+                            {formData.scheduleEnabled && formData.scheduledAt && (
+                                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.875rem', marginBottom: '4px' }}>
+                                    <span>Scheduled:</span>
+                                    <strong style={{ fontSize: '0.8rem' }}>{format(new Date(formData.scheduledAt), 'MMM dd, HH:mm')}</strong>
+                                </div>
+                            )}
                         </div>
                     </div>
                 </div>
@@ -250,23 +502,35 @@ export default function Broadcast() {
                                 <tr>
                                     <th>Campaign</th>
                                     <th>Status</th>
+                                    <th>Progress</th>
                                     <th>Date</th>
                                     <th>Device</th>
-                                    <th>Actions</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {campaigns.length > 0 ? campaigns.map((campaign) => (
                                     <tr key={campaign.id}>
-                                        <td style={{ fontWeight: 500 }}>{campaign.name}</td>
+                                        <td>
+                                            <div style={{ fontWeight: 500 }}>{campaign.name}</div>
+                                            {campaign.scheduledAt && campaign.status === 'scheduled' && (
+                                                <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '3px', marginTop: '2px' }}>
+                                                    <Calendar size={10} />
+                                                    {format(new Date(campaign.scheduledAt), 'MMM dd, yyyy HH:mm')}
+                                                </div>
+                                            )}
+                                        </td>
                                         <td>{getStatusBadge(campaign.status)}</td>
+                                        <td>
+                                            <div style={{ fontSize: '0.8rem' }}>
+                                                <span style={{ color: '#22c55e', fontWeight: 600 }}>{campaign.sent || 0}</span>
+                                                <span style={{ color: 'var(--text-muted)' }}> / {campaign.totalRecipients || 0}</span>
+                                                {(campaign.failed || 0) > 0 && (
+                                                    <span style={{ color: '#ef4444', fontWeight: 600, marginLeft: '4px' }}>({campaign.failed} failed)</span>
+                                                )}
+                                            </div>
+                                        </td>
                                         <td style={{ fontSize: '0.75rem' }}>{formatDistanceToNow(new Date(campaign.createdAt), { addSuffix: true })}</td>
                                         <td>{campaign.device?.name || 'N/A'}</td>
-                                        <td>
-                                            <button className="btn btn-ghost btn-icon">
-                                                <Trash2 size={14} />
-                                            </button>
-                                        </td>
                                     </tr>
                                 )) : (
                                     <tr><td colSpan="5" style={{ textAlign: 'center', padding: 'var(--spacing-xl)' }}>No campaigns found</td></tr>

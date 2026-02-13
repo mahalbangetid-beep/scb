@@ -290,6 +290,20 @@ router.post('/users/:id/adjust-credit', async (req, res, next) => {
             newBalance: result.balanceAfter,
             balanceBefore: result.balanceBefore
         }, `Successfully ${type === 'CREDIT' ? 'added' : 'deducted'} ${adjustAmount} credits`);
+
+        // Send payment email for admin credits (non-blocking)
+        if (type === 'CREDIT' && user.email) {
+            try {
+                const emailService = require('../services/emailService');
+                emailService.sendTemplateEmail('payment_completed', user.email, {
+                    username: user.username,
+                    amount: adjustAmount.toFixed(2),
+                    method: 'Admin Top-Up',
+                    balance: result.balanceAfter.toFixed(2),
+                    date: new Date().toLocaleDateString()
+                }, user.id).catch(() => { });
+            } catch (e) { /* non-critical */ }
+        }
     } catch (error) {
         next(error);
     }
@@ -623,16 +637,20 @@ router.put('/staff/:id/permissions', async (req, res, next) => {
             where: { staffId: req.params.id }
         });
 
-        // Create new permissions
+        // Create new permissions (handle both string array and object array formats)
         if (permissions && permissions.length > 0) {
             await prisma.staffPermission.createMany({
-                data: permissions.map(p => ({
-                    staffId: req.params.id,
-                    permission: p.permission,
-                    canView: p.canView ?? true,
-                    canEdit: p.canEdit ?? false,
-                    canDelete: p.canDelete ?? false
-                }))
+                data: permissions.map(p => {
+                    // Support both string format ['order_view'] and object format [{permission: 'order_view', ...}]
+                    const permKey = typeof p === 'string' ? p : p.permission;
+                    return {
+                        staffId: req.params.id,
+                        permission: permKey,
+                        canView: typeof p === 'string' ? true : (p.canView ?? true),
+                        canEdit: typeof p === 'string' ? false : (p.canEdit ?? false),
+                        canDelete: typeof p === 'string' ? false : (p.canDelete ?? false)
+                    };
+                })
             });
         }
 

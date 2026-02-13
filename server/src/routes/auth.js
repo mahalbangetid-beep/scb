@@ -207,6 +207,17 @@ router.post('/register', authLimiter, async (req, res, next) => {
         // Log registration as login
         await logLogin(user.id, registrationIp, req.headers['user-agent'], 'SUCCESS');
 
+        // Send welcome email (non-blocking)
+        try {
+            const emailService = require('../services/emailService');
+            const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+            emailService.sendTemplateEmail('welcome', email.toLowerCase(), {
+                username: user.username,
+                platformName: process.env.SMTP_FROM_NAME || 'SMMChatBot',
+                dashboardUrl: `${frontendUrl}/dashboard`
+            }, user.id).catch(() => { });
+        } catch (e) { /* email is non-critical */ }
+
         createdResponse(res, {
             user,
             token,
@@ -242,6 +253,11 @@ router.post('/login', authLimiter, async (req, res, next) => {
                     { username: loginIdentifier.toLowerCase() },
                     { email: loginIdentifier.toLowerCase() }
                 ]
+            },
+            include: {
+                staffPermissions: {
+                    select: { permission: true, canView: true, canEdit: true, canDelete: true }
+                }
             }
         });
 
@@ -299,7 +315,10 @@ router.post('/login', authLimiter, async (req, res, next) => {
                 creditBalance: user.creditBalance,
                 messageCredits: user.messageCredits || 0,
                 whatsappNumber: user.whatsappNumber,
-                telegramUsername: user.telegramUsername
+                telegramUsername: user.telegramUsername,
+                ...(user.role === 'STAFF' && user.staffPermissions ? {
+                    staffPermissions: user.staffPermissions.map(p => p.permission)
+                } : {})
             },
             token
         }, 'Login successful');
@@ -348,6 +367,9 @@ router.get('/me', authenticate, async (req, res, next) => {
                         smmPanels: true,
                         contacts: true
                     }
+                },
+                staffPermissions: {
+                    select: { permission: true, canView: true, canEdit: true, canDelete: true }
                 }
             }
         });
@@ -357,6 +379,13 @@ router.get('/me', authenticate, async (req, res, next) => {
             ...key,
             key: mask(key.key, 10, 4)
         }));
+
+        // Map staffPermissions to string array for frontend sidebar compatibility
+        if (user.role === 'STAFF' && user.staffPermissions) {
+            user.staffPermissions = user.staffPermissions.map(p => p.permission);
+        } else {
+            delete user.staffPermissions;
+        }
 
         successResponse(res, user);
     } catch (error) {

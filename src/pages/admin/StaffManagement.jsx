@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import {
     Users, Plus, Edit3, Trash2, X, Shield, CheckCircle2,
-    Loader2, AlertCircle, Key, Settings
+    Loader2, AlertCircle, Key, Settings, Search
 } from 'lucide-react'
 import api from '../../services/api'
 
@@ -36,6 +36,7 @@ export default function StaffManagement() {
     const [error, setError] = useState(null)
     const [success, setSuccess] = useState(null)
     const [actionLoading, setActionLoading] = useState(false)
+    const [searchTerm, setSearchTerm] = useState('')
 
     useEffect(() => {
         fetchStaff()
@@ -117,7 +118,7 @@ export default function StaffManagement() {
 
         try {
             if (editingStaff) {
-                await api.put(`/admin/staff/${editingStaff.id}`, {
+                await api.put(`/admin/staff/${editingStaff.id}/permissions`, {
                     permissions: formData.permissions
                 })
                 setSuccess('Staff permissions updated')
@@ -191,61 +192,76 @@ export default function StaffManagement() {
                     </button>
                 </div>
             ) : (
-                <div className="staff-grid">
-                    {staff.map(member => (
-                        <div key={member.id} className="staff-card">
-                            <div className="staff-header">
-                                <div className="staff-avatar">
-                                    {member.name?.[0] || member.username?.[0] || 'S'}
-                                </div>
-                                <div className="staff-info">
-                                    <h3>{member.name || member.username}</h3>
-                                    <p>{member.email}</p>
-                                </div>
-                                <div className="staff-actions">
-                                    <button
-                                        className="btn btn-ghost btn-sm"
-                                        onClick={() => openModal(member)}
-                                    >
-                                        <Edit3 size={16} />
-                                    </button>
-                                    <button
-                                        className="btn btn-ghost btn-sm text-danger"
-                                        onClick={() => handleRemoveStaff(member.id)}
-                                    >
-                                        <Trash2 size={16} />
-                                    </button>
-                                </div>
-                            </div>
-
-                            <div className="staff-permissions">
-                                <h4>Permissions ({member.staffPermissions?.length || 0})</h4>
-                                <div className="permission-tags">
-                                    {!member.staffPermissions || member.staffPermissions.length === 0 ? (
-                                        <span className="no-permissions">No permissions assigned</span>
-                                    ) : (
-                                        member.staffPermissions?.slice(0, 4).map(p => (
-                                            <span key={p.permission} className="permission-tag">
-                                                {PERMISSIONS.find(perm => perm.key === p.permission)?.label || p.permission}
-                                            </span>
-                                        ))
-                                    )}
-                                    {(member.staffPermissions?.length || 0) > 4 && (
-                                        <span className="permission-more">
-                                            +{member.staffPermissions.length - 4} more
-                                        </span>
-                                    )}
-                                </div>
-                            </div>
-
-                            <div className="staff-footer">
-                                <span className="staff-since">
-                                    Staff since {new Date(member.createdAt).toLocaleDateString()}
-                                </span>
-                            </div>
+                <>
+                    <div style={{ marginBottom: 'var(--spacing-lg)' }}>
+                        <div className="search-box">
+                            <Search size={18} />
+                            <input
+                                type="text"
+                                placeholder="Search staff by name or email..."
+                                value={searchTerm}
+                                onChange={(e) => setSearchTerm(e.target.value)}
+                            />
                         </div>
-                    ))}
-                </div>
+                    </div>
+                    <div className="staff-grid">
+                        {staff
+                            .filter(m => !searchTerm || (m.name || '').toLowerCase().includes(searchTerm.toLowerCase()) || (m.username || '').toLowerCase().includes(searchTerm.toLowerCase()) || (m.email || '').toLowerCase().includes(searchTerm.toLowerCase()))
+                            .map(member => (
+                                <div key={member.id} className="staff-card">
+                                    <div className="staff-header">
+                                        <div className="staff-avatar">
+                                            {member.name?.[0] || member.username?.[0] || 'S'}
+                                        </div>
+                                        <div className="staff-info">
+                                            <h3>{member.name || member.username}</h3>
+                                            <p>{member.email}</p>
+                                        </div>
+                                        <div className="staff-actions">
+                                            <button
+                                                className="btn btn-ghost btn-sm"
+                                                onClick={() => openModal(member)}
+                                            >
+                                                <Edit3 size={16} />
+                                            </button>
+                                            <button
+                                                className="btn btn-ghost btn-sm text-danger"
+                                                onClick={() => handleRemoveStaff(member.id)}
+                                            >
+                                                <Trash2 size={16} />
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    <div className="staff-permissions">
+                                        <h4>Permissions ({member.staffPermissions?.length || 0})</h4>
+                                        <div className="permission-tags">
+                                            {!member.staffPermissions || member.staffPermissions.length === 0 ? (
+                                                <span className="no-permissions">No permissions assigned</span>
+                                            ) : (
+                                                member.staffPermissions?.slice(0, 4).map(p => (
+                                                    <span key={p.permission} className="permission-tag">
+                                                        {PERMISSIONS.find(perm => perm.key === p.permission)?.label || p.permission}
+                                                    </span>
+                                                ))
+                                            )}
+                                            {(member.staffPermissions?.length || 0) > 4 && (
+                                                <span className="permission-more">
+                                                    +{member.staffPermissions.length - 4} more
+                                                </span>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    <div className="staff-footer">
+                                        <span className="staff-since">
+                                            Staff since {new Date(member.createdAt).toLocaleDateString()}
+                                        </span>
+                                    </div>
+                                </div>
+                            ))}
+                    </div>
+                </>
             )}
 
             {/* Add/Edit Modal */}

@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import {
     Users, Plus, Edit3, Trash2, X, Globe, Smartphone,
     MessageSquare, Loader2, AlertCircle, CheckCircle2,
-    Send, RefreshCw, Filter, Download, Link2, Settings, Hash, ArrowRight, Zap
+    Send, RefreshCw, Filter, Download, Link2, Settings, Hash, ArrowRight, Zap, Search
 } from 'lucide-react'
 import api from '../services/api'
 
@@ -38,6 +38,7 @@ export default function ProviderGroups() {
     const [providers, setProviders] = useState([])
     const [loadingProviders, setLoadingProviders] = useState(false)
     const [providerFilter, setProviderFilter] = useState('')
+    const [searchTerm, setSearchTerm] = useState('')
     const [syncingProviders, setSyncingProviders] = useState(false)
 
     // Service ID Rules state
@@ -307,6 +308,15 @@ export default function ProviderGroups() {
 
             {/* Filter Bar */}
             <div className="filter-bar">
+                <div className="search-box" style={{ flex: 1, minWidth: '200px' }}>
+                    <Search size={18} />
+                    <input
+                        type="text"
+                        placeholder="Search groups by name..."
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                    />
+                </div>
                 <div className="filter-group">
                     <Filter size={18} />
                     <select
@@ -322,7 +332,7 @@ export default function ProviderGroups() {
                     </select>
                 </div>
                 <div className="filter-stats">
-                    <span>{groups.filter(g => !providerFilter || g.providerName === providerFilter).length} groups</span>
+                    <span>{groups.filter(g => (!providerFilter || g.providerName === providerFilter) && (!searchTerm || (g.groupName || g.name || '').toLowerCase().includes(searchTerm.toLowerCase()))).length} groups</span>
                     {providerFilter && (
                         <button className="btn btn-ghost btn-sm" onClick={() => setProviderFilter('')}>
                             <X size={14} /> Clear
@@ -350,6 +360,7 @@ export default function ProviderGroups() {
                 <div className="groups-grid">
                     {groups
                         .filter(g => !providerFilter || g.providerName === providerFilter)
+                        .filter(g => !searchTerm || (g.groupName || g.name || '').toLowerCase().includes(searchTerm.toLowerCase()))
                         .map(group => (
                             <div key={group.id} className={`group-card ${group.isActive ? '' : 'inactive'}`}>
                                 <div className="group-card-header">

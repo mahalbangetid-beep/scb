@@ -26,7 +26,11 @@ import {
     Ticket,
     Database,
     Sun,
-    Moon
+    Moon,
+    Mail,
+    Activity,
+    Fingerprint,
+    Megaphone
 } from 'lucide-react'
 import api from '../services/api'
 import { useTheme } from '../contexts/ThemeContext'
@@ -66,13 +70,22 @@ const automationNavigation = [
 // Finance - Credits & reporting
 const financeNavigation = [
     { name: 'Wallet', icon: Wallet, path: '/wallet' },
+    { name: 'Invoices', icon: FileText, path: '/invoices' },
     { name: 'Subscriptions', icon: CreditCard, path: '/subscriptions' },
     { name: 'Reports', icon: BarChart3, path: '/reports' },
+]
+
+// Marketing - Broadcast & campaigns
+const marketingNavigation = [
+    { name: 'Broadcast', icon: Megaphone, path: '/broadcast' },
 ]
 
 // Settings
 const settingsNavigation = [
     { name: 'Settings', icon: Settings, path: '/settings' },
+    { name: 'My Staff', icon: Shield, path: '/my-staff' },
+    { name: 'Activity Log', icon: Activity, path: '/activity-logs' },
+    { name: 'Watermarks', icon: Fingerprint, path: '/watermarks' },
 ]
 
 // Admin section
@@ -86,8 +99,36 @@ const adminNavigation = [
     { name: 'Vouchers', icon: Gift, path: '/admin/vouchers' },
     { name: 'Contact Backups', icon: Database, path: '/admin/contact-backups' },
     { name: 'System Bots', icon: Bot, path: '/admin/system-bots' },
+    { name: 'Email Settings', icon: Mail, path: '/admin/email-settings' },
     { name: 'System Settings', icon: Settings, path: '/admin/settings' },
 ]
+
+// Staff navigation - map permissions to pages
+const STAFF_PERMISSION_ROUTES = {
+    order_view: { name: 'Orders', icon: Package, path: '/orders' },
+    order_manage: { name: 'Orders', icon: Package, path: '/orders' },
+    payment_view: { name: 'Wallet', icon: Wallet, path: '/wallet' },
+    payment_approve: { name: 'Wallet', icon: Wallet, path: '/wallet' },
+    device_manage: { name: 'Devices', icon: Smartphone, path: '/devices' },
+    panel_manage: { name: 'SMM Panels', icon: Globe, path: '/smm-panels' },
+    reports_view: { name: 'Reports', icon: BarChart3, path: '/reports' },
+    support: { name: 'Tickets', icon: Ticket, path: '/tickets' },
+    user_view: { name: 'User Mappings', icon: Users, path: '/user-mappings' },
+    voucher_manage: { name: 'Invoices', icon: FileText, path: '/invoices' },
+}
+
+const getStaffNavigation = (permissions = []) => {
+    const seen = new Set()
+    const nav = []
+    for (const perm of permissions) {
+        const route = STAFF_PERMISSION_ROUTES[perm]
+        if (route && !seen.has(route.path)) {
+            seen.add(route.path)
+            nav.push(route)
+        }
+    }
+    return nav
+}
 
 
 // Theme Toggle Component
@@ -199,80 +240,107 @@ export default function Sidebar({ collapsed, onToggle }) {
                     ))}
                 </div>
 
-                {/* Channels Section */}
-                <div className="nav-section">
-                    <div className="nav-section-title">Channels</div>
-                    {channelsNavigation.map((item) => (
-                        <NavLink
-                            key={item.name}
-                            to={item.path}
-                            className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
-                        >
-                            <item.icon size={20} />
-                            <span>{item.name}</span>
-                        </NavLink>
-                    ))}
-                </div>
+                {/* Channels Section - Hidden for STAFF */}
+                {user.role !== 'STAFF' && (
+                    <div className="nav-section">
+                        <div className="nav-section-title">Channels</div>
+                        {channelsNavigation.map((item) => (
+                            <NavLink
+                                key={item.name}
+                                to={item.path}
+                                className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
+                            >
+                                <item.icon size={20} />
+                                <span>{item.name}</span>
+                            </NavLink>
+                        ))}
+                    </div>
+                )}
 
-                {/* SMM Integration Section */}
-                <div className="nav-section">
-                    <div className="nav-section-title">SMM Integration</div>
-                    {smmNavigation.map((item) => (
-                        <NavLink
-                            key={item.name}
-                            to={item.path}
-                            className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
-                        >
-                            <item.icon size={20} />
-                            <span>{item.name}</span>
-                        </NavLink>
-                    ))}
-                </div>
+                {/* SMM Integration Section - Hidden for STAFF */}
+                {user.role !== 'STAFF' && (
+                    <div className="nav-section">
+                        <div className="nav-section-title">SMM Integration</div>
+                        {smmNavigation.map((item) => (
+                            <NavLink
+                                key={item.name}
+                                to={item.path}
+                                className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
+                            >
+                                <item.icon size={20} />
+                                <span>{item.name}</span>
+                            </NavLink>
+                        ))}
+                    </div>
+                )}
 
-                {/* Automation Section */}
-                <div className="nav-section">
-                    <div className="nav-section-title">Automation</div>
-                    {automationNavigation.map((item) => (
-                        <NavLink
-                            key={item.name}
-                            to={item.path}
-                            className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
-                        >
-                            <item.icon size={20} />
-                            <span>{item.name}</span>
-                        </NavLink>
-                    ))}
-                </div>
+                {/* Automation Section - Hidden for STAFF */}
+                {user.role !== 'STAFF' && (
+                    <div className="nav-section">
+                        <div className="nav-section-title">Automation</div>
+                        {automationNavigation.map((item) => (
+                            <NavLink
+                                key={item.name}
+                                to={item.path}
+                                className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
+                            >
+                                <item.icon size={20} />
+                                <span>{item.name}</span>
+                            </NavLink>
+                        ))}
+                    </div>
+                )}
 
-                {/* Finance Section */}
-                <div className="nav-section">
-                    <div className="nav-section-title">Finance</div>
-                    {financeNavigation.map((item) => (
-                        <NavLink
-                            key={item.name}
-                            to={item.path}
-                            className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
-                        >
-                            <item.icon size={20} />
-                            <span>{item.name}</span>
-                        </NavLink>
-                    ))}
-                </div>
+                {/* Finance Section - Hidden for STAFF */}
+                {user.role !== 'STAFF' && (
+                    <div className="nav-section">
+                        <div className="nav-section-title">Finance</div>
+                        {financeNavigation.map((item) => (
+                            <NavLink
+                                key={item.name}
+                                to={item.path}
+                                className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
+                            >
+                                <item.icon size={20} />
+                                <span>{item.name}</span>
+                            </NavLink>
+                        ))}
+                    </div>
+                )}
 
-                {/* Settings Section */}
-                <div className="nav-section">
-                    <div className="nav-section-title">Settings</div>
-                    {settingsNavigation.map((item) => (
-                        <NavLink
-                            key={item.name}
-                            to={item.path}
-                            className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
-                        >
-                            <item.icon size={20} />
-                            <span>{item.name}</span>
-                        </NavLink>
-                    ))}
-                </div>
+                {/* Marketing Section - Hidden for STAFF */}
+                {user.role !== 'STAFF' && (
+                    <div className="nav-section">
+                        <div className="nav-section-title">Marketing</div>
+                        {marketingNavigation.map((item) => (
+                            <NavLink
+                                key={item.name}
+                                to={item.path}
+                                className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
+                            >
+                                <item.icon size={20} />
+                                <span>{item.name}</span>
+                            </NavLink>
+                        ))}
+                    </div>
+                )}
+
+                {/* Settings Section - Hidden for STAFF */}
+                {user.role !== 'STAFF' && (
+                    <div className="nav-section">
+                        <div className="nav-section-title">Settings</div>
+                        {settingsNavigation.map((item) => (
+                            <NavLink
+                                key={item.name}
+                                to={item.path}
+                                className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
+                            >
+                                <item.icon size={20} />
+                                <span>{item.name}</span>
+                            </NavLink>
+                        ))}
+                    </div>
+                )}
 
                 {/* Admin Section - Only for ADMIN and MASTER_ADMIN */}
                 {['ADMIN', 'MASTER_ADMIN'].includes(user.role) && (
@@ -290,6 +358,34 @@ export default function Sidebar({ collapsed, onToggle }) {
                         ))}
                     </div>
                 )}
+
+                {/* Staff Panel Section - Only for STAFF users */}
+                {user.role === 'STAFF' && (() => {
+                    const staffPerms = user.staffPermissions || []
+                    const staffNav = getStaffNavigation(staffPerms)
+                    return staffNav.length > 0 ? (
+                        <div className="nav-section">
+                            <div className="nav-section-title">Staff Panel</div>
+                            {staffNav.map((item) => (
+                                <NavLink
+                                    key={item.path}
+                                    to={item.path}
+                                    className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
+                                >
+                                    <item.icon size={20} />
+                                    <span>{item.name}</span>
+                                </NavLink>
+                            ))}
+                        </div>
+                    ) : (
+                        <div className="nav-section">
+                            <div className="nav-section-title">Staff Panel</div>
+                            <div style={{ padding: '0.5rem 1rem', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                                No permissions assigned yet
+                            </div>
+                        </div>
+                    )
+                })()}
             </nav>
 
 

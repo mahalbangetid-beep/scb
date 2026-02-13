@@ -542,8 +542,12 @@ class WhatsAppService {
 
     /**
      * Send text message
+     * @param {string} deviceId
+     * @param {string} to
+     * @param {string} text
+     * @param {object} [watermarkOpts] - Optional { userId, broadcastId } for watermark embedding
      */
-    async sendMessage(deviceId, to, text) {
+    async sendMessage(deviceId, to, text, watermarkOpts = null) {
         await this.ensureLoaded();
 
         const socket = sessions.get(deviceId);
@@ -554,7 +558,27 @@ class WhatsAppService {
         // Format nomor (tambah @s.whatsapp.net jika belum ada)
         const jid = this.formatJid(to);
 
-        const result = await socket.sendMessage(jid, { text });
+        // Embed watermark if options provided
+        let finalText = text;
+        if (watermarkOpts && watermarkOpts.userId) {
+            try {
+                const { watermarkService } = require('./watermarkService');
+                const { watermarkedText } = await watermarkService.createAndEmbed({
+                    text,
+                    userId: watermarkOpts.userId,
+                    deviceId,
+                    recipientId: to,
+                    broadcastId: watermarkOpts.broadcastId || null,
+                    platform: 'WHATSAPP'
+                });
+                finalText = watermarkedText;
+            } catch (err) {
+                // Don't fail the message if watermark fails
+                console.error('[Watermark] Failed to embed:', err.message);
+            }
+        }
+
+        const result = await socket.sendMessage(jid, { text: finalText });
 
         return {
             messageId: result.key.id,
@@ -577,8 +601,20 @@ class WhatsAppService {
 
         const jid = this.formatJid(to);
 
+        // Determine image source: local file path → Buffer, remote URL → { url }
+        let imageSource;
+        if (imageUrl && !imageUrl.startsWith('http://') && !imageUrl.startsWith('https://')) {
+            // Local file path — read as buffer for safe handling (avoids issues with spaces/special chars in path)
+            if (!fs.existsSync(imageUrl)) {
+                throw new Error(`Image file not found: ${imageUrl}`);
+            }
+            imageSource = fs.readFileSync(imageUrl);
+        } else {
+            imageSource = { url: imageUrl };
+        }
+
         const result = await socket.sendMessage(jid, {
-            image: { url: imageUrl },
+            image: imageSource,
             caption
         });
 

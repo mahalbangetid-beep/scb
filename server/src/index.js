@@ -40,6 +40,7 @@ const contactBackupRoutes = require('./routes/contactBackup');
 const messageCreditsRoutes = require('./routes/messageCredits');
 const billingModeRoutes = require('./routes/billingMode');
 const systemBotRoutes = require('./routes/systemBots');
+const emailRoutes = require('./routes/email');
 
 // Import middleware
 const { errorHandler, notFound } = require('./middleware/errorHandler');
@@ -155,6 +156,11 @@ app.use('/api/contact-backup', contactBackupRoutes);
 app.use('/api/message-credits', messageCreditsRoutes);
 app.use('/api/billing-mode', billingModeRoutes);
 app.use('/api/system-bots', systemBotRoutes);
+app.use('/api/invoices', require('./routes/invoices'));
+app.use('/api/staff', require('./routes/staff'));
+app.use('/api/admin/email', emailRoutes);
+app.use('/api/activity-logs', require('./routes/activityLogs'));
+app.use('/api/watermarks', require('./routes/watermarks'));
 
 
 // Socket.IO connection handler
@@ -214,6 +220,19 @@ httpServer.listen(PORT, async () => {
     contactBackupService.setWhatsAppService(whatsappService);
     contactBackupService.startAutoBackup();
     console.log('[Server] Contact Backup Service initialized');
+
+    // Start Broadcast Scheduler
+    const { startScheduler } = require('./services/broadcastScheduler');
+    startScheduler(whatsappService);
+    console.log('[Server] Broadcast Scheduler initialized');
+
+    // Seed default email templates
+    try {
+        const emailService = require('./services/emailService');
+        await emailService.seedDefaultTemplates();
+    } catch (e) {
+        console.log('[Server] Email template seeding skipped:', e.message);
+    }
 });
 
 module.exports = { app, io, whatsappService, telegramService };

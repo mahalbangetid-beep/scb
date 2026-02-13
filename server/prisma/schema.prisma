@@ -84,6 +84,8 @@ model User {
   contactBackups            ContactBackup[]
   providerGroups            ProviderGroup[]
   systemBotSubscriptions    SystemBotSubscription[]
+  invoices                  Invoice[]
+  emailLogs                 EmailLog[]
 }
 
 model ApiKey {
@@ -247,6 +249,12 @@ model Order {
   // ==================== GUARANTEE TRACKING ====================
   // For guarantee validation on refill requests
   completedAt DateTime? // When order was marked as completed
+
+  // ==================== STAFF TOOLS ====================
+  staffMemo        String?   // Internal notes/memo from staff
+  statusOverride   String?   // Manual status override (e.g., COMPLETED, CANCELLED)
+  statusOverrideBy String?   // Username who overrode the status
+  statusOverrideAt DateTime? // When the status was manually overridden
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -752,7 +760,33 @@ model Payment {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  invoice  Invoice?
+}
+
+model Invoice {
+  id            String   @id @default(cuid())
+  invoiceNumber String   @unique // Format: INV-YYYYMM-XXXX
+  userId        String
+  paymentId     String?  @unique // Link to payment that generated this invoice
+  amount        Float
+  currency      String   @default("USD")
+  items         String   // JSON array of line items
+  status        String   @default("PAID") // PAID, VOID, REFUNDED
+  method        String?  // Payment method used
+  paidAt        DateTime @default(now())
+  dueDate       DateTime?
+  notes         String?
+  metadata      String?  // Additional JSON data
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  payment Payment? @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([invoiceNumber])
+  @@index([createdAt])
 }
 
 model Voucher {
@@ -792,6 +826,26 @@ model ActivityLog {
   @@index([userId])
   @@index([action])
   @@index([category])
+  @@index([createdAt])
+}
+
+// ==================== MESSAGE WATERMARK (Anti-spam Tracking) ====================
+
+model MessageWatermark {
+  id          String   @id @default(cuid())
+  code        String   @unique // Short unique watermark code
+  userId      String   // Who sent the message
+  deviceId    String?  // Which device was used
+  recipientId String?  // Target phone/jid
+  messagePreview String? // First 100 chars of the message
+  broadcastId String?  // If part of a broadcast campaign
+  platform    String   @default("WHATSAPP") // WHATSAPP, TELEGRAM
+  detectedCount Int    @default(0) // How many times watermark was detected (forwarding tracking)
+  lastDetectedAt DateTime? // When last detected
+  createdAt   DateTime @default(now())
+
+  @@index([userId])
+  @@index([code])
   @@index([createdAt])
 }
 
@@ -1527,4 +1581,39 @@ model UserPaymentConfig {
   updatedAt DateTime @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// ==================== EMAIL NOTIFICATIONS ====================
+
+model EmailTemplate {
+  id          String  @id @default(cuid())
+  slug        String  @unique // e.g., "payment_completed", "ticket_reply", "low_credit"
+  name        String  // Display name: "Payment Completed"
+  subject     String  // Email subject with {{variables}}
+  body        String  @db.Text // HTML body with {{variables}}
+  description String? // Admin hint: "Sent when payment is completed"
+  variables   Json?   // Available variables: ["username", "amount", "date"]
+  isActive    Boolean @default(true)
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model EmailLog {
+  id         String  @id @default(cuid())
+  userId     String?
+  to         String  // Recipient email
+  subject    String
+  template   String? // Template slug used
+  status     String  @default("sent") // sent, failed, bounced
+  error      String? // Error message if failed
+  metadata   Json?   // Additional context
+  
+  createdAt DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([template])
+  @@index([status])
 }

@@ -106,7 +106,7 @@ class CreditService {
      */
     async deductCredit(userId, amount, description, reference = null) {
         // Use interactive transaction for atomicity
-        return await prisma.$transaction(async (tx) => {
+        const result = await prisma.$transaction(async (tx) => {
             // Read current balance INSIDE transaction
             const user = await tx.user.findUnique({
                 where: { id: userId },
@@ -154,6 +154,28 @@ class CreditService {
             // Set isolation level for stronger consistency
             isolationLevel: 'Serializable'
         });
+
+        // Low-credit email alert (non-blocking, fire-and-forget)
+        const LOW_CREDIT_THRESHOLD = 5;
+        if (result.balanceAfter < LOW_CREDIT_THRESHOLD && result.balanceBefore >= LOW_CREDIT_THRESHOLD) {
+            try {
+                const emailService = require('./emailService');
+                const user = await prisma.user.findUnique({
+                    where: { id: userId },
+                    select: { email: true, username: true }
+                });
+                if (user && user.email) {
+                    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+                    emailService.sendTemplateEmail('low_credit', user.email, {
+                        username: user.username,
+                        balance: result.balanceAfter.toFixed(2),
+                        topupUrl: `${frontendUrl}/wallet`
+                    }, userId).catch(() => { });
+                }
+            } catch (e) { /* email is non-critical */ }
+        }
+
+        return result;
     }
 
     /**
