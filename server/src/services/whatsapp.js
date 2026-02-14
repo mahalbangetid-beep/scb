@@ -25,9 +25,12 @@ const sessionQRCodes = new Map(); // Store QR codes for polling
 // Path untuk menyimpan sessions
 const SESSIONS_DIR = path.join(__dirname, '../../sessions');
 
-// Pastikan folder sessions ada
+// Pastikan folder sessions ada dengan restrictive permissions
 if (!fs.existsSync(SESSIONS_DIR)) {
-    fs.mkdirSync(SESSIONS_DIR, { recursive: true });
+    fs.mkdirSync(SESSIONS_DIR, { recursive: true, mode: 0o700 });
+} else {
+    // Ensure restrictive permissions on existing directory
+    try { fs.chmodSync(SESSIONS_DIR, 0o700); } catch (e) { /* non-critical */ }
 }
 
 // Baileys modules (akan di-load secara dynamic)
@@ -464,10 +467,10 @@ class WhatsAppService {
                 const newStatus = statusMap[update.update.status] || 'unknown';
 
                 if (newStatus !== 'unknown') {
-                    await prisma.message.update({
+                    await prisma.message.updateMany({
                         where: { id: update.key.id },
                         data: { status: newStatus }
-                    }).catch(() => { }); // Message might not exist in our DB if it was sent by other device
+                    }); // updateMany silently returns 0 if message not in our DB
                 }
 
                 if (this.io) {

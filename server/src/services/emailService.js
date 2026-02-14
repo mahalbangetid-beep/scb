@@ -22,7 +22,7 @@ function getTransporter() {
         port,
         secure,
         auth: { user, pass },
-        tls: { rejectUnauthorized: false }
+        tls: { rejectUnauthorized: process.env.NODE_ENV === 'production' }
     });
 
     return transporter;

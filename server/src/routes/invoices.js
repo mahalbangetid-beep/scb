@@ -95,8 +95,24 @@ router.get('/:id', authenticate, async (req, res) => {
     }
 });
 
+// POST /api/invoices/:id/download-token — generate short-lived download token
+router.post('/:id/download-token', authenticate, async (req, res, next) => {
+    try {
+        const jwt = require('jsonwebtoken');
+        // Generate a short-lived token scoped for download only (5 min expiry)
+        const downloadToken = jwt.sign(
+            { userId: req.user.id, purpose: 'invoice_download', invoiceId: req.params.id },
+            process.env.JWT_SECRET,
+            { expiresIn: '5m' }
+        );
+        res.json({ success: true, data: { token: downloadToken } });
+    } catch (error) {
+        next(error);
+    }
+});
+
 // GET /api/invoices/:id/download — download invoice as printable HTML
-// Uses query token because this opens in a new browser tab (can't send Authorization header)
+// Uses a short-lived download token because this opens in a new browser tab
 router.get('/:id/download', async (req, res) => {
     try {
         const jwt = require('jsonwebtoken');
@@ -119,7 +135,15 @@ router.get('/:id/download', async (req, res) => {
             return res.status(401).json({ success: false, error: 'Invalid or expired token' });
         }
 
-        const user = await prisma.user.findUnique({ where: { id: decoded.id } });
+        // Support both full session tokens (userId) and scoped download tokens (id + purpose)
+        const userId = decoded.userId || decoded.id;
+
+        // Verify scoped download token matches this specific invoice
+        if (decoded.purpose === 'invoice_download' && decoded.invoiceId !== req.params.id) {
+            return res.status(403).json({ success: false, error: 'Token not valid for this invoice' });
+        }
+
+        const user = await prisma.user.findUnique({ where: { id: userId } });
         if (!user) {
             return res.status(401).json({ success: false, error: 'User not found' });
         }

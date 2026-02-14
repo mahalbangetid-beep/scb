@@ -1,5 +1,38 @@
 require('dotenv').config();
 
+// ===== Security: Validate critical secrets at startup =====
+(function validateSecrets() {
+    const weakSecrets = [
+        'your_jwt_secret_here', 'changeme', 'secret', 'password',
+        'jwt_secret', 'my_secret', 'test', 'default', '123456',
+        'your_encryption_key_here', 'encryption_key'
+    ];
+
+    const { JWT_SECRET, ENCRYPTION_KEY, NODE_ENV } = process.env;
+
+    if (NODE_ENV === 'production') {
+        if (!JWT_SECRET || JWT_SECRET.length < 32 || weakSecrets.includes(JWT_SECRET.toLowerCase())) {
+            console.error('🔴 FATAL: JWT_SECRET is missing, too short (<32 chars), or a known weak placeholder.');
+            console.error('   Generate a strong secret: node -e "console.log(require(\'crypto\').randomBytes(64).toString(\'hex\'))"');
+            process.exit(1);
+        }
+
+        if (!ENCRYPTION_KEY || ENCRYPTION_KEY.length < 32 || weakSecrets.includes(ENCRYPTION_KEY.toLowerCase())) {
+            console.error('🔴 FATAL: ENCRYPTION_KEY is missing, too short (<32 chars), or a known weak placeholder.');
+            console.error('   Generate a strong key: node -e "console.log(require(\'crypto\').randomBytes(32).toString(\'hex\'))"');
+            process.exit(1);
+        }
+    } else {
+        // Development warnings
+        if (!JWT_SECRET || JWT_SECRET.length < 16 || weakSecrets.includes(JWT_SECRET.toLowerCase())) {
+            console.warn('⚠️  WARNING: JWT_SECRET is weak or a placeholder. Do NOT use in production.');
+        }
+        if (!ENCRYPTION_KEY || ENCRYPTION_KEY.length < 16 || weakSecrets.includes(ENCRYPTION_KEY.toLowerCase())) {
+            console.warn('⚠️  WARNING: ENCRYPTION_KEY is weak or a placeholder. Do NOT use in production.');
+        }
+    }
+})();
+
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
@@ -51,6 +84,7 @@ const { sanitizeRequest, securityCheck } = require('./middleware/validation');
 
 // Import WhatsApp Service
 const WhatsAppService = require('./services/whatsapp');
+const prisma = require('./utils/prisma');
 const botMessageHandler = require('./services/botMessageHandler');
 const commandHandler = require('./services/commandHandler');
 const groupForwardingService = require('./services/groupForwarding');
@@ -163,22 +197,66 @@ app.use('/api/activity-logs', require('./routes/activityLogs'));
 app.use('/api/watermarks', require('./routes/watermarks'));
 
 
+// Socket.IO authentication middleware
+const jwt = require('jsonwebtoken');
+io.use(async (socket, next) => {
+    try {
+        const token = socket.handshake.auth?.token
+            || socket.handshake.headers?.authorization?.replace('Bearer ', '');
+
+        if (!token) {
+            return next(new Error('Authentication required'));
+        }
+
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        const user = await prisma.user.findUnique({ where: { id: decoded.userId } });
+
+        if (!user || !user.isActive) {
+            return next(new Error('Invalid or inactive user'));
+        }
+
+        socket.user = { id: user.id, role: user.role };
+        next();
+    } catch (err) {
+        next(new Error('Invalid token'));
+    }
+});
+
 // Socket.IO connection handler
 io.on('connection', (socket) => {
-    console.log('Client connected:', socket.id);
+    console.log('Client connected:', socket.id, '- User:', socket.user?.id);
 
     socket.on('disconnect', () => {
         console.log('Client disconnected:', socket.id);
     });
 
-    // Join room for device updates
-    socket.on('join:device', (deviceId) => {
-        socket.join(`device:${deviceId}`);
-        console.log(`Socket ${socket.id} joined device:${deviceId}`);
+    // Join room for device updates — with ownership check
+    socket.on('join:device', async (deviceId) => {
+        try {
+            // Admin/master_admin can join any device room
+            const isAdmin = ['ADMIN', 'MASTER_ADMIN'].includes(socket.user.role);
 
-        // Send current status
-        const status = whatsappService.getSessionStatus(deviceId);
-        socket.emit('device.status', { deviceId, ...status });
+            if (!isAdmin) {
+                // Regular users must own the device
+                const device = await prisma.device.findFirst({
+                    where: { id: deviceId, userId: socket.user.id }
+                });
+
+                if (!device) {
+                    socket.emit('error', { message: 'Not authorized for this device' });
+                    return;
+                }
+            }
+
+            socket.join(`device:${deviceId}`);
+            console.log(`Socket ${socket.id} joined device:${deviceId}`);
+
+            // Send current status
+            const status = whatsappService.getSessionStatus(deviceId);
+            socket.emit('device.status', { deviceId, ...status });
+        } catch (err) {
+            socket.emit('error', { message: 'Failed to join device room' });
+        }
     });
 
     // Leave device room

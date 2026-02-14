@@ -3,7 +3,7 @@ const router = express.Router();
 const prisma = require('../utils/prisma');
 const { successResponse, paginatedResponse, parsePagination } = require('../utils/response');
 const { AppError } = require('../middleware/errorHandler');
-const { authenticate } = require('../middleware/auth');
+const { authenticate, requireAdmin, requireStaffPermission } = require('../middleware/auth');
 const adminApiService = require('../services/adminApiService');
 const providerDomainService = require('../services/providerDomainService');
 
@@ -418,9 +418,7 @@ router.post('/:id/speed-up', async (req, res, next) => {
                 userId: req.user.id
             },
             include: {
-                panel: {
-                    select: { alias: true }
-                }
+                panel: true  // Include full panel for Admin API integration
             }
         });
 
@@ -638,7 +636,7 @@ router.get('/:id/commands', async (req, res, next) => {
 // ==================== STAFF TOOLS ====================
 
 // PATCH /api/orders/:id/status-override - Manually override order status
-router.patch('/:id/status-override', async (req, res, next) => {
+router.patch('/:id/status-override', requireAdmin, async (req, res, next) => {
     try {
         const { status } = req.body;
 
@@ -686,7 +684,7 @@ router.patch('/:id/status-override', async (req, res, next) => {
 });
 
 // PATCH /api/orders/:id/memo - Update staff memo/notes
-router.patch('/:id/memo', async (req, res, next) => {
+router.patch('/:id/memo', requireStaffPermission('order_manage'), async (req, res, next) => {
     try {
         const { memo } = req.body;
 

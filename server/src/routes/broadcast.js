@@ -218,13 +218,27 @@ async function processBroadcast(whatsapp, broadcastId, deviceId, message, mediaU
 
         // Delay between messages to avoid spam detection
         await new Promise(r => setTimeout(r, 1500));
+
+        // Check if campaign was cancelled mid-processing
+        if ((sent + failed) % 10 === 0) {
+            const current = await prisma.broadcast.findUnique({ where: { id: broadcastId }, select: { status: true } });
+            if (current?.status === 'cancelled') {
+                console.log(`[Broadcast] Campaign ${broadcastId} was cancelled, stopping processing.`);
+                break;
+            }
+        }
     }
 
-    // Update campaign status
+    // Update campaign status (only if not cancelled during processing)
+    const current = await prisma.broadcast.findUnique({ where: { id: broadcastId }, select: { status: true } });
+    const finalStatus = current?.status === 'cancelled'
+        ? 'cancelled'
+        : (failed === recipients.length ? 'failed' : 'completed');
+
     await prisma.broadcast.update({
         where: { id: broadcastId },
         data: {
-            status: failed === recipients.length ? 'failed' : 'completed',
+            status: finalStatus,
             sent,
             failed,
             completedAt: new Date()
@@ -248,8 +262,8 @@ router.post('/:id/cancel', authenticate, async (req, res, next) => {
             throw new AppError('Campaign not found', 404);
         }
 
-        if (campaign.status !== 'pending' && campaign.status !== 'scheduled') {
-            throw new AppError('Only pending or scheduled campaigns can be cancelled', 400);
+        if (!['pending', 'scheduled', 'processing'].includes(campaign.status)) {
+            throw new AppError('Only pending, scheduled, or in-progress campaigns can be cancelled', 400);
         }
 
         const updated = await prisma.broadcast.update({

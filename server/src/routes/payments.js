@@ -6,7 +6,11 @@
 const express = require('express');
 const router = express.Router();
 const { authenticate, requireAdmin } = require('../middleware/auth');
+const { sensitiveLimiter } = require('../middleware/rateLimiter');
 const paymentGatewayService = require('../services/paymentGateway');
+
+// Apply rate limiting to all payment routes
+router.use(sensitiveLimiter);
 
 // Get all available payment gateways
 router.get('/gateways', authenticate, async (req, res) => {

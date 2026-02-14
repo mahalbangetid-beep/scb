@@ -139,7 +139,7 @@ class SmmPanelService {
                 response = await client.post(apiUrl, data);
             }
 
-            console.log(`[SMM] Response:`, JSON.stringify(response.data));
+            console.log(`[SMM] Response received: ${typeof response.data === 'object' ? 'OK' : 'non-JSON'}`);
             return response.data;
         } catch (error) {
             console.error(`[SMM] API Error for ${panel.alias}:`, error.message);

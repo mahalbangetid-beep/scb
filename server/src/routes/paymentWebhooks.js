@@ -9,9 +9,10 @@ const router = express.Router();
 const paymentGatewayService = require('../services/paymentGateway');
 
 // Cryptomus IPN webhook
+// Signature verification is handled inside cryptomusService.processWebhook()
 router.post('/cryptomus', async (req, res) => {
     try {
-        console.log('[PaymentWebhook] Cryptomus received:', req.body);
+        console.log('[PaymentWebhook] Cryptomus received - status:', req.body?.status, 'uuid:', req.body?.uuid);
 
         const cryptomusService = paymentGatewayService.getGateway('cryptomus');
         const result = await cryptomusService.processWebhook(req.body);
@@ -22,38 +23,40 @@ router.post('/cryptomus', async (req, res) => {
             res.status(400).json(result);
         }
     } catch (error) {
-        console.error('[PaymentWebhook] Cryptomus error:', error);
-        res.status(500).json({ success: false, error: error.message });
+        console.error('[PaymentWebhook] Cryptomus error:', error.message);
+        res.status(500).json({ success: false, error: 'Internal error' });
     }
 });
 
-// Binance Pay webhook (placeholder)
+// Binance Pay webhook
+// TODO: Add signature verification using Binance Pay webhook signing key
 router.post('/binance', async (req, res) => {
     try {
-        console.log('[PaymentWebhook] Binance Pay received:', req.body);
+        console.log('[PaymentWebhook] Binance Pay received - bizType:', req.body?.bizType);
 
         const binanceService = paymentGatewayService.getGateway('binance_pay');
         const result = await binanceService.processWebhook(req.body);
 
         res.json(result);
     } catch (error) {
-        console.error('[PaymentWebhook] Binance error:', error);
-        res.status(500).json({ success: false, error: error.message });
+        console.error('[PaymentWebhook] Binance error:', error.message);
+        res.status(500).json({ success: false, error: 'Internal error' });
     }
 });
 
 // Esewa IPN webhook
+// TODO: Add signature verification using Esewa secret key
 router.post('/esewa', async (req, res) => {
     try {
-        console.log('[PaymentWebhook] Esewa received:', req.body);
+        console.log('[PaymentWebhook] Esewa received - product_code:', req.body?.product_code);
 
         const esewaService = paymentGatewayService.getGateway('esewa');
         const result = await esewaService.processCallback(req.body);
 
         res.json(result);
     } catch (error) {
-        console.error('[PaymentWebhook] Esewa error:', error);
-        res.status(500).json({ success: false, error: error.message });
+        console.error('[PaymentWebhook] Esewa error:', error.message);
+        res.status(500).json({ success: false, error: 'Internal error' });
     }
 });
 

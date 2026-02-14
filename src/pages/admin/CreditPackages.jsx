@@ -251,8 +251,8 @@ const CreditPackages = () => {
 
             {/* Modal */}
             {showModal && (
-                <div className="modal-overlay open">
-                    <div className="modal" style={{ maxWidth: '550px' }}>
+                <div className="modal-overlay open" onClick={() => setShowModal(false)}>
+                    <div className="modal" style={{ maxWidth: '550px' }} onClick={(e) => e.stopPropagation()}>
                         <div className="modal-header">
                             <h3>{editingItem ? 'Edit' : 'Add'} Credit Package</h3>
                             <button className="btn btn-ghost btn-icon" onClick={() => setShowModal(false)}>&times;</button>

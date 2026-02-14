@@ -6,7 +6,7 @@ const prisma = require('../utils/prisma');
 const { successResponse, createdResponse, paginatedResponse, parsePagination } = require('../utils/response');
 const { AppError } = require('../middleware/errorHandler');
 const { authenticate, requireRole } = require('../middleware/auth');
-const { encrypt, mask } = require('../utils/encryption');
+const { encrypt, mask, hash } = require('../utils/encryption');
 const { authLimiter } = require('../middleware/rateLimiter');
 const { logLoginActivity } = require('../middleware/logger');
 const { activityLogService, ACTIONS, CATEGORIES } = require('../services/activityLog');
@@ -317,7 +317,7 @@ router.post('/login', authLimiter, async (req, res, next) => {
                 whatsappNumber: user.whatsappNumber,
                 telegramUsername: user.telegramUsername,
                 ...(user.role === 'STAFF' && user.staffPermissions ? {
-                    staffPermissions: user.staffPermissions.map(p => p.permission)
+                    staffPermissions: user.staffPermissions.map(p => ({ permission: p.permission, canView: p.canView, canEdit: p.canEdit, canDelete: p.canDelete }))
                 } : {})
             },
             token
@@ -382,7 +382,7 @@ router.get('/me', authenticate, async (req, res, next) => {
 
         // Map staffPermissions to string array for frontend sidebar compatibility
         if (user.role === 'STAFF' && user.staffPermissions) {
-            user.staffPermissions = user.staffPermissions.map(p => p.permission);
+            user.staffPermissions = user.staffPermissions.map(p => ({ permission: p.permission, canView: p.canView, canEdit: p.canEdit, canDelete: p.canDelete }));
         } else {
             delete user.staffPermissions;
         }
@@ -471,19 +471,23 @@ router.post('/api-keys', authenticate, async (req, res, next) => {
     try {
         const { name } = req.body;
 
+        const rawKey = generateApiKey();
+        const hashedKey = hash(rawKey);
+
         const apiKey = await prisma.apiKey.create({
             data: {
-                key: generateApiKey(),
+                key: hashedKey,
+                keyPrefix: rawKey.substring(0, 10),
                 name: name || 'API Key',
                 userId: req.user.id
             }
         });
 
-        // Return full key only on creation
+        // Return full key only on creation — it cannot be retrieved again
         createdResponse(res, {
             id: apiKey.id,
             name: apiKey.name,
-            key: apiKey.key,
+            key: rawKey,
             createdAt: apiKey.createdAt
         }, 'API key created. Save this key, it will not be shown again.');
     } catch (error) {
@@ -499,7 +503,7 @@ router.get('/api-keys', authenticate, async (req, res, next) => {
             select: {
                 id: true,
                 name: true,
-                key: true,
+                keyPrefix: true,
                 isActive: true,
                 lastUsed: true,
                 createdAt: true
@@ -507,10 +511,10 @@ router.get('/api-keys', authenticate, async (req, res, next) => {
             orderBy: { createdAt: 'desc' }
         });
 
-        // Mask keys
+        // Show prefix with asterisks for display
         const maskedKeys = apiKeys.map(key => ({
             ...key,
-            key: mask(key.key, 10, 4)
+            key: `${key.keyPrefix || 'dk_'}${'*'.repeat(20)}`
         }));
 
         successResponse(res, maskedKeys);

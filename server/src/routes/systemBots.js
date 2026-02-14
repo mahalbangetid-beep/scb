@@ -260,37 +260,40 @@ router.post('/:id/subscribe', authenticate, async (req, res, next) => {
 
         const monthlyFee = bot.systemBotPrice || 5.00;
 
-        // Check user balance
-        const user = await prisma.user.findUnique({
-            where: { id: userId },
-            select: { creditBalance: true }
-        });
-
-        if ((user?.creditBalance || 0) < monthlyFee) {
-            throw new AppError(`Insufficient balance. You need $${monthlyFee.toFixed(2)} to subscribe. Current balance: $${(user?.creditBalance || 0).toFixed(2)}`, 400);
-        }
-
-        // Deduct from wallet
+        // Deduct from wallet — all inside transaction to prevent TOCTOU race condition
         const now = new Date();
         const nextBilling = new Date(now);
         nextBilling.setMonth(nextBilling.getMonth() + 1);
 
         const result = await prisma.$transaction(async (tx) => {
+            // Read balance INSIDE transaction for atomicity
+            const user = await tx.user.findUnique({
+                where: { id: userId },
+                select: { creditBalance: true }
+            });
+
+            if ((user?.creditBalance || 0) < monthlyFee) {
+                throw new AppError(`Insufficient balance. You need $${monthlyFee.toFixed(2)} to subscribe. Current balance: $${(user?.creditBalance || 0).toFixed(2)}`, 400);
+            }
+
+            const balanceBefore = user.creditBalance || 0;
+            const balanceAfter = balanceBefore - monthlyFee;
+
             // Deduct balance
             await tx.user.update({
                 where: { id: userId },
                 data: { creditBalance: { decrement: monthlyFee } }
             });
 
-            // Record transaction
+            // Record transaction with accurate balances
             await tx.creditTransaction.create({
                 data: {
                     userId,
                     type: 'DEBIT',
                     amount: monthlyFee,
                     description: `System Bot subscription - ${bot.name}`,
-                    balanceBefore: user.creditBalance || 0,
-                    balanceAfter: (user.creditBalance || 0) - monthlyFee
+                    balanceBefore,
+                    balanceAfter
                 }
             });
 
@@ -330,6 +333,8 @@ router.post('/:id/subscribe', authenticate, async (req, res, next) => {
             }
 
             return subscription;
+        }, {
+            isolationLevel: 'Serializable'
         });
 
         successResponse(res, result, `Subscribed to ${bot.name}! $${monthlyFee.toFixed(2)} charged. Next billing: ${nextBilling.toLocaleDateString()}`, 201);

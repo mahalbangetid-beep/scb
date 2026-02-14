@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import DOMPurify from 'dompurify';
 import {
     Mail, Send, FileText, Search, Edit3, Trash2, Plus,
     ToggleLeft, ToggleRight, AlertTriangle, CheckCircle2,
@@ -476,7 +477,7 @@ const EmailSettings = () => {
                                     </div>
                                     <div
                                         className="em-preview-body"
-                                        dangerouslySetInnerHTML={{ __html: editingTemplate?.body || '' }}
+                                        dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(editingTemplate?.body || '') }}
                                     />
                                 </div>
                             ) : (

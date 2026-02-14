@@ -279,8 +279,8 @@ const SystemBotManagement = () => {
 
             {/* Create/Edit Modal */}
             {showModal && (
-                <div className="modal-overlay open">
-                    <div className="modal" style={{ maxWidth: '500px' }}>
+                <div className="modal-overlay open" onClick={() => setShowModal(false)}>
+                    <div className="modal" style={{ maxWidth: '500px' }} onClick={(e) => e.stopPropagation()}>
                         <div className="modal-header">
                             <h3>{editingItem ? 'Edit' : 'Create'} System Bot</h3>
                             <button className="btn btn-ghost btn-icon" onClick={() => setShowModal(false)}><X size={18} /></button>
@@ -359,8 +359,8 @@ const SystemBotManagement = () => {
 
             {/* Subscribers Modal */}
             {showSubsModal && (
-                <div className="modal-overlay open">
-                    <div className="modal" style={{ maxWidth: '650px' }}>
+                <div className="modal-overlay open" onClick={() => setShowSubsModal(null)}>
+                    <div className="modal" style={{ maxWidth: '650px' }} onClick={(e) => e.stopPropagation()}>
                         <div className="modal-header">
                             <h3><Users size={20} /> Subscribers</h3>
                             <button className="btn btn-ghost btn-icon" onClick={() => setShowSubsModal(null)}><X size={18} /></button>

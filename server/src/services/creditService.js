@@ -273,20 +273,32 @@ class CreditService {
             };
         }
 
-        // Deduct credit
-        const result = await this.deductCredit(
-            userId,
-            rate,
-            `${platform} ${isGroup ? 'group' : 'direct'} message`,
-            `MSG_${Date.now()}`
-        );
+        // Deduct credit — handle race condition where balance changed between check and deduction
+        try {
+            const result = await this.deductCredit(
+                userId,
+                rate,
+                `${platform} ${isGroup ? 'group' : 'direct'} message`,
+                `MSG_${Date.now()}`
+            );
 
-        return {
-            charged: true,
-            amount: rate,
-            balance: result.balanceAfter,
-            transactionId: result.transaction.id
-        };
+            return {
+                charged: true,
+                amount: rate,
+                balance: result.balanceAfter,
+                transactionId: result.transaction.id
+            };
+        } catch (error) {
+            if (error.message === 'Insufficient balance') {
+                return {
+                    charged: false,
+                    amount: rate,
+                    balance: 0,
+                    reason: 'insufficient_balance'
+                };
+            }
+            throw error;
+        }
     }
 
     /**

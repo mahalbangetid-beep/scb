@@ -36,13 +36,15 @@ router.get('/users', async (req, res, next) => {
             where.status = status;
         }
 
-        if (role) {
-            where.role = role;
-        }
-
         // Non-master admins cannot see master admins
         if (req.user.role !== ROLES.MASTER_ADMIN) {
-            where.role = { not: ROLES.MASTER_ADMIN };
+            if (role && role !== ROLES.MASTER_ADMIN) {
+                where.role = role;  // Use the filter, but prevent filtering TO master admin
+            } else {
+                where.role = { not: ROLES.MASTER_ADMIN };
+            }
+        } else if (role) {
+            where.role = role;
         }
 
         const [users, total] = await Promise.all([

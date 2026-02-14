@@ -10,12 +10,13 @@
 const express = require('express');
 const router = express.Router();
 const highRiskService = require('../services/highRiskService');
-const { authenticate, requireRole } = require('../middleware/auth');
+const { authenticate, requireAdmin } = require('../middleware/auth');
 const { successResponse } = require('../utils/response');
 const { AppError } = require('../middleware/errorHandler');
 
-// All routes require authentication
+// All routes require authentication AND admin role
 router.use(authenticate);
+router.use(requireAdmin);
 
 /**
  * GET /api/high-risk/features

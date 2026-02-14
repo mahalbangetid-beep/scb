@@ -213,17 +213,22 @@ router.post('/', async (req, res, next) => {
  */
 router.post('/:id/reply', async (req, res, next) => {
     try {
-        const { content, type } = req.body;
+        const { content } = req.body;
 
         if (!content) {
             throw new AppError('Reply content is required', 400);
         }
 
+        // Determine type based on user role, not user input
+        const replyType = ['STAFF', 'ADMIN', 'MASTER_ADMIN'].includes(req.user.role)
+            ? 'STAFF'
+            : 'CUSTOMER';
+
         const ticket = await ticketService.addReply(
             req.params.id,
             req.user.id,
             content,
-            type || 'STAFF'
+            replyType
         );
 
         // Send email notification for ticket reply (non-blocking)

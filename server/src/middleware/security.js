@@ -46,7 +46,7 @@ function securityHeaders(options = {}) {
         if (contentSecurityPolicy) {
             const csp = [
                 "default-src 'self'",
-                "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
+                "script-src 'self' 'unsafe-inline'",
                 "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
                 "font-src 'self' https://fonts.gstatic.com",
                 "img-src 'self' data: https:",
@@ -139,9 +139,8 @@ function validateApiKey(options = {}) {
         }
 
         try {
-            // Validate API key (implement your validation logic)
-            // For now, check if it matches expected prefix
-            const expectedPrefix = process.env.API_KEY_PREFIX || 'dicrewa_';
+            // Validate API key format
+            const expectedPrefix = process.env.API_KEY_PREFIX || 'dk_';
 
             if (!apiKey.startsWith(expectedPrefix)) {
                 return res.status(401).json({
@@ -153,9 +152,40 @@ function validateApiKey(options = {}) {
                 });
             }
 
-            // Here you would validate against database
-            // const apiKeyRecord = await prisma.apiKey.findUnique({ where: { key: apiKey } });
-            // if (!apiKeyRecord || !apiKeyRecord.isActive) { ... }
+            // Validate against database (keys stored as SHA-256 hashes)
+            const { hash } = require('../utils/encryption');
+            const prisma = require('../utils/prisma');
+            const hashedKey = hash(apiKey);
+            const apiKeyRecord = await prisma.apiKey.findUnique({
+                where: { key: hashedKey },
+                include: { user: { select: { id: true, isActive: true, status: true, role: true } } }
+            });
+
+            if (!apiKeyRecord || !apiKeyRecord.isActive) {
+                return res.status(401).json({
+                    success: false,
+                    error: {
+                        code: 'INVALID_API_KEY',
+                        message: 'Invalid or inactive API key'
+                    }
+                });
+            }
+
+            if (!apiKeyRecord.user.isActive || apiKeyRecord.user.status === 'BANNED') {
+                return res.status(403).json({
+                    success: false,
+                    error: {
+                        code: 'ACCOUNT_INACTIVE',
+                        message: 'Associated account is inactive'
+                    }
+                });
+            }
+
+            // Update last used timestamp (non-blocking)
+            prisma.apiKey.update({
+                where: { id: apiKeyRecord.id },
+                data: { lastUsed: new Date() }
+            }).catch(() => { }); // Don't block on analytics update
 
             next();
         } catch (error) {

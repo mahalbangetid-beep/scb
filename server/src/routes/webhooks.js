@@ -1,9 +1,46 @@
 const express = require('express');
 const router = express.Router();
 const prisma = require('../utils/prisma');
+const crypto = require('crypto');
 const { authenticate } = require('../middleware/auth');
 const { AppError } = require('../middleware/errorHandler');
 const { successResponse, paginatedResponse, parsePagination } = require('../utils/response');
+
+/**
+ * Validate webhook URL to prevent SSRF
+ * Blocks internal/private IPs and non-HTTP schemes
+ */
+function validateWebhookUrl(urlString) {
+    let parsed;
+    try {
+        parsed = new URL(urlString);
+    } catch {
+        throw new AppError('Invalid URL format', 400);
+    }
+
+    // Only allow http/https
+    if (!['http:', 'https:'].includes(parsed.protocol)) {
+        throw new AppError('Only HTTP and HTTPS URLs are allowed', 400);
+    }
+
+    // Block private/internal IPs
+    const hostname = parsed.hostname.toLowerCase();
+    const blockedPatterns = [
+        'localhost', '127.0.0.1', '0.0.0.0', '::1',
+        '10.', '172.16.', '172.17.', '172.18.', '172.19.',
+        '172.20.', '172.21.', '172.22.', '172.23.',
+        '172.24.', '172.25.', '172.26.', '172.27.',
+        '172.28.', '172.29.', '172.30.', '172.31.',
+        '192.168.', '169.254.', 'metadata.google',
+        'metadata.aws', '100.100.100.200'
+    ];
+
+    if (blockedPatterns.some(p => hostname === p || hostname.startsWith(p))) {
+        throw new AppError('Internal or private URLs are not allowed', 400);
+    }
+
+    return parsed.href;
+}
 
 // Helper: Safely parse JSON with fallback
 const safeJsonParse = (str, fallback = []) => {
@@ -104,12 +141,15 @@ router.post('/', authenticate, async (req, res, next) => {
             throw new AppError(`Invalid events: ${invalidEvents.join(', ')}`, 400);
         }
 
+        // Validate webhook URL (SSRF prevention)
+        const validatedUrl = validateWebhookUrl(url);
+
         const webhook = await prisma.webhook.create({
             data: {
                 name,
-                url,
+                url: validatedUrl,
                 events: JSON.stringify(events),
-                secret: secret || `whsec_${Math.random().toString(36).substring(2, 15)}`,
+                secret: secret || `whsec_${crypto.randomBytes(16).toString('hex')}`,
                 userId: req.user.id
             }
         });
@@ -131,6 +171,11 @@ router.put('/:id', authenticate, async (req, res, next) => {
 
         if (!existing) {
             throw new AppError('Webhook not found', 404);
+        }
+
+        // Validate URL if being updated
+        if (url) {
+            validateWebhookUrl(url);
         }
 
         const webhook = await prisma.webhook.update({
@@ -194,11 +239,18 @@ router.post('/:id/test', authenticate, async (req, res, next) => {
         };
 
         try {
+            // Sign payload with HMAC instead of sending raw secret
+            const signature = webhook.secret
+                ? crypto.createHmac('sha256', webhook.secret)
+                    .update(JSON.stringify(testPayload))
+                    .digest('hex')
+                : undefined;
+
             const response = await axios.post(webhook.url, testPayload, {
                 headers: {
                     'Content-Type': 'application/json',
                     'X-Webhook-Event': 'test',
-                    ...(webhook.secret && { 'X-Webhook-Secret': webhook.secret })
+                    ...(signature && { 'X-Webhook-Signature': `sha256=${signature}` })
                 },
                 timeout: 10000
             });

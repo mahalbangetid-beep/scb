@@ -388,62 +388,83 @@ router.post('/vouchers/redeem', async (req, res, next) => {
             throw new AppError('Voucher code is required', 400);
         }
 
-        // Find voucher
-        const voucher = await prisma.voucher.findUnique({
-            where: { code }
-        });
+        // Use transaction for atomicity to prevent race condition on usage count
+        const result = await prisma.$transaction(async (tx) => {
+            // Find voucher inside transaction
+            const voucher = await tx.voucher.findUnique({
+                where: { code: code.toUpperCase() }
+            });
 
-        if (!voucher) {
-            throw new AppError('Invalid voucher code', 400);
-        }
+            if (!voucher) {
+                throw new AppError('Invalid voucher code', 400);
+            }
 
-        if (!voucher.isActive) {
-            throw new AppError('This voucher is no longer active', 400);
-        }
+            if (!voucher.isActive) {
+                throw new AppError('This voucher is no longer active', 400);
+            }
 
-        if (voucher.expiresAt && voucher.expiresAt < new Date()) {
-            throw new AppError('This voucher has expired', 400);
-        }
+            if (voucher.expiresAt && voucher.expiresAt < new Date()) {
+                throw new AppError('This voucher has expired', 400);
+            }
 
-        if (voucher.maxUsage && voucher.usageCount >= voucher.maxUsage) {
-            throw new AppError('This voucher has reached its usage limit', 400);
-        }
+            if (voucher.maxUsage && voucher.usageCount >= voucher.maxUsage) {
+                throw new AppError('This voucher has reached its usage limit', 400);
+            }
 
-        // Check if user already used this voucher (if single use per user)
-        if (voucher.singleUsePerUser) {
-            const existingUsage = await prisma.creditTransaction.findFirst({
-                where: {
+            // Check if user already used this voucher (if single use per user)
+            if (voucher.singleUsePerUser) {
+                const existingUsage = await tx.creditTransaction.findFirst({
+                    where: {
+                        userId: req.user.id,
+                        reference: `VOUCHER_${voucher.id}`
+                    }
+                });
+
+                if (existingUsage) {
+                    throw new AppError('You have already used this voucher', 400);
+                }
+            }
+
+            // Get current user balance
+            const user = await tx.user.findUnique({ where: { id: req.user.id }, select: { creditBalance: true } });
+            const balanceBefore = user.creditBalance;
+            const balanceAfter = balanceBefore + voucher.amount;
+
+            // Add credit
+            await tx.user.update({
+                where: { id: req.user.id },
+                data: { creditBalance: { increment: voucher.amount } }
+            });
+
+            // Create credit transaction
+            await tx.creditTransaction.create({
+                data: {
                     userId: req.user.id,
+                    type: 'CREDIT',
+                    amount: voucher.amount,
+                    balanceBefore,
+                    balanceAfter,
+                    description: `Voucher redeemed: ${voucher.code}`,
                     reference: `VOUCHER_${voucher.id}`
                 }
             });
 
-            if (existingUsage) {
-                throw new AppError('You have already used this voucher', 400);
-            }
-        }
+            // Update voucher usage count atomically
+            await tx.voucher.update({
+                where: { id: voucher.id },
+                data: { usageCount: { increment: 1 } }
+            });
 
-        // Add credit
-        const result = await creditService.addCredit(
-            req.user.id,
-            voucher.amount,
-            `Voucher redeemed: ${voucher.code}`,
-            `VOUCHER_${voucher.id}`
-        );
-
-        // Update voucher usage
-        await prisma.voucher.update({
-            where: { id: voucher.id },
-            data: {
-                usageCount: { increment: 1 }
-            }
+            return { amount: voucher.amount, balanceAfter };
+        }, {
+            isolationLevel: 'Serializable'
         });
 
         successResponse(res, {
             success: true,
-            amount: voucher.amount,
+            amount: result.amount,
             newBalance: result.balanceAfter,
-            message: `Successfully redeemed $${voucher.amount.toFixed(2)}`
+            message: `Successfully redeemed $${result.amount.toFixed(2)}`
         });
     } catch (error) {
         next(error);
@@ -606,8 +627,9 @@ router.post('/admin/vouchers', requireAdmin, async (req, res, next) => {
             throw new AppError('Code and amount are required', 400);
         }
 
-        // Check if code exists
-        const existing = await prisma.voucher.findUnique({ where: { code } });
+        // Check if code exists (normalize to uppercase to match storage format)
+        const normalizedCode = code.toUpperCase();
+        const existing = await prisma.voucher.findUnique({ where: { code: normalizedCode } });
         if (existing) {
             throw new AppError('Voucher code already exists', 400);
         }
@@ -678,11 +700,10 @@ router.post('/admin/vouchers/generate', requireAdmin, async (req, res, next) => 
             throw new AppError('Maximum 100 vouchers per batch', 400);
         }
 
-        const vouchers = [];
-        for (let i = 0; i < count; i++) {
+        // Use transaction for atomicity — all or nothing
+        const voucherCreateOps = Array.from({ length: count }, () => {
             const code = `${prefix || 'VOUCHER'}-${crypto.randomBytes(4).toString('hex').toUpperCase()}`;
-
-            const voucher = await prisma.voucher.create({
+            return prisma.voucher.create({
                 data: {
                     code,
                     amount,
@@ -693,8 +714,9 @@ router.post('/admin/vouchers/generate', requireAdmin, async (req, res, next) => 
                     createdBy: req.user.id
                 }
             });
-            vouchers.push(voucher);
-        }
+        });
+
+        const vouchers = await prisma.$transaction(voucherCreateOps);
 
         createdResponse(res, {
             count: vouchers.length,

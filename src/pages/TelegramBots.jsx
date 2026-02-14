@@ -259,8 +259,8 @@ export default function TelegramBots() {
             )}
 
             {/* Add Bot Modal */}
-            <div className={`modal-overlay ${showModal ? 'open' : ''}`}>
-                <div className="modal">
+            <div className={`modal-overlay ${showModal ? 'open' : ''}`} onClick={() => setShowModal(false)}>
+                <div className="modal" onClick={(e) => e.stopPropagation()}>
                     <div className="modal-header">
                         <h2>Add Telegram Bot</h2>
                         <button className="modal-close" onClick={() => setShowModal(false)}>

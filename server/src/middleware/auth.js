@@ -1,6 +1,7 @@
 const jwt = require('jsonwebtoken');
 const { AppError } = require('./errorHandler');
 const prisma = require('../utils/prisma');
+const { hash } = require('../utils/encryption');
 
 // User roles hierarchy
 const ROLES = {
@@ -102,9 +103,10 @@ const authenticateApiKey = async (req, res, next) => {
             return authenticate(req, res, next);
         }
 
-        // Find API key in database
+        // Find API key in database (keys are stored as SHA-256 hashes)
+        const hashedKey = hash(apiKey);
         const keyRecord = await prisma.apiKey.findUnique({
-            where: { key: apiKey },
+            where: { key: hashedKey },
             include: {
                 user: {
                     select: {

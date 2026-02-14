@@ -374,8 +374,8 @@ const SystemBots = () => {
 
             {/* Switch Modal */}
             {showSwitchModal && (
-                <div className="modal-overlay open">
-                    <div className="modal" style={{ maxWidth: '500px' }}>
+                <div className="modal-overlay open" onClick={() => setShowSwitchModal(null)}>
+                    <div className="modal" style={{ maxWidth: '500px' }} onClick={(e) => e.stopPropagation()}>
                         <div className="modal-header">
                             <h3><ArrowRightLeft size={20} /> Switch to Another Bot</h3>
                             <button className="btn btn-ghost btn-icon" onClick={() => setShowSwitchModal(null)}><X size={18} /></button>

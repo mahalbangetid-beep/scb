@@ -38,14 +38,23 @@ class SubscriptionScheduler {
      * Run the renewal process
      */
     async runRenewalProcess() {
+        const MAX_RUN_TIME = 5 * 60 * 1000; // 5 minutes max
+
         if (this.isRunning) {
-            console.log('[SubscriptionScheduler] Already running, skipping...');
-            return;
+            // Force reset if stuck too long
+            if (this.runStartTime && (Date.now() - this.runStartTime > MAX_RUN_TIME)) {
+                console.warn('[SubscriptionScheduler] Previous run exceeded timeout (' + MAX_RUN_TIME + 'ms), force resetting...');
+                this.isRunning = false;
+            } else {
+                console.log('[SubscriptionScheduler] Already running, skipping...');
+                return;
+            }
         }
 
         try {
             this.isRunning = true;
-            const startTime = Date.now();
+            this.runStartTime = Date.now();
+            const startTime = this.runStartTime;
 
             const results = await subscriptionService.processAllRenewals();
 

@@ -289,10 +289,15 @@ router.delete('/:id', async (req, res, next) => {
             where: { staffId: req.params.id }
         });
 
-        // If no more permissions, delete the user entirely
+        // If no more permissions, soft-delete the user (deactivate instead of hard delete)
         if (remaining === 0) {
-            await prisma.user.delete({
-                where: { id: req.params.id }
+            await prisma.user.update({
+                where: { id: req.params.id },
+                data: {
+                    isActive: false,
+                    status: 'INACTIVE',
+                    role: 'USER' // Reset role to prevent stale admin/staff access
+                }
             });
         }
 

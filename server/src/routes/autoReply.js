@@ -104,6 +104,22 @@ router.post('/', authenticate, async (req, res, next) => {
             throw new AppError(`Invalid triggerType. Must be one of: ${validTriggerTypes.join(', ')}`, 400);
         }
 
+        // Validate regex patterns to prevent ReDoS
+        if (triggerType === 'regex') {
+            try {
+                const regex = new RegExp(trigger);
+                // Quick test with a long string to detect catastrophic backtracking
+                const testStr = 'a'.repeat(100);
+                const start = Date.now();
+                regex.test(testStr);
+                if (Date.now() - start > 100) {
+                    throw new Error('Pattern too slow');
+                }
+            } catch (e) {
+                throw new AppError(`Invalid or unsafe regex pattern: ${e.message}`, 400);
+            }
+        }
+
         const rule = await prisma.autoReplyRule.create({
             data: {
                 name,
@@ -138,6 +154,23 @@ router.put('/:id', authenticate, async (req, res, next) => {
 
         if (triggerType && !validTriggerTypes.includes(triggerType)) {
             throw new AppError(`Invalid triggerType. Must be one of: ${validTriggerTypes.join(', ')}`, 400);
+        }
+
+        // Validate regex patterns to prevent ReDoS
+        const effectiveTriggerType = triggerType || existing.triggerType;
+        const effectiveTrigger = trigger || existing.keywords;
+        if (effectiveTriggerType === 'regex' && trigger) {
+            try {
+                const regex = new RegExp(effectiveTrigger);
+                const testStr = 'a'.repeat(100);
+                const start = Date.now();
+                regex.test(testStr);
+                if (Date.now() - start > 100) {
+                    throw new Error('Pattern too slow');
+                }
+            } catch (e) {
+                throw new AppError(`Invalid or unsafe regex pattern: ${e.message}`, 400);
+            }
         }
 
         const rule = await prisma.autoReplyRule.update({
