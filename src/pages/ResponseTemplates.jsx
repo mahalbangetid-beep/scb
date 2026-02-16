@@ -68,7 +68,7 @@ export default function ResponseTemplates() {
         try {
             setLoading(true)
             const res = await api.get('/templates')
-            setTemplates(res.data.data || res.data || [])
+            setTemplates(res.data || [])
         } catch (err) {
             console.error('Failed to fetch templates:', err)
             setError('Failed to load templates')
@@ -89,7 +89,7 @@ export default function ResponseTemplates() {
                 command: editingTemplate,
                 template: editValue
             })
-            setPreviewData(res.data.data || res.data)
+            setPreviewData(res.data)
         } catch (err) {
             console.error('Preview failed:', err)
         }

@@ -76,7 +76,7 @@ export default function TelegramBots() {
             setSelectedPanelId('')  // Reset panel selection
             fetchBots()
         } catch (err) {
-            setError(err.response?.data?.message || err.message || 'Failed to add bot')
+            setError(err.error?.message || err.message || 'Failed to add bot')
         } finally {
             setFormLoading(false)
         }

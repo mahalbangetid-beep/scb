@@ -30,7 +30,8 @@ import {
     Mail,
     Activity,
     Fingerprint,
-    Megaphone
+    Megaphone,
+    Hash
 } from 'lucide-react'
 import api from '../services/api'
 import { useTheme } from '../contexts/ThemeContext'
@@ -78,6 +79,7 @@ const financeNavigation = [
 // Marketing - Broadcast & campaigns
 const marketingNavigation = [
     { name: 'Broadcast', icon: Megaphone, path: '/broadcast' },
+    { name: 'Marketing Intervals', icon: Hash, path: '/marketing-intervals' },
 ]
 
 // Settings
@@ -116,13 +118,21 @@ const STAFF_PERMISSION_ROUTES = {
     support: { name: 'Tickets', icon: Ticket, path: '/tickets' },
     user_view: { name: 'User Mappings', icon: Users, path: '/user-mappings' },
     voucher_manage: { name: 'Invoices', icon: FileText, path: '/invoices' },
+    contacts_view: { name: 'Contacts', icon: Users, path: '/contacts' },
+    broadcast_manage: { name: 'Broadcast', icon: Megaphone, path: '/broadcast' },
+    bot_settings: { name: 'Bot Settings', icon: Zap, path: '/bot-settings' },
+    keyword_view: { name: 'Keyword Responses', icon: MessageCircle, path: '/keyword-responses' },
+    dashboard_view: { name: 'Dashboard', icon: LayoutDashboard, path: '/dashboard' },
 }
 
 const getStaffNavigation = (permissions = []) => {
     const seen = new Set()
     const nav = []
     for (const perm of permissions) {
-        const route = STAFF_PERMISSION_ROUTES[perm]
+        // Handle both string permissions and object permissions { permission: 'key' }
+        const permKey = typeof perm === 'string' ? perm : perm?.permission
+        if (!permKey) continue
+        const route = STAFF_PERMISSION_ROUTES[permKey]
         if (route && !seen.has(route.path)) {
             seen.add(route.path)
             nav.push(route)

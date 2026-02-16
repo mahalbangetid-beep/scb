@@ -88,6 +88,7 @@ model User {
   emailLogs                 EmailLog[]
   fonepayTransactions       FonepayTransaction[]  @relation("FonepayTransactions")
   fonepayAuditLogs          FonepayAuditLog[]     @relation("FonepayAuditLogs")
+  marketingIntervals        MarketingInterval[]
 }
 
 model ApiKey {
@@ -413,6 +414,7 @@ model Device {
   providerGroups ProviderGroup[]
   systemBotSubscriptions SystemBotSubscription[]
   panelBindings  DevicePanelBinding[]
+  marketingIntervals MarketingInterval[]
 }
 
 // ==================== SYSTEM BOT SUBSCRIPTIONS ====================
@@ -1695,4 +1697,38 @@ model FonepayAuditLog {
   @@index([userId])
   @@index([verificationResult])
   @@index([createdAt])
+}
+
+// ==================== MARKETING INTERVALS ====================
+// Auto-send marketing message after every X messages in a WhatsApp group
+
+model MarketingInterval {
+  id          String   @id @default(cuid())
+  userId      String   // User who owns this rule
+  deviceId    String   // WhatsApp device to send from
+  groupJid    String   // WhatsApp group JID
+  groupName   String?  // Display name for the group (cached)
+
+  // Trigger settings
+  interval     Int      // Send marketing message every X messages
+  messageCount Int      @default(0) // Current counter (resets after trigger)
+
+  // Marketing content
+  message      String   // Marketing message text to send
+  mediaUrl     String?  // Optional media URL (image)
+
+  // Control
+  isActive       Boolean   @default(true)
+  lastTriggeredAt DateTime? // When the marketing message was last sent
+  triggerCount    Int       @default(0) // Total times triggered
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  device Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, deviceId, groupJid]) // One rule per device+group per user
+  @@index([userId])
+  @@index([deviceId, groupJid, isActive])
 }

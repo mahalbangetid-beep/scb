@@ -32,7 +32,7 @@ const SystemBotManagement = () => {
         try {
             setLoading(true);
             const res = await api.get('/system-bots/admin/list');
-            setBots(res.data.data || []);
+            setBots(res.data || []);
         } catch (err) {
             setError('Failed to load system bots');
         } finally {
@@ -63,7 +63,7 @@ const SystemBotManagement = () => {
             fetchBots();
             setTimeout(() => setSuccess(''), 5000);
         } catch (err) {
-            setError(err.response?.data?.message || 'Failed to save');
+            setError(err.error?.message || err.message || 'Failed to save');
             setTimeout(() => setError(''), 5000);
         }
     };
@@ -95,7 +95,7 @@ const SystemBotManagement = () => {
     const handleViewSubscribers = async (botId) => {
         try {
             const res = await api.get(`/system-bots/admin/${botId}/subscribers`);
-            setSubscribers(res.data.data || []);
+            setSubscribers(res.data || []);
             setShowSubsModal(botId);
         } catch (err) {
             setError('Failed to load subscribers');

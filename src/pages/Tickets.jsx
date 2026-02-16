@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import {
   Ticket, Plus, Search, MessageSquare, Clock, CheckCircle, XCircle,
-  AlertTriangle, Filter, RefreshCw, Send, X, User, Tag
+  AlertTriangle, Filter, RefreshCw, Send, X, User, Tag, Shield
 } from 'lucide-react';
 import api from '../services/api';
 
@@ -16,6 +16,7 @@ const Tickets = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [isStaffMode, setIsStaffMode] = useState(false);
 
   // Create Ticket Modal
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -29,9 +30,28 @@ const Tickets = () => {
     message: ''
   });
 
+  // Detect staff mode on mount
+  useEffect(() => {
+    try {
+      const userStr = localStorage.getItem('user');
+      const user = userStr ? JSON.parse(userStr) : null;
+      if (user && (user.role === 'STAFF' || user.role === 'ADMIN' || user.role === 'MASTER_ADMIN')) {
+        // Check if user has support permission (staff) or is admin
+        if (user.role === 'ADMIN' || user.role === 'MASTER_ADMIN') {
+          setIsStaffMode(true);
+        } else if (user.staffPermissions) {
+          const hasSupport = user.staffPermissions.some(p =>
+            (typeof p === 'string' ? p : p?.permission) === 'support'
+          );
+          setIsStaffMode(hasSupport);
+        }
+      }
+    } catch (e) { /* ignore */ }
+  }, []);
+
   useEffect(() => {
     fetchData();
-  }, [statusFilter]);
+  }, [statusFilter, isStaffMode]);
 
   const fetchData = async () => {
     try {
@@ -40,12 +60,19 @@ const Tickets = () => {
       if (statusFilter) params.append('status', statusFilter);
       if (searchQuery) params.append('search', searchQuery);
 
+      // Use staff endpoint if in staff mode
+      const ticketEndpoint = isStaffMode
+        ? `/tickets/staff/all?${params.toString()}`
+        : `/tickets?${params.toString()}`;
+
       const [ticketsRes, statsRes] = await Promise.all([
-        api.get(`/tickets?${params.toString()}`),
-        api.get('/tickets/stats')
+        api.get(ticketEndpoint),
+        api.get('/tickets/stats').catch(() => ({ data: null }))
       ]);
-      setTickets(ticketsRes.data.data || []);
-      setStats(statsRes.data.data);
+
+      const ticketData = ticketsRes.data;
+      setTickets(ticketData?.tickets || ticketData || []);
+      setStats(statsRes.data);
     } catch (err) {
       setError('Failed to load tickets');
     } finally {
@@ -75,7 +102,7 @@ const Tickets = () => {
       setSuccess('Reply sent');
 
       const res = await api.get(`/tickets/${selectedTicket.id}`);
-      setSelectedTicket(res.data.data);
+      setSelectedTicket(res.data);
       fetchData();
       setTimeout(() => setSuccess(''), 3000);
     } catch (err) {
@@ -92,7 +119,7 @@ const Tickets = () => {
 
       if (selectedTicket?.id === ticketId) {
         const res = await api.get(`/tickets/${ticketId}`);
-        setSelectedTicket(res.data.data);
+        setSelectedTicket(res.data);
       }
       fetchData();
       setTimeout(() => setSuccess(''), 3000);
@@ -125,7 +152,7 @@ const Tickets = () => {
       fetchData();
       setTimeout(() => setSuccess(''), 3000);
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to create ticket');
+      setError(err.error?.message || err.message || 'Failed to create ticket');
     } finally {
       setCreateLoading(false);
     }
@@ -185,7 +212,9 @@ const Tickets = () => {
       <div className="page-header">
         <div className="header-content">
           <h1><Ticket className="header-icon" /> Tickets</h1>
-          <p className="header-subtitle">Manage support tickets from customers</p>
+          <p className="header-subtitle">
+            {isStaffMode ? 'Staff view — showing all managed tickets' : 'Manage support tickets from customers'}
+          </p>
         </div>
         <div className="header-actions">
           <button className="btn btn-secondary" onClick={fetchData}>
@@ -196,6 +225,24 @@ const Tickets = () => {
           </button>
         </div>
       </div>
+
+      {isStaffMode && (
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '0.5rem',
+          padding: '0.625rem 1rem',
+          marginBottom: '1rem',
+          background: 'rgba(139, 92, 246, 0.08)',
+          border: '1px solid rgba(139, 92, 246, 0.25)',
+          borderRadius: '8px',
+          fontSize: '0.8rem',
+          color: '#8b5cf6'
+        }}>
+          <Shield size={15} />
+          <span><strong>Staff Mode</strong> — You are viewing tickets from all users you manage</span>
+        </div>
+      )}
 
       {error && (
         <div className="alert alert-error">

@@ -6,6 +6,7 @@ const { AppError } = require('../middleware/errorHandler');
 const { authenticate, requireAdmin, requireStaffPermission } = require('../middleware/auth');
 const adminApiService = require('../services/adminApiService');
 const providerDomainService = require('../services/providerDomainService');
+const providerForwardingService = require('../services/providerForwardingService');
 
 // All routes require authentication
 router.use(authenticate);
@@ -106,8 +107,7 @@ router.get('/', async (req, res, next) => {
                 where: { userId: req.user.id },
                 select: {
                     providerName: true,
-                    aliases: true,
-                    isHidden: true
+                    publicAlias: true
                 }
             })
         ]);
@@ -117,8 +117,8 @@ router.get('/', async (req, res, next) => {
         for (const m of providerMappings) {
             mappingsLookup[m.providerName] = {
                 providerName: m.providerName,
-                aliases: m.aliases ? JSON.parse(m.aliases) : [],
-                alias: m.providerName // Use providerName as the display alias
+                aliases: [],
+                alias: m.publicAlias || m.providerName // Use publicAlias as the display alias
             };
         }
 
@@ -452,6 +452,126 @@ router.post('/:id/speed-up', async (req, res, next) => {
     }
 });
 
+// ==================== RE-REQUEST (Re-forward to provider) ====================
+
+// POST /api/orders/:id/re-request - Re-forward order to provider group
+router.post('/:id/re-request', async (req, res, next) => {
+    try {
+        const order = await prisma.order.findFirst({
+            where: {
+                id: req.params.id,
+                userId: req.user.id
+            },
+            include: {
+                panel: {
+                    select: { id: true, alias: true, name: true }
+                }
+            }
+        });
+
+        if (!order) {
+            throw new AppError('Order not found', 404);
+        }
+
+        // Only allow re-request for active orders
+        const allowedStatuses = ['PENDING', 'IN_PROGRESS', 'PROCESSING', 'PARTIAL'];
+        if (!allowedStatuses.includes(order.status)) {
+            throw new AppError(
+                `Cannot re-request order with status: ${order.status}. Only orders with status ${allowedStatuses.join(', ')} can be re-requested.`,
+                400
+            );
+        }
+
+        // Rate limit: max 1 re-request per order per hour
+        const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+        const recentReRequest = await prisma.orderCommand.findFirst({
+            where: {
+                orderId: order.id,
+                command: 'RE_REQUEST',
+                createdAt: { gte: oneHourAgo }
+            },
+            orderBy: { createdAt: 'desc' }
+        });
+
+        if (recentReRequest) {
+            const waitMinutes = Math.ceil(
+                (recentReRequest.createdAt.getTime() + 60 * 60 * 1000 - Date.now()) / 60000
+            );
+            throw new AppError(
+                `Re-request rate limited. Please wait ${waitMinutes} more minute(s) before re-requesting this order.`,
+                429
+            );
+        }
+
+        // Create command record
+        const command = await prisma.orderCommand.create({
+            data: {
+                orderId: order.id,
+                command: 'RE_REQUEST',
+                status: 'PROCESSING',
+                requestedBy: req.user.username
+            }
+        });
+
+        try {
+            // Forward to provider group using existing forwarding service
+            const forwardResult = await providerForwardingService.forwardToAll(
+                req.user.id,
+                order,
+                'RE_REQUEST',
+                {
+                    providerName: order.providerName,
+                    customMessage: null // Use default template
+                }
+            );
+
+            if (!forwardResult.success) {
+                throw new Error(forwardResult.error || 'No provider groups responded successfully');
+            }
+
+            // Update command status
+            await prisma.orderCommand.update({
+                where: { id: command.id },
+                data: {
+                    status: 'SUCCESS',
+                    response: JSON.stringify({
+                        totalDestinations: forwardResult.totalDestinations,
+                        successCount: forwardResult.successCount,
+                        results: forwardResult.results
+                    }),
+                    forwardedTo: forwardResult.results
+                        ?.filter(r => r.success)
+                        .map(r => r.destination)
+                        .join(', ') || null,
+                    processedAt: new Date()
+                }
+            });
+
+            successResponse(res, {
+                success: true,
+                orderId: order.externalOrderId,
+                providerOrderId: order.providerOrderId,
+                forwardedTo: forwardResult.successCount,
+                totalDestinations: forwardResult.totalDestinations,
+                message: `Re-request sent for order ${order.externalOrderId} to ${forwardResult.successCount} destination(s)`
+            });
+        } catch (error) {
+            // Update command with error
+            await prisma.orderCommand.update({
+                where: { id: command.id },
+                data: {
+                    status: 'FAILED',
+                    error: error.message,
+                    processedAt: new Date()
+                }
+            });
+            throw error;
+        }
+    } catch (error) {
+        next(error);
+    }
+});
+
 // ==================== BULK OPERATIONS ====================
 
 // POST /api/orders/bulk-status - Check multiple orders status
@@ -636,7 +756,7 @@ router.get('/:id/commands', async (req, res, next) => {
 // ==================== STAFF TOOLS ====================
 
 // PATCH /api/orders/:id/status-override - Manually override order status
-router.patch('/:id/status-override', requireAdmin, async (req, res, next) => {
+router.patch('/:id/status-override', requireStaffPermission('order_manage', 'edit'), async (req, res, next) => {
     try {
         const { status } = req.body;
 
@@ -645,11 +765,20 @@ router.patch('/:id/status-override', requireAdmin, async (req, res, next) => {
             throw new AppError(`Invalid status. Must be one of: ${validStatuses.join(', ')}`, 400);
         }
 
+        // For staff: look up order by owner's userId, for admin/owner: use req.user.id
+        const ownerUserId = req.staffPermission?.userId || null;
+        const whereClause = { id: req.params.id };
+        // Only filter by userId if not a staff with access to all users
+        if (ownerUserId) {
+            whereClause.userId = ownerUserId;
+        } else if (!req.staffPermission) {
+            // Admin/owner - filter by their own ID
+            whereClause.userId = req.user.id;
+        }
+        // If staffPermission exists but userId is null, staff has access to all users' orders
+
         const order = await prisma.order.findFirst({
-            where: {
-                id: req.params.id,
-                userId: req.user.id
-            }
+            where: whereClause
         });
 
         if (!order) {
@@ -696,11 +825,17 @@ router.patch('/:id/memo', requireStaffPermission('order_manage'), async (req, re
             throw new AppError('Memo must be 1000 characters or less', 400);
         }
 
+        // For staff: look up order by owner's userId, for admin/owner: use req.user.id
+        const ownerUserId = req.staffPermission?.userId || null;
+        const whereClause = { id: req.params.id };
+        if (ownerUserId) {
+            whereClause.userId = ownerUserId;
+        } else if (!req.staffPermission) {
+            whereClause.userId = req.user.id;
+        }
+
         const order = await prisma.order.findFirst({
-            where: {
-                id: req.params.id,
-                userId: req.user.id
-            }
+            where: whereClause
         });
 
         if (!order) {

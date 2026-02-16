@@ -119,6 +119,13 @@ class BotMessageHandler {
                     message: 'Messages from provider support groups are not processed'
                 };
             }
+
+            // ==================== MARKETING INTERVAL TRACKING ====================
+            // Track group message count for marketing interval triggers
+            // Runs asynchronously — does NOT block normal message processing
+            this.trackMarketingInterval(deviceId, userId, groupJid).catch(err => {
+                console.error(`[BotHandler] Marketing interval tracking error:`, err.message);
+            });
         }
 
         // Get user details
@@ -710,6 +717,76 @@ class BotMessageHandler {
         } catch (error) {
             console.error(`[BotHandler] Failed to send response:`, error);
             return false;
+        }
+    }
+    /**
+     * Track marketing interval — increment counter and trigger if threshold reached
+     * This runs async (fire-and-forget) so it doesn't block message processing
+     * 
+     * Uses a two-phase atomic approach to prevent race conditions:
+     * Phase 1: Atomically increment the counter
+     * Phase 2: Atomically try to "claim" the trigger by resetting only if messageCount >= interval
+     *          If another concurrent message already claimed it, updateMany returns 0 → skip
+     */
+    async trackMarketingInterval(deviceId, userId, groupJid) {
+        // Phase 1: Atomically increment the counter for active intervals matching this device+group
+        const updated = await prisma.marketingInterval.updateMany({
+            where: {
+                deviceId,
+                userId,
+                groupJid,
+                isActive: true
+            },
+            data: {
+                messageCount: { increment: 1 }
+            }
+        });
+
+        // If no matching interval exists, skip
+        if (updated.count === 0) return;
+
+        // Fetch the interval to get its config (interval threshold, message, mediaUrl)
+        const marketingInterval = await prisma.marketingInterval.findFirst({
+            where: {
+                deviceId,
+                userId,
+                groupJid,
+                isActive: true
+            }
+        });
+
+        if (!marketingInterval || marketingInterval.messageCount < marketingInterval.interval) return;
+
+        // Phase 2: Atomically claim the trigger — reset counter ONLY if still >= threshold
+        // This prevents double-trigger when two messages arrive at the same time
+        const claimed = await prisma.marketingInterval.updateMany({
+            where: {
+                id: marketingInterval.id,
+                isActive: true,
+                messageCount: { gte: marketingInterval.interval }
+            },
+            data: {
+                messageCount: 0,
+                lastTriggeredAt: new Date(),
+                triggerCount: { increment: 1 }
+            }
+        });
+
+        // If another concurrent message already claimed and reset it, skip
+        if (claimed.count === 0) return;
+
+        console.log(`[MarketingInterval] Threshold reached for device ${deviceId} group ${groupJid}: ${marketingInterval.messageCount}/${marketingInterval.interval}`);
+
+        // Send the marketing message
+        try {
+            if (marketingInterval.mediaUrl && this.whatsappService?.sendImage) {
+                await this.whatsappService.sendImage(deviceId, groupJid, marketingInterval.mediaUrl, marketingInterval.message);
+            } else {
+                await this.sendResponse(deviceId, groupJid, marketingInterval.message);
+            }
+            console.log(`[MarketingInterval] Marketing message sent to group ${groupJid} (trigger #${marketingInterval.triggerCount + 1})`);
+        } catch (sendErr) {
+            console.error(`[MarketingInterval] Failed to send marketing message:`, sendErr.message);
         }
     }
 

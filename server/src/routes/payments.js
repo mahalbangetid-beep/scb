@@ -13,7 +13,7 @@ const paymentGatewayService = require('../services/paymentGateway');
 router.use(sensitiveLimiter);
 
 // Get all available payment gateways
-router.get('/gateways', authenticate, async (req, res) => {
+router.get('/gateways', authenticate, async (req, res, next) => {
     try {
         const gateways = await paymentGatewayService.getAvailableGateways();
         res.json({
@@ -22,12 +22,12 @@ router.get('/gateways', authenticate, async (req, res) => {
         });
     } catch (error) {
         console.error('[Payments] Get gateways error:', error);
-        res.status(500).json({ success: false, error: error.message });
+        next(error);
     }
 });
 
 // Create payment via specified gateway
-router.post('/create/:gatewayId', authenticate, async (req, res) => {
+router.post('/create/:gatewayId', authenticate, async (req, res, next) => {
     try {
         const { gatewayId } = req.params;
         const { amount, currency, description, ...additionalParams } = req.body;
@@ -35,7 +35,7 @@ router.post('/create/:gatewayId', authenticate, async (req, res) => {
         if (!amount || amount <= 0) {
             return res.status(400).json({
                 success: false,
-                error: 'Valid amount is required'
+                error: { message: 'Valid amount is required' }
             });
         }
 
@@ -50,12 +50,12 @@ router.post('/create/:gatewayId', authenticate, async (req, res) => {
         res.json(result);
     } catch (error) {
         console.error('[Payments] Create payment error:', error);
-        res.status(500).json({ success: false, error: error.message });
+        next(error);
     }
 });
 
 // Get gateway info
-router.get('/gateway/:gatewayId', authenticate, async (req, res) => {
+router.get('/gateway/:gatewayId', authenticate, async (req, res, next) => {
     try {
         const { gatewayId } = req.params;
         const info = await paymentGatewayService.getGatewayInfo(gatewayId);
@@ -63,28 +63,28 @@ router.get('/gateway/:gatewayId', authenticate, async (req, res) => {
         if (!info) {
             return res.status(404).json({
                 success: false,
-                error: 'Gateway not found'
+                error: { message: 'Gateway not found' }
             });
         }
 
         res.json({ success: true, gateway: info });
     } catch (error) {
         console.error('[Payments] Get gateway info error:', error);
-        res.status(500).json({ success: false, error: error.message });
+        next(error);
     }
 });
 
 // ============ CRYPTOMUS SPECIFIC ROUTES ============
 
 // Create Cryptomus payment
-router.post('/cryptomus/create', authenticate, async (req, res) => {
+router.post('/cryptomus/create', authenticate, async (req, res, next) => {
     try {
         const { amount } = req.body;
 
         if (!amount || amount <= 0) {
             return res.status(400).json({
                 success: false,
-                error: 'Valid amount is required'
+                error: { message: 'Valid amount is required' }
             });
         }
 
@@ -95,14 +95,14 @@ router.post('/cryptomus/create', authenticate, async (req, res) => {
         if (!config.enabled) {
             return res.status(400).json({
                 success: false,
-                error: 'Cryptomus payment is not enabled'
+                error: { message: 'Cryptomus payment is not enabled' }
             });
         }
 
         if (!config.isConfigured) {
             return res.status(400).json({
                 success: false,
-                error: 'Cryptomus is not configured. Please add API credentials in Payment Settings.'
+                error: { message: 'Cryptomus is not configured. Please add API credentials in Payment Settings.' }
             });
         }
 
@@ -122,21 +122,21 @@ router.post('/cryptomus/create', authenticate, async (req, res) => {
         });
     } catch (error) {
         console.error('[Cryptomus] Create payment error:', error);
-        res.status(500).json({ success: false, error: error.message });
+        next(error);
     }
 });
 
 // ============ ESEWA SPECIFIC ROUTES ============
 
 // Create eSewa payment
-router.post('/esewa/create', authenticate, async (req, res) => {
+router.post('/esewa/create', authenticate, async (req, res, next) => {
     try {
         const { amount } = req.body;
 
         if (!amount || amount <= 0) {
             return res.status(400).json({
                 success: false,
-                error: 'Valid amount is required'
+                error: { message: 'Valid amount is required' }
             });
         }
 
@@ -147,7 +147,7 @@ router.post('/esewa/create', authenticate, async (req, res) => {
         if (!config.enabled) {
             return res.status(400).json({
                 success: false,
-                error: 'eSewa payment is not enabled'
+                error: { message: 'eSewa payment is not enabled' }
             });
         }
 
@@ -163,7 +163,7 @@ router.post('/esewa/create', authenticate, async (req, res) => {
         });
     } catch (error) {
         console.error('[Esewa] Create payment error:', error);
-        res.status(500).json({ success: false, error: error.message });
+        next(error);
     }
 });
 
@@ -193,33 +193,33 @@ router.get('/esewa/return', async (req, res) => {
 // ============ MANUAL PAYMENT ROUTES ============
 
 // Get manual payment methods
-router.get('/manual/methods', authenticate, (req, res) => {
+router.get('/manual/methods', authenticate, (req, res, next) => {
     try {
         const manualService = paymentGatewayService.getGateway('manual');
         const methods = manualService.getPaymentMethods();
         res.json({ success: true, methods });
     } catch (error) {
         console.error('[Manual] Get methods error:', error);
-        res.status(500).json({ success: false, error: error.message });
+        next(error);
     }
 });
 
 // Submit manual payment request
-router.post('/manual/submit', authenticate, async (req, res) => {
+router.post('/manual/submit', authenticate, async (req, res, next) => {
     try {
         const { amount, paymentMethod, proofUrl, notes } = req.body;
 
         if (!amount || amount <= 0) {
             return res.status(400).json({
                 success: false,
-                error: 'Valid amount is required'
+                error: { message: 'Valid amount is required' }
             });
         }
 
         if (!paymentMethod) {
             return res.status(400).json({
                 success: false,
-                error: 'Payment method is required'
+                error: { message: 'Payment method is required' }
             });
         }
 
@@ -235,24 +235,24 @@ router.post('/manual/submit', authenticate, async (req, res) => {
         res.json(result);
     } catch (error) {
         console.error('[Manual] Submit payment error:', error);
-        res.status(500).json({ success: false, error: error.message });
+        next(error);
     }
 });
 
 // Get pending payments (Admin only)
-router.get('/manual/pending', authenticate, requireAdmin, async (req, res) => {
+router.get('/manual/pending', authenticate, requireAdmin, async (req, res, next) => {
     try {
         const manualService = paymentGatewayService.getGateway('manual');
         const payments = await manualService.getPendingPayments();
         res.json({ success: true, payments });
     } catch (error) {
         console.error('[Manual] Get pending error:', error);
-        res.status(500).json({ success: false, error: error.message });
+        next(error);
     }
 });
 
 // Approve manual payment (Admin only)
-router.post('/manual/approve/:transactionId', authenticate, requireAdmin, async (req, res) => {
+router.post('/manual/approve/:transactionId', authenticate, requireAdmin, async (req, res, next) => {
     try {
         const { transactionId } = req.params;
         const { notes } = req.body;
@@ -263,12 +263,12 @@ router.post('/manual/approve/:transactionId', authenticate, requireAdmin, async 
         res.json(result);
     } catch (error) {
         console.error('[Manual] Approve error:', error);
-        res.status(500).json({ success: false, error: error.message });
+        next(error);
     }
 });
 
 // Reject manual payment (Admin only)
-router.post('/manual/reject/:transactionId', authenticate, requireAdmin, async (req, res) => {
+router.post('/manual/reject/:transactionId', authenticate, requireAdmin, async (req, res, next) => {
     try {
         const { transactionId } = req.params;
         const { reason } = req.body;
@@ -276,7 +276,7 @@ router.post('/manual/reject/:transactionId', authenticate, requireAdmin, async (
         if (!reason) {
             return res.status(400).json({
                 success: false,
-                error: 'Rejection reason is required'
+                error: { message: 'Rejection reason is required' }
             });
         }
 
@@ -286,7 +286,7 @@ router.post('/manual/reject/:transactionId', authenticate, requireAdmin, async (
         res.json(result);
     } catch (error) {
         console.error('[Manual] Reject error:', error);
-        res.status(500).json({ success: false, error: error.message });
+        next(error);
     }
 });
 

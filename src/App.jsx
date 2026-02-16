@@ -36,6 +36,7 @@ import SystemBots from './pages/SystemBots'
 import MyStaff from './pages/MyStaff'
 import ActivityLogs from './pages/ActivityLogs'
 import Watermarks from './pages/Watermarks'
+import MarketingIntervals from './pages/MarketingIntervals'
 import './styles/landing.css'
 // Admin Pages
 import UserManagement from './pages/admin/UserManagement'
@@ -144,6 +145,7 @@ function AppContent() {
           <Route path="/my-staff" element={<ProtectedRoute><MyStaff /></ProtectedRoute>} />
           <Route path="/activity-logs" element={<ProtectedRoute><ActivityLogs /></ProtectedRoute>} />
           <Route path="/watermarks" element={<ProtectedRoute><Watermarks /></ProtectedRoute>} />
+          <Route path="/marketing-intervals" element={<ProtectedRoute><MarketingIntervals /></ProtectedRoute>} />
 
           {/* Admin Routes */}
           <Route path="/admin/dashboard" element={<AdminRoute><AdminDashboard /></AdminRoute>} />

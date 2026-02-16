@@ -158,7 +158,7 @@ export default function Broadcast() {
             })
         } catch (error) {
             console.error('Failed to start broadcast:', error)
-            alert(error.response?.data?.message || 'Failed to start broadcast')
+            alert(error.error?.message || error.message || 'Failed to start broadcast')
         } finally {
             setSubmitting(false)
         }

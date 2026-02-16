@@ -101,13 +101,8 @@ const PanelConnections = () => {
             const response = await api.get('/panels');
             console.log('[PanelConnections] Raw response:', response.data);
 
-            // Handle different response structures
-            let panelList = [];
-            if (response.data?.data) {
-                panelList = Array.isArray(response.data.data) ? response.data.data : [];
-            } else if (Array.isArray(response.data)) {
-                panelList = response.data;
-            }
+            // Handle response - API interceptor already unwraps .data
+            let panelList = Array.isArray(response.data) ? response.data : [];
 
             console.log('[PanelConnections] Panels found:', panelList.length);
             setPanels(panelList);
@@ -156,16 +151,11 @@ const PanelConnections = () => {
             });
             console.log('[PanelConnections] Scan response:', response.data);
 
-            const data = response.data?.data;
+            const data = response.data;
 
             // Reload panel to get updated scan results
             const panelsResponse = await api.get('/panels');
-            let panelList = [];
-            if (panelsResponse.data?.data) {
-                panelList = Array.isArray(panelsResponse.data.data) ? panelsResponse.data.data : [];
-            } else if (Array.isArray(panelsResponse.data)) {
-                panelList = panelsResponse.data;
-            }
+            let panelList = Array.isArray(panelsResponse.data) ? panelsResponse.data : [];
 
             setPanels(panelList);
 
@@ -179,7 +169,7 @@ const PanelConnections = () => {
             console.log('[PanelConnections] Scan completed, found:', data?.summary);
         } catch (error) {
             console.error('[PanelConnections] Error scanning:', error);
-            alert('Error scanning panel: ' + (error.response?.data?.error?.message || error.message));
+            alert('Error scanning panel: ' + (error.error?.message || error.message));
         } finally {
             setScanning(false);
         }
@@ -328,12 +318,7 @@ const PanelConnections = () => {
 
             // Reload panels
             const panelsResponse = await api.get('/panels');
-            let panelList = [];
-            if (panelsResponse.data?.data) {
-                panelList = Array.isArray(panelsResponse.data.data) ? panelsResponse.data.data : [];
-            } else if (Array.isArray(panelsResponse.data)) {
-                panelList = panelsResponse.data;
-            }
+            let panelList = Array.isArray(panelsResponse.data) ? panelsResponse.data : [];
 
             setPanels(panelList);
 
@@ -347,7 +332,7 @@ const PanelConnections = () => {
             alert(`Manual endpoint saved!\n\nService: ${serviceName}\nEndpoint: ${manualEndpoint.trim()}\n\nThe panel has been rescanned.`);
         } catch (error) {
             console.error('[PanelConnections] Error saving:', error);
-            alert('Error saving endpoint: ' + (error.response?.data?.error?.message || error.message));
+            alert('Error saving endpoint: ' + (error.error?.message || error.message));
         } finally {
             setSaving(false);
             setEditingService(null);

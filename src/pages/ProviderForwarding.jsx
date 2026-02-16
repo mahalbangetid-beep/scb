@@ -76,7 +76,7 @@ export default function ProviderForwarding() {
     const fetchPanels = async () => {
         try {
             const res = await api.get('/panels')
-            setPanels(res.data.data || res.data || [])
+            setPanels(res.data || [])
         } catch (err) {
             console.error('Failed to fetch panels:', err)
         }
@@ -86,7 +86,7 @@ export default function ProviderForwarding() {
     const fetchSupportGroups = async () => {
         try {
             const res = await api.get('/provider-groups')
-            setSupportGroups(res.data.data || res.data || [])
+            setSupportGroups(res.data || [])
         } catch (err) {
             console.error('Failed to fetch support groups:', err)
         }
@@ -101,7 +101,7 @@ export default function ProviderForwarding() {
         try {
             setLoadingProviders(true)
             const res = await api.post(`/panels/${panelId}/sync-providers`)
-            const providersList = res.data.data?.providers || res.data?.providers || []
+            const providersList = res.data?.providers || []
             setProviders(providersList)
         } catch (err) {
             console.error('Failed to fetch providers:', err)
@@ -145,7 +145,7 @@ export default function ProviderForwarding() {
             setTimeout(() => setSaved(false), 3000)
             fetchConfigs()
         } catch (err) {
-            setError(err.response?.data?.message || 'Failed to save mapping')
+            setError(err.error?.message || err.message || 'Failed to save mapping')
         } finally {
             setSaving(false)
         }
@@ -155,7 +155,7 @@ export default function ProviderForwarding() {
         try {
             setLoading(true)
             const res = await api.get('/provider-config')
-            setConfigs(res.data.data || res.data || [])
+            setConfigs(res.data || [])
         } catch (err) {
             console.error('Failed to fetch configs:', err)
         } finally {
@@ -166,7 +166,7 @@ export default function ProviderForwarding() {
     const fetchLogs = async () => {
         try {
             const res = await api.get('/provider-config/logs?limit=50')
-            setLogs(res.data.data?.logs || res.data?.logs || [])
+            setLogs(res.data?.logs || [])
         } catch (err) {
             console.error('Failed to fetch logs:', err)
         }
@@ -241,7 +241,7 @@ export default function ProviderForwarding() {
             setShowModal(false)
             fetchConfigs()
         } catch (err) {
-            setError(err.response?.data?.message || 'Failed to save configuration')
+            setError(err.error?.message || err.message || 'Failed to save configuration')
         } finally {
             setSaving(false)
         }
@@ -266,13 +266,13 @@ export default function ProviderForwarding() {
                 deviceId: null // Will use first available device
             })
 
-            if (res.data.data?.success || res.data?.success) {
+            if (res.data?.success) {
                 alert('Test message sent successfully!')
             } else {
-                alert(`Test failed: ${res.data.data?.error || res.data?.error || 'Unknown error'}`)
+                alert(`Test failed: ${res.data?.error || 'Unknown error'}`)
             }
         } catch (err) {
-            alert(`Test failed: ${err.response?.data?.message || err.message}`)
+            alert(`Test failed: ${err.error?.message || err.message}`)
         } finally {
             setTesting(null)
         }

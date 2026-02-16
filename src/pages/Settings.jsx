@@ -193,7 +193,7 @@ export default function Settings() {
             setSaved(true)
             setTimeout(() => setSaved(false), 3000)
         } catch (err) {
-            setError(err.response?.data?.error?.message || 'Failed to change password')
+            setError(err.error?.message || err.message || 'Failed to change password')
         } finally {
             setSubmitting(false)
         }

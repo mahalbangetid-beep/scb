@@ -27,7 +27,9 @@ const VALID_PERMISSIONS = [
     'order_view', 'order_manage',
     'payment_view', 'payment_approve',
     'voucher_manage', 'device_manage', 'panel_manage',
-    'reports_view', 'support'
+    'reports_view', 'support',
+    'contacts_view', 'broadcast_manage', 'bot_settings',
+    'keyword_view', 'dashboard_view'
 ];
 
 // GET /api/staff/my-permissions — Get current staff user's permissions

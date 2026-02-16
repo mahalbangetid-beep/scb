@@ -20,7 +20,8 @@ class ProviderForwardingService {
         this.defaultTemplates = {
             refill: '🔄 *Refill Request*\n\nOrder: #{orderId}\nProvider Order: {providerOrderId}\nService: {serviceName}\nLink: {link}\nQuantity: {quantity}\n\nUsername: {username}',
             cancel: '❌ *Cancel Request*\n\nOrder: #{orderId}\nProvider Order: {providerOrderId}\nService: {serviceName}\nStatus: {status}\n\nUsername: {username}',
-            speedup: '⚡ *Speed Up Request*\n\nOrder: #{orderId}\nProvider Order: {providerOrderId}\nService: {serviceName}\nStart Count: {startCount}\nRemains: {remains}\n\nUsername: {username}'
+            speedup: '⚡ *Speed Up Request*\n\nOrder: #{orderId}\nProvider Order: {providerOrderId}\nService: {serviceName}\nStart Count: {startCount}\nRemains: {remains}\n\nUsername: {username}',
+            re_request: '🔁 *Re-Request*\n\nOrder: #{orderId}\nProvider Order: {providerOrderId}\nService: {serviceName}\nLink: {link}\nQuantity: {quantity}\nStatus: {status}\nRemains: {remains}\n\nUsername: {username}'
         };
         this.whatsappService = null;
     }

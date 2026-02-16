@@ -33,9 +33,9 @@ const UserMappings = () => {
                 api.get('/user-mappings'),
                 api.get('/user-mappings/stats')
             ]);
-            // API might return data directly or wrapped in .data
-            const mappingsData = mappingsRes.data?.data || mappingsRes.data || [];
-            const statsData = statsRes.data?.data || statsRes.data;
+            // API interceptor already unwraps response.data
+            const mappingsData = mappingsRes.data || [];
+            const statsData = statsRes.data;
             setMappings(Array.isArray(mappingsData) ? mappingsData : []);
             setStats(statsData);
         } catch (err) {
@@ -67,7 +67,7 @@ const UserMappings = () => {
             fetchData();
             setTimeout(() => setSuccess(''), 3000);
         } catch (err) {
-            setError(err.response?.data?.message || 'Failed to save');
+            setError(err.error?.message || err.message || 'Failed to save');
         }
     };
 

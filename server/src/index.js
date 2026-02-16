@@ -222,6 +222,7 @@ app.use('/api/admin/email', emailRoutes);
 app.use('/api/activity-logs', require('./routes/activityLogs'));
 app.use('/api/watermarks', require('./routes/watermarks'));
 app.use('/api/fonepay', require('./routes/fonepay'));
+app.use('/api/marketing-intervals', require('./routes/marketingIntervals'));
 
 
 // Socket.IO authentication middleware

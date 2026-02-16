@@ -268,7 +268,7 @@ export default function SmmPanels() {
         try {
             // Call sync-all API
             const res = await api.post(`/panels/${panel.id}/sync-all`)
-            const data = res.data?.data || res.data
+            const data = res.data
 
             // Short delay to show scanning animation
             setTimeout(() => {
@@ -309,7 +309,7 @@ export default function SmmPanels() {
             await api.get(`/panels/${panelId}/balance`)
             fetchPanels()
         } catch (err) {
-            const errorMsg = err.response?.data?.message || err.response?.data?.error || err.message || 'Failed to refresh balance'
+            const errorMsg = err.error?.message || err.message || 'Failed to refresh balance'
             setError(errorMsg)
         } finally {
             setSyncingPanel(null)

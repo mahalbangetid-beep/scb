@@ -224,34 +224,44 @@ class HighRiskService {
 
         if (!payment) throw new Error('Pending payment not found');
 
-        // Verify and process payment
-        await prisma.payment.update({
-            where: { id: payment.id },
-            data: {
-                status: 'COMPLETED',
-                verifiedAt: new Date(),
-                notes: `Verified via bot command at ${new Date().toISOString()}`
-            }
-        });
+        // Verify and process payment atomically
+        await prisma.$transaction(async (tx) => {
+            // Update payment status
+            await tx.payment.update({
+                where: { id: payment.id },
+                data: {
+                    status: 'COMPLETED',
+                    verifiedAt: new Date(),
+                    notes: `Verified via bot command at ${new Date().toISOString()}`
+                }
+            });
 
-        // Add balance to user
-        await prisma.user.update({
-            where: { id: userId },
-            data: {
-                creditBalance: { increment: payment.amount }
-            }
-        });
+            // Get current balance for accurate tracking
+            const user = await tx.user.findUnique({
+                where: { id: userId },
+                select: { creditBalance: true }
+            });
+            const balanceBefore = user?.creditBalance || 0;
+            const balanceAfter = balanceBefore + payment.amount;
 
-        // Create transaction record
-        await prisma.creditTransaction.create({
-            data: {
-                userId,
-                type: 'CREDIT',
-                amount: payment.amount,
-                description: `Payment verified (Bot): ${payment.reference}`,
-                reference: payment.reference,
-                balanceAfter: 0 // Will be calculated
-            }
+            // Add balance to user
+            await tx.user.update({
+                where: { id: userId },
+                data: { creditBalance: balanceAfter }
+            });
+
+            // Create transaction record with correct balances
+            await tx.creditTransaction.create({
+                data: {
+                    userId,
+                    type: 'CREDIT',
+                    amount: payment.amount,
+                    balanceBefore,
+                    balanceAfter,
+                    description: `Payment verified (Bot): ${payment.reference}`,
+                    reference: payment.reference
+                }
+            });
         });
 
         return {
@@ -315,7 +325,7 @@ class HighRiskService {
                 userId,
                 action: `HIGH_RISK_${featureKey}`,
                 category: 'SECURITY',
-                details: JSON.stringify({
+                metadata: JSON.stringify({
                     feature: feature.name,
                     riskLevel: feature.risk,
                     params: this.sanitizeParams(params),
@@ -342,14 +352,14 @@ class HighRiskService {
             });
 
             if (log) {
-                const details = JSON.parse(log.details || '{}');
-                details.status = status;
-                details.result = this.sanitizeParams(result);
-                details.completedAt = new Date().toISOString();
+                const meta = JSON.parse(log.metadata || '{}');
+                meta.status = status;
+                meta.result = this.sanitizeParams(result);
+                meta.completedAt = new Date().toISOString();
 
                 await prisma.activityLog.update({
                     where: { id: logId },
-                    data: { details: JSON.stringify(details) }
+                    data: { metadata: JSON.stringify(meta) }
                 });
             }
         } catch (error) {
@@ -372,7 +382,7 @@ class HighRiskService {
 
         return logs.map(log => ({
             ...log,
-            details: this.safeJSONParse(log.details, {})
+            details: this.safeJSONParse(log.metadata, {})
         }));
     }
 

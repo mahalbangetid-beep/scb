@@ -114,7 +114,7 @@ export default function ProviderGroups() {
     const fetchDevices = async () => {
         try {
             const res = await api.get('/devices')
-            setDevices(res.data?.data?.devices || res.data?.devices || res.data?.data || res.data || [])
+            setDevices(res.data?.devices || res.data || [])
         } catch (err) {
             console.error('Failed to fetch devices:', err)
         }
@@ -136,7 +136,7 @@ export default function ProviderGroups() {
             resetForm()
             fetchGroups()
         } catch (err) {
-            setError(err.response?.data?.message || err.message || 'Failed to save group')
+            setError(err.error?.message || err.message || 'Failed to save group')
         } finally {
             setFormLoading(false)
         }
@@ -174,7 +174,7 @@ export default function ProviderGroups() {
             await api.delete(`/provider-groups/${groupId}`)
             fetchGroups()
         } catch (err) {
-            setError(err.response?.data?.message || err.message || 'Failed to delete group')
+            setError(err.error?.message || err.message || 'Failed to delete group')
         }
     }
 
@@ -183,7 +183,7 @@ export default function ProviderGroups() {
             await api.patch(`/provider-groups/${groupId}/toggle`)
             fetchGroups()
         } catch (err) {
-            setError(err.response?.data?.message || err.message || 'Failed to toggle group')
+            setError(err.error?.message || err.message || 'Failed to toggle group')
         }
     }
 

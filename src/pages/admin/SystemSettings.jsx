@@ -71,9 +71,9 @@ export default function SystemSettings() {
             setLoading(true)
             const [configRes, billingRes] = await Promise.all([
                 api.get('/admin/config'),
-                api.get('/billing-mode').catch(() => ({ data: { data: { mode: 'CREDITS' } } }))
+                api.get('/billing-mode').catch(() => ({ data: { mode: 'CREDITS' } }))
             ])
-            const configData = configRes.data?.data || {}
+            const configData = configRes.data || {}
 
             const mapConfig = (category, key, defaultValue) => {
                 const items = configData[category] || []
@@ -104,7 +104,7 @@ export default function SystemSettings() {
             })
 
             // Set billing mode
-            setBillingMode(billingRes.data?.data?.mode || billingRes.data?.mode || 'CREDITS')
+            setBillingMode(billingRes.data?.mode || 'CREDITS')
         } catch (err) {
             console.warn('Failed to load config:', err.message)
         } finally {

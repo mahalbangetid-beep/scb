@@ -22,8 +22,8 @@ const Subscriptions = () => {
                 api.get('/subscriptions/summary'),
                 api.get('/subscriptions/fees')
             ]);
-            setSummary(summaryRes.data.data);
-            setFees(feesRes.data.data);
+            setSummary(summaryRes.data);
+            setFees(feesRes.data);
         } catch (err) {
             setError('Failed to load subscriptions');
         } finally {
@@ -39,7 +39,7 @@ const Subscriptions = () => {
             fetchData();
             setTimeout(() => setSuccess(''), 3000);
         } catch (err) {
-            setError(err.response?.data?.message || 'Failed to resume');
+            setError(err.error?.message || err.message || 'Failed to resume');
         } finally {
             setActionLoading(null);
         }
@@ -56,7 +56,7 @@ const Subscriptions = () => {
             fetchData();
             setTimeout(() => setSuccess(''), 3000);
         } catch (err) {
-            setError(err.response?.data?.message || 'Failed to cancel');
+            setError(err.error?.message || err.message || 'Failed to cancel');
         } finally {
             setActionLoading(null);
         }

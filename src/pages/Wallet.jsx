@@ -3,7 +3,7 @@ import {
     Wallet, CreditCard, ArrowUpRight, ArrowDownLeft,
     Gift, Clock, CheckCircle2, XCircle, AlertCircle,
     Plus, Loader2, X, RefreshCw, DollarSign, TrendingUp, Package, Star, QrCode, Copy,
-    MessageSquare, ArrowRightLeft, Zap
+    MessageSquare, ArrowRightLeft, Zap, Search
 } from 'lucide-react'
 import api from '../services/api'
 
@@ -39,8 +39,8 @@ export default function WalletPage() {
     const [convertAmount, setConvertAmount] = useState('')
     const [convertLoading, setConvertLoading] = useState(false)
 
-    // Billing mode state
     const [billingMode, setBillingMode] = useState('CREDITS') // CREDITS or DOLLARS
+    const [txSearchQuery, setTxSearchQuery] = useState('')
 
     useEffect(() => {
         fetchData()
@@ -56,16 +56,16 @@ export default function WalletPage() {
                 api.get('/wallet/payments?limit=10'),
                 api.get('/credit-packages').catch(() => ({ data: { data: [] } })),
                 api.get('/message-credits/balance').catch(() => ({ data: null })),
-                api.get('/billing-mode').catch(() => ({ data: { data: { mode: 'CREDITS' } } }))
+                api.get('/billing-mode').catch(() => ({ data: { mode: 'CREDITS' } }))
             ])
             // API returns { success, message, data } - extract .data
             setWalletInfo(walletRes.data || walletRes)
             setSummary(summaryRes.data || summaryRes)
             setTransactions(txRes.data || [])
             setPayments(payRes.data || [])
-            setCreditPackages(packagesRes.data?.data || packagesRes.data || [])
-            setMessageCreditInfo(creditRes.data?.data || creditRes.data || null)
-            setBillingMode(modeRes.data?.data?.mode || modeRes.data?.mode || 'CREDITS')
+            setCreditPackages(packagesRes.data || [])
+            setMessageCreditInfo(creditRes.data || null)
+            setBillingMode(modeRes.data?.mode || 'CREDITS')
         } catch (err) {
             setError(err.message || 'Failed to load wallet data')
         } finally {
@@ -96,9 +96,9 @@ export default function WalletPage() {
                 const res = await api.post('/payments/cryptomus/create', {
                     amount: parseFloat(topUpForm.amount)
                 })
-                if (res.data?.data?.paymentUrl) {
+                if (res.data?.paymentUrl) {
                     // Redirect to Cryptomus payment page
-                    window.location.href = res.data.data.paymentUrl
+                    window.location.href = res.data.paymentUrl
                 } else {
                     setError('Failed to initialize Cryptomus payment')
                 }
@@ -118,12 +118,12 @@ export default function WalletPage() {
                 const res = await api.post('/payments/esewa/create', {
                     amount: parseFloat(topUpForm.amount)
                 })
-                if (res.data?.data?.gatewayUrl && res.data?.data?.formData) {
+                if (res.data?.gatewayUrl && res.data?.formData) {
                     // Create form and submit to eSewa
                     const form = document.createElement('form')
                     form.method = 'POST'
-                    form.action = res.data.data.gatewayUrl
-                    Object.entries(res.data.data.formData).forEach(([key, value]) => {
+                    form.action = res.data.gatewayUrl
+                    Object.entries(res.data.formData).forEach(([key, value]) => {
                         const input = document.createElement('input')
                         input.type = 'hidden'
                         input.name = key
@@ -229,7 +229,7 @@ export default function WalletPage() {
                 setError(res.data?.message || 'Verification failed')
             }
         } catch (err) {
-            setError(err.response?.data?.message || err.error?.message || err.message || 'Verification failed')
+            setError(err.error?.message || err.message || 'Verification failed')
         } finally {
             setFormLoading(false)
         }
@@ -284,7 +284,7 @@ export default function WalletPage() {
             fetchData()
             window.dispatchEvent(new CustomEvent('user-data-updated'))
         } catch (err) {
-            setError(err.response?.data?.message || err.message || 'Failed to purchase package')
+            setError(err.error?.message || err.message || 'Failed to purchase package')
         } finally {
             setPurchaseLoading(null)
         }
@@ -308,13 +308,13 @@ export default function WalletPage() {
             const res = await api.post('/message-credits/convert', {
                 amount: parseFloat(convertAmount)
             })
-            setSuccess(`Converted $${convertAmount} to ${res.data?.data?.creditsReceived || res.data?.creditsReceived} message credits!`)
+            setSuccess(`Converted $${convertAmount} to ${res.data?.creditsReceived} message credits!`)
             setShowConvertModal(false)
             setConvertAmount('')
             fetchData()
             window.dispatchEvent(new CustomEvent('user-data-updated'))
         } catch (err) {
-            setError(err.response?.data?.message || err.message || 'Failed to convert')
+            setError(err.error?.message || err.message || 'Failed to convert')
         } finally {
             setConvertLoading(false)
         }
@@ -364,6 +364,25 @@ export default function WalletPage() {
                     <p className="page-subtitle">Manage your credit balance and payments</p>
                 </div>
                 <div className="header-actions">
+                    <div style={{ position: 'relative' }}>
+                        <Search size={16} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none' }} />
+                        <input
+                            type="text"
+                            placeholder="Search transactions..."
+                            value={txSearchQuery}
+                            onChange={(e) => setTxSearchQuery(e.target.value)}
+                            style={{
+                                padding: '0.5rem 0.75rem 0.5rem 34px',
+                                borderRadius: 'var(--radius-md, 8px)',
+                                border: '1px solid var(--border-color)',
+                                background: 'var(--bg-secondary)',
+                                color: 'var(--text-primary)',
+                                fontSize: '0.875rem',
+                                width: '220px',
+                                outline: 'none'
+                            }}
+                        />
+                    </div>
                     <button className="btn btn-secondary" onClick={fetchData}>
                         <RefreshCw size={18} />
                         Refresh
@@ -601,22 +620,29 @@ export default function WalletPage() {
                             </div>
                         ) : (
                             <div className="transactions-list">
-                                {transactions.map(tx => (
-                                    <div key={tx.id} className="transaction-item">
-                                        <div className="tx-icon">
-                                            {getTransactionIcon(tx.type)}
+                                {transactions
+                                    .filter(tx => {
+                                        if (!txSearchQuery.trim()) return true;
+                                        const q = txSearchQuery.toLowerCase();
+                                        return (tx.description || '').toLowerCase().includes(q) ||
+                                            (tx.type || '').toLowerCase().includes(q);
+                                    })
+                                    .map(tx => (
+                                        <div key={tx.id} className="transaction-item">
+                                            <div className="tx-icon">
+                                                {getTransactionIcon(tx.type)}
+                                            </div>
+                                            <div className="tx-info">
+                                                <span className="tx-description">{tx.description}</span>
+                                                <span className="tx-date">
+                                                    {new Date(tx.createdAt).toLocaleString()}
+                                                </span>
+                                            </div>
+                                            <div className={`tx-amount ${tx.type === 'CREDIT' ? 'credit' : 'debit'}`}>
+                                                {tx.type === 'CREDIT' ? '+' : '-'}{formatCurrency(tx.amount)}
+                                            </div>
                                         </div>
-                                        <div className="tx-info">
-                                            <span className="tx-description">{tx.description}</span>
-                                            <span className="tx-date">
-                                                {new Date(tx.createdAt).toLocaleString()}
-                                            </span>
-                                        </div>
-                                        <div className={`tx-amount ${tx.type === 'CREDIT' ? 'credit' : 'debit'}`}>
-                                            {tx.type === 'CREDIT' ? '+' : '-'}{formatCurrency(tx.amount)}
-                                        </div>
-                                    </div>
-                                ))}
+                                    ))}
                             </div>
                         )}
                     </div>
@@ -634,21 +660,29 @@ export default function WalletPage() {
                             </div>
                         ) : (
                             <div className="payments-list">
-                                {payments.map(payment => (
-                                    <div key={payment.id} className="payment-item">
-                                        <div className="payment-icon">
-                                            <CreditCard size={20} />
+                                {payments
+                                    .filter(p => {
+                                        if (!txSearchQuery.trim()) return true;
+                                        const q = txSearchQuery.toLowerCase();
+                                        return (p.reference || '').toLowerCase().includes(q) ||
+                                            (p.method || '').toLowerCase().includes(q) ||
+                                            (p.status || '').toLowerCase().includes(q);
+                                    })
+                                    .map(payment => (
+                                        <div key={payment.id} className="payment-item">
+                                            <div className="payment-icon">
+                                                <CreditCard size={20} />
+                                            </div>
+                                            <div className="payment-info">
+                                                <span className="payment-ref">{payment.reference}</span>
+                                                <span className="payment-method">{payment.method}</span>
+                                            </div>
+                                            <div className="payment-amount">{formatCurrency(payment.amount)}</div>
+                                            <div className="payment-status">
+                                                {getPaymentStatusBadge(payment.status)}
+                                            </div>
                                         </div>
-                                        <div className="payment-info">
-                                            <span className="payment-ref">{payment.reference}</span>
-                                            <span className="payment-method">{payment.method}</span>
-                                        </div>
-                                        <div className="payment-amount">{formatCurrency(payment.amount)}</div>
-                                        <div className="payment-status">
-                                            {getPaymentStatusBadge(payment.status)}
-                                        </div>
-                                    </div>
-                                ))}
+                                    ))}
                             </div>
                         )}
                     </div>

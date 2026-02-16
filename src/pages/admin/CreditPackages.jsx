@@ -33,7 +33,7 @@ const CreditPackages = () => {
         try {
             setLoading(true);
             const res = await api.get('/credit-packages/admin/all');
-            setPackages(res.data.data || []);
+            setPackages(res.data || []);
         } catch (err) {
             setError('Failed to load packages');
         } finally {
@@ -68,7 +68,7 @@ const CreditPackages = () => {
             fetchPackages();
             setTimeout(() => setSuccess(''), 3000);
         } catch (err) {
-            setError(err.response?.data?.message || 'Failed to save');
+            setError(err.error?.message || err.message || 'Failed to save');
         }
     };
 
@@ -400,7 +400,7 @@ const CreditPackages = () => {
                 </div>
             )}
 
-            <style jsx>{`
+            <style>{`
         .packages-grid {
           display: grid;
           grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));

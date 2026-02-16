@@ -23,7 +23,8 @@ import {
     Bot,
     CreditCard,
     ChevronRight,
-    Package
+    Package,
+    Search
 } from 'lucide-react'
 import api from '../services/api'
 import { formatDistanceToNow } from 'date-fns'
@@ -77,6 +78,7 @@ export default function Dashboard() {
     const [loading, setLoading] = useState(true)
     const [refreshing, setRefreshing] = useState(false)
     const [lastRefresh, setLastRefresh] = useState(null)
+    const [activitySearch, setActivitySearch] = useState('')
 
     const fetchData = useCallback(async () => {
         try {
@@ -440,9 +442,30 @@ export default function Dashboard() {
                             <h3 className="card-title">Recent Bot Activity</h3>
                             <p className="card-subtitle">Latest bot command activity with order details</p>
                         </div>
-                        <button className="btn btn-ghost btn-sm" onClick={() => navigate('/orders')}>
-                            View All Orders <ChevronRight size={14} />
-                        </button>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--spacing-sm)' }}>
+                            <div style={{ position: 'relative' }}>
+                                <Search size={14} style={{ position: 'absolute', left: '8px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none' }} />
+                                <input
+                                    type="text"
+                                    placeholder="Search activity..."
+                                    value={activitySearch}
+                                    onChange={(e) => setActivitySearch(e.target.value)}
+                                    style={{
+                                        padding: '0.375rem 0.5rem 0.375rem 28px',
+                                        borderRadius: 'var(--radius-md)',
+                                        border: '1px solid var(--border-color)',
+                                        background: 'var(--bg-secondary)',
+                                        color: 'var(--text-primary)',
+                                        fontSize: '0.75rem',
+                                        width: '160px',
+                                        outline: 'none'
+                                    }}
+                                />
+                            </div>
+                            <button className="btn btn-ghost btn-sm" onClick={() => navigate('/orders')}>
+                                View All Orders <ChevronRight size={14} />
+                            </button>
+                        </div>
                     </div>
                     <div className="table-container" style={{ border: 'none' }}>
                         <table className="table">
@@ -457,38 +480,48 @@ export default function Dashboard() {
                                 </tr>
                             </thead>
                             <tbody>
-                                {botActivity.length > 0 ? botActivity.map((activity) => (
-                                    <tr key={activity.id}>
-                                        <td style={{ fontWeight: 600, fontFamily: 'monospace', fontSize: '0.8rem' }}>
-                                            #{activity.orderId}
-                                        </td>
-                                        <td>
-                                            <span className="badge badge-neutral" style={{ fontSize: '0.7rem' }}>
-                                                <Package size={10} /> {activity.panelName}
-                                            </span>
-                                        </td>
-                                        <td style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-                                            {activity.providerAlias}
-                                        </td>
-                                        <td>
-                                            <span style={{
-                                                fontSize: '0.75rem',
-                                                fontWeight: 600,
-                                                textTransform: 'uppercase',
-                                                color: activity.command === 'refill' ? 'var(--info)' :
-                                                    activity.command === 'cancel' ? 'var(--error)' :
-                                                        activity.command === 'status' ? 'var(--warning)' :
-                                                            'var(--primary-500)'
-                                            }}>
-                                                {activity.command}
-                                            </span>
-                                        </td>
-                                        <td>{getCommandStatusBadge(activity.status)}</td>
-                                        <td style={{ color: 'var(--text-muted)', fontSize: '0.7rem', whiteSpace: 'nowrap' }}>
-                                            {formatDistanceToNow(new Date(activity.createdAt), { addSuffix: true })}
-                                        </td>
-                                    </tr>
-                                )) : (
+                                {botActivity.length > 0 ? botActivity
+                                    .filter(activity => {
+                                        if (!activitySearch.trim()) return true;
+                                        const q = activitySearch.toLowerCase();
+                                        return (activity.orderId || '').toString().toLowerCase().includes(q) ||
+                                            (activity.panelName || '').toLowerCase().includes(q) ||
+                                            (activity.providerAlias || '').toLowerCase().includes(q) ||
+                                            (activity.command || '').toLowerCase().includes(q) ||
+                                            (activity.status || '').toLowerCase().includes(q);
+                                    })
+                                    .map((activity) => (
+                                        <tr key={activity.id}>
+                                            <td style={{ fontWeight: 600, fontFamily: 'monospace', fontSize: '0.8rem' }}>
+                                                #{activity.orderId}
+                                            </td>
+                                            <td>
+                                                <span className="badge badge-neutral" style={{ fontSize: '0.7rem' }}>
+                                                    <Package size={10} /> {activity.panelName}
+                                                </span>
+                                            </td>
+                                            <td style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                                                {activity.providerAlias}
+                                            </td>
+                                            <td>
+                                                <span style={{
+                                                    fontSize: '0.75rem',
+                                                    fontWeight: 600,
+                                                    textTransform: 'uppercase',
+                                                    color: activity.command === 'refill' ? 'var(--info)' :
+                                                        activity.command === 'cancel' ? 'var(--error)' :
+                                                            activity.command === 'status' ? 'var(--warning)' :
+                                                                'var(--primary-500)'
+                                                }}>
+                                                    {activity.command}
+                                                </span>
+                                            </td>
+                                            <td>{getCommandStatusBadge(activity.status)}</td>
+                                            <td style={{ color: 'var(--text-muted)', fontSize: '0.7rem', whiteSpace: 'nowrap' }}>
+                                                {formatDistanceToNow(new Date(activity.createdAt), { addSuffix: true })}
+                                            </td>
+                                        </tr>
+                                    )) : (
                                     <tr>
                                         <td colSpan="6" style={{ textAlign: 'center', padding: 'var(--spacing-xl)', color: 'var(--text-muted)' }}>
                                             <Bot size={32} style={{ marginBottom: '8px', opacity: 0.3 }} /><br />

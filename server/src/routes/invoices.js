@@ -13,7 +13,7 @@ const { authenticate, requireAdmin } = require('../middleware/auth');
 const invoiceService = require('../services/invoiceService');
 
 // GET /api/invoices — list user invoices
-router.get('/', authenticate, async (req, res) => {
+router.get('/', authenticate, async (req, res, next) => {
     try {
         const { page = 1, limit = 20 } = req.query;
         const result = await invoiceService.getUserInvoices(req.user.id, {
@@ -33,12 +33,12 @@ router.get('/', authenticate, async (req, res) => {
         });
     } catch (error) {
         console.error('[Invoices] List error:', error);
-        res.status(500).json({ success: false, error: error.message });
+        next(error);
     }
 });
 
 // GET /api/invoices/admin/all — admin: list all invoices
-router.get('/admin/all', authenticate, requireAdmin, async (req, res) => {
+router.get('/admin/all', authenticate, requireAdmin, async (req, res, next) => {
     try {
         const { page = 1, limit = 20, userId, status } = req.query;
         const result = await invoiceService.getAllInvoices({
@@ -60,23 +60,23 @@ router.get('/admin/all', authenticate, requireAdmin, async (req, res) => {
         });
     } catch (error) {
         console.error('[Invoices] Admin list error:', error);
-        res.status(500).json({ success: false, error: error.message });
+        next(error);
     }
 });
 
 // GET /api/invoices/admin/stats — admin: invoice statistics
-router.get('/admin/stats', authenticate, requireAdmin, async (req, res) => {
+router.get('/admin/stats', authenticate, requireAdmin, async (req, res, next) => {
     try {
         const stats = await invoiceService.getStats();
         res.json({ success: true, data: stats });
     } catch (error) {
         console.error('[Invoices] Stats error:', error);
-        res.status(500).json({ success: false, error: error.message });
+        next(error);
     }
 });
 
 // GET /api/invoices/:id — get single invoice
-router.get('/:id', authenticate, async (req, res) => {
+router.get('/:id', authenticate, async (req, res, next) => {
     try {
         const isAdmin = req.user.role === 'MASTER_ADMIN' || req.user.role === 'ADMIN';
         const invoice = await invoiceService.getInvoice(
@@ -85,13 +85,13 @@ router.get('/:id', authenticate, async (req, res) => {
         );
 
         if (!invoice) {
-            return res.status(404).json({ success: false, error: 'Invoice not found' });
+            return res.status(404).json({ success: false, error: { message: 'Invoice not found' } });
         }
 
         res.json({ success: true, data: invoice });
     } catch (error) {
         console.error('[Invoices] Get error:', error);
-        res.status(500).json({ success: false, error: error.message });
+        next(error);
     }
 });
 

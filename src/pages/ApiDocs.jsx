@@ -11,7 +11,8 @@ import {
     Users,
     Webhook,
     Globe,
-    Play
+    Play,
+    Search
 } from 'lucide-react'
 
 const endpoints = [
@@ -127,6 +128,19 @@ export default function ApiDocs() {
     const [expandedCategories, setExpandedCategories] = useState(['Messages'])
     const [copiedCode, setCopiedCode] = useState(null)
     const [activeExample, setActiveExample] = useState('sendMessage')
+    const [searchQuery, setSearchQuery] = useState('')
+
+    // Filter endpoints based on search
+    const filteredEndpoints = searchQuery.trim()
+        ? endpoints.map(cat => {
+            const filteredItems = cat.items.filter(item =>
+                item.path.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                item.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                item.method.toLowerCase().includes(searchQuery.toLowerCase())
+            )
+            return filteredItems.length > 0 ? { ...cat, items: filteredItems } : null
+        }).filter(Boolean)
+        : endpoints
 
     const toggleCategory = (category) => {
         setExpandedCategories(prev =>
@@ -159,7 +173,26 @@ export default function ApiDocs() {
                     <h1 className="page-title">API Documentation</h1>
                     <p className="page-subtitle">Complete reference for integrating with the WhatsApp Gateway API</p>
                 </div>
-                <div style={{ display: 'flex', gap: 'var(--spacing-md)' }}>
+                <div style={{ display: 'flex', gap: 'var(--spacing-md)', alignItems: 'center' }}>
+                    <div style={{ position: 'relative' }}>
+                        <Search size={16} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+                        <input
+                            type="text"
+                            placeholder="Search endpoints..."
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            style={{
+                                padding: '0.5rem 0.75rem 0.5rem 34px',
+                                borderRadius: 'var(--radius-md)',
+                                border: '1px solid var(--border-color)',
+                                background: 'var(--bg-secondary)',
+                                color: 'var(--text-primary)',
+                                fontSize: '0.875rem',
+                                width: '220px',
+                                outline: 'none'
+                            }}
+                        />
+                    </div>
                     <button className="btn btn-secondary">
                         <Globe size={16} />
                         OpenAPI Spec
@@ -232,7 +265,7 @@ export default function ApiDocs() {
                     </div>
 
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-sm)' }}>
-                        {endpoints.map((category) => (
+                        {filteredEndpoints.map((category) => (
                             <div key={category.category} style={{
                                 border: '1px solid var(--border-color)',
                                 borderRadius: 'var(--radius-md)',
@@ -254,7 +287,7 @@ export default function ApiDocs() {
                                         fontWeight: 500
                                     }}
                                 >
-                                    {expandedCategories.includes(category.category)
+                                    {(searchQuery.trim() || expandedCategories.includes(category.category))
                                         ? <ChevronDown size={16} />
                                         : <ChevronRight size={16} />
                                     }
@@ -265,7 +298,7 @@ export default function ApiDocs() {
                                     </span>
                                 </button>
 
-                                {expandedCategories.includes(category.category) && (
+                                {(searchQuery.trim() || expandedCategories.includes(category.category)) && (
                                     <div style={{ padding: 'var(--spacing-sm)' }}>
                                         {category.items.map((item, idx) => (
                                             <div

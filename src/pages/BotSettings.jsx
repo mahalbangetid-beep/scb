@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Settings, Shield, Zap, MessageSquare, AlertTriangle, RotateCcw, Save, ChevronDown, ChevronRight, Bell, Package, Users } from 'lucide-react';
+import { Settings, Shield, Zap, MessageSquare, AlertTriangle, RotateCcw, Save, ChevronDown, ChevronRight, Bell, Package, Users, Search } from 'lucide-react';
 import api from '../services/api';
 
 const BotSettings = () => {
@@ -8,6 +8,7 @@ const BotSettings = () => {
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
+    const [searchQuery, setSearchQuery] = useState('');
     const [expandedSections, setExpandedSections] = useState({
         commands: true,
         highRisk: false,
@@ -25,7 +26,7 @@ const BotSettings = () => {
         try {
             setLoading(true);
             const response = await api.get('/bot-features');
-            setToggles(response.data.data);
+            setToggles(response.data);
         } catch (err) {
             setError('Failed to load bot settings');
             console.error(err);
@@ -45,12 +46,12 @@ const BotSettings = () => {
             setSuccess('');
 
             const response = await api.put('/bot-features', toggles);
-            setToggles(response.data.data);
+            setToggles(response.data);
             setSuccess('Bot settings saved successfully!');
 
             setTimeout(() => setSuccess(''), 3000);
         } catch (err) {
-            setError(err.response?.data?.message || 'Failed to save settings');
+            setError(err.error?.message || err.message || 'Failed to save settings');
         } finally {
             setSaving(false);
         }
@@ -64,7 +65,7 @@ const BotSettings = () => {
         try {
             setSaving(true);
             const response = await api.post('/bot-features/reset');
-            setToggles(response.data.data);
+            setToggles(response.data);
             setSuccess('Settings reset to defaults!');
             setTimeout(() => setSuccess(''), 3000);
         } catch (err) {
@@ -93,76 +94,94 @@ const BotSettings = () => {
         </label>
     );
 
-    const Section = ({ id, title, icon: Icon, children, description, danger = false }) => (
-        <div className={`settings-section ${danger ? 'danger' : ''}`}>
-            <div
-                className="section-header"
-                onClick={() => toggleSection(id)}
-            >
-                <div className="section-title">
-                    <Icon size={20} />
-                    <span>{title}</span>
-                    {danger && <span className="badge badge-danger">High Risk</span>}
+    const Section = ({ id, title, icon: Icon, children, description, danger = false }) => {
+        const isExpanded = searchQuery.trim() ? true : expandedSections[id];
+        return (
+            <div className={`settings-section ${danger ? 'danger' : ''}`}>
+                <div
+                    className="section-header"
+                    onClick={() => toggleSection(id)}
+                >
+                    <div className="section-title">
+                        <Icon size={20} />
+                        <span>{title}</span>
+                        {danger && <span className="badge badge-danger">High Risk</span>}
+                    </div>
+                    {isExpanded ? <ChevronDown size={20} /> : <ChevronRight size={20} />}
                 </div>
-                {expandedSections[id] ? <ChevronDown size={20} /> : <ChevronRight size={20} />}
+                {description && isExpanded && (
+                    <p className="section-description">{description}</p>
+                )}
+                {isExpanded && (
+                    <div className="section-content">
+                        {children}
+                    </div>
+                )}
             </div>
-            {description && expandedSections[id] && (
-                <p className="section-description">{description}</p>
-            )}
-            {expandedSections[id] && (
-                <div className="section-content">
-                    {children}
+        );
+    };
+
+    const matchesSearch = (label, description) => {
+        if (!searchQuery.trim()) return true;
+        const q = searchQuery.toLowerCase();
+        return (label || '').toLowerCase().includes(q) || (description || '').toLowerCase().includes(q);
+    };
+
+    const ToggleRow = ({ label, description, toggleKey, danger = false }) => {
+        if (!matchesSearch(label, description)) return null;
+        return (
+            <div className={`toggle-row ${danger ? 'danger-row' : ''}`}>
+                <div className="toggle-info">
+                    <span className="toggle-label">{label}</span>
+                    {description && <span className="toggle-description">{description}</span>}
                 </div>
-            )}
-        </div>
-    );
-
-    const ToggleRow = ({ label, description, toggleKey, danger = false }) => (
-        <div className={`toggle-row ${danger ? 'danger-row' : ''}`}>
-            <div className="toggle-info">
-                <span className="toggle-label">{label}</span>
-                {description && <span className="toggle-description">{description}</span>}
+                <Toggle
+                    checked={toggles?.[toggleKey] || false}
+                    onChange={(value) => handleToggle(toggleKey, value)}
+                />
             </div>
-            <Toggle
-                checked={toggles?.[toggleKey] || false}
-                onChange={(value) => handleToggle(toggleKey, value)}
-            />
-        </div>
-    );
+        );
+    };
 
-    const SelectRow = ({ label, description, selectKey, options }) => (
-        <div className="toggle-row">
-            <div className="toggle-info">
-                <span className="toggle-label">{label}</span>
-                {description && <span className="toggle-description">{description}</span>}
+    const SelectRow = ({ label, description, selectKey, options }) => {
+        if (!matchesSearch(label, description)) return null;
+        return (
+            <div className="toggle-row">
+                <div className="toggle-info">
+                    <span className="toggle-label">{label}</span>
+                    {description && <span className="toggle-description">{description}</span>}
+                </div>
+                <select
+                    className="form-select compact"
+                    value={toggles?.[selectKey] || ''}
+                    onChange={(e) => handleToggle(selectKey, e.target.value)}
+                >
+                    {options.map(opt => (
+                        <option key={opt.value} value={opt.value}>{opt.label}</option>
+                    ))}
+                </select>
             </div>
-            <select
-                className="form-select compact"
-                value={toggles?.[selectKey] || ''}
-                onChange={(e) => handleToggle(selectKey, e.target.value)}
-            >
-                {options.map(opt => (
-                    <option key={opt.value} value={opt.value}>{opt.label}</option>
-                ))}
-            </select>
-        </div>
-    );
+        );
+    };
 
-    const InputRow = ({ label, description, inputKey, type = 'number', placeholder }) => (
-        <div className="toggle-row">
-            <div className="toggle-info">
-                <span className="toggle-label">{label}</span>
-                {description && <span className="toggle-description">{description}</span>}
+    const InputRow = ({ label, description, inputKey, type = 'number', placeholder }) => {
+        if (!matchesSearch(label, description)) return null;
+        return (
+            <div className="toggle-row">
+                <div className="toggle-info">
+                    <span className="toggle-label">{label}</span>
+                    {description && <span className="toggle-description">{description}</span>}
+                </div>
+                <input
+                    type={type}
+                    className="form-input compact"
+                    value={toggles?.[inputKey] || ''}
+                    onChange={(e) => handleToggle(inputKey, type === 'number' ? parseInt(e.target.value) : e.target.value)}
+                    placeholder={placeholder}
+                />
             </div>
-            <input
-                type={type}
-                className="form-input compact"
-                value={toggles?.[inputKey] || ''}
-                onChange={(e) => handleToggle(inputKey, type === 'number' ? parseInt(e.target.value) : e.target.value)}
-                placeholder={placeholder}
-            />
-        </div>
-    );
+        );
+    };
 
     if (loading) {
         return (
@@ -189,6 +208,25 @@ const BotSettings = () => {
                 </div>
 
                 <div className="header-actions">
+                    <div style={{ position: 'relative' }}>
+                        <Search size={16} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none' }} />
+                        <input
+                            type="text"
+                            placeholder="Search settings..."
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            style={{
+                                padding: '0.5rem 0.75rem 0.5rem 34px',
+                                borderRadius: '8px',
+                                border: '1px solid var(--border-color)',
+                                background: 'var(--bg-secondary)',
+                                color: 'var(--text-primary)',
+                                fontSize: '0.875rem',
+                                width: '200px',
+                                outline: 'none'
+                            }}
+                        />
+                    </div>
                     <button
                         className="btn btn-secondary"
                         onClick={handleReset}

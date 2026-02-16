@@ -3,7 +3,7 @@ import {
     Package, Search, Filter, RefreshCw, RotateCcw, XCircle,
     Zap, CheckCircle2, Clock, AlertCircle, Loader2, X,
     ChevronDown, ExternalLink, Copy, ArrowUpDown, Users, Hash, UserCheck,
-    FileText, Save, Link2, ClipboardCopy
+    FileText, Save, Link2, ClipboardCopy, Send
 } from 'lucide-react'
 import api from '../services/api'
 
@@ -137,6 +137,20 @@ export default function Orders() {
             fetchOrders()
         } catch (err) {
             setError(err.error?.message || err.message || 'Speed-up failed')
+        } finally {
+            setActionLoading(null)
+        }
+    }
+
+    const handleReRequest = async (orderId) => {
+        if (!confirm('Re-request will re-forward this order to the provider group. Continue?')) return
+        setActionLoading(orderId)
+        try {
+            const res = await api.post(`/orders/${orderId}/re-request`)
+            setSuccessMsg(res.data?.message || `Re-request sent successfully to ${res.data?.forwardedTo || 0} destination(s)`)
+            fetchOrders()
+        } catch (err) {
+            setError(err.error?.message || err.message || 'Re-request failed')
         } finally {
             setActionLoading(null)
         }
@@ -604,8 +618,16 @@ export default function Orders() {
                                                 <RotateCcw size={14} />
                                             </button>
                                         )}
-                                        {['PENDING', 'IN_PROGRESS', 'PROCESSING'].includes(order.status) && (
+                                        {['PENDING', 'IN_PROGRESS', 'PROCESSING', 'PARTIAL'].includes(order.status) && (
                                             <>
+                                                <button
+                                                    className="btn btn-ghost btn-sm"
+                                                    onClick={() => handleReRequest(order.id)}
+                                                    disabled={actionLoading === order.id}
+                                                    title="Re-request (re-forward to provider)"
+                                                >
+                                                    <Send size={14} />
+                                                </button>
                                                 <button
                                                     className="btn btn-ghost btn-sm"
                                                     onClick={() => handleSpeedUp(order.id)}
@@ -864,6 +886,31 @@ export default function Orders() {
                             <button className="btn btn-secondary" onClick={() => setShowDetailModal(null)}>
                                 Close
                             </button>
+                            {['PENDING', 'IN_PROGRESS', 'PROCESSING', 'PARTIAL'].includes(showDetailModal.status) && (
+                                <button
+                                    className="btn btn-secondary"
+                                    onClick={() => {
+                                        if (confirm('Re-request will re-forward this order to the provider group. Continue?')) {
+                                            const orderId = showDetailModal.id
+                                            setShowDetailModal(null)
+                                            setActionLoading(orderId)
+                                            api.post(`/orders/${orderId}/re-request`)
+                                                .then(res => {
+                                                    setSuccessMsg(res.data?.message || `Re-request sent successfully`)
+                                                    fetchOrders()
+                                                })
+                                                .catch(err => {
+                                                    setError(err.error?.message || err.message || 'Re-request failed')
+                                                })
+                                                .finally(() => setActionLoading(null))
+                                        }
+                                    }}
+                                    title="Re-forward this order to the provider group"
+                                >
+                                    <Send size={16} />
+                                    Re-request
+                                </button>
+                            )}
                             {showDetailModal.status !== 'COMPLETED' && showDetailModal.status !== 'CANCELLED' && (
                                 <button
                                     className="btn btn-primary"

@@ -28,8 +28,8 @@ const SystemBots = () => {
                 api.get('/system-bots'),
                 api.get('/system-bots/my-subscriptions')
             ]);
-            setBots(botsRes.data.data || []);
-            setMySubs(subsRes.data.data || []);
+            setBots(botsRes.data || []);
+            setMySubs(subsRes.data || []);
         } catch (err) {
             setError('Failed to load system bots');
         } finally {
@@ -46,7 +46,7 @@ const SystemBots = () => {
             fetchData();
             setTimeout(() => setSuccess(''), 5000);
         } catch (err) {
-            setError(err.response?.data?.message || 'Failed to subscribe');
+            setError(err.error?.message || err.message || 'Failed to subscribe');
             setTimeout(() => setError(''), 5000);
         } finally {
             setActionLoading(null);
@@ -62,7 +62,7 @@ const SystemBots = () => {
             fetchData();
             setTimeout(() => setSuccess(''), 5000);
         } catch (err) {
-            setError(err.response?.data?.message || 'Failed to unsubscribe');
+            setError(err.error?.message || err.message || 'Failed to unsubscribe');
             setTimeout(() => setError(''), 5000);
         } finally {
             setActionLoading(null);
@@ -78,7 +78,7 @@ const SystemBots = () => {
             fetchData();
             setTimeout(() => setSuccess(''), 5000);
         } catch (err) {
-            setError(err.response?.data?.message || 'Failed to switch');
+            setError(err.error?.message || err.message || 'Failed to switch');
             setTimeout(() => setError(''), 5000);
         } finally {
             setActionLoading(null);

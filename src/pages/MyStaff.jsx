@@ -7,16 +7,21 @@ import api from '../services/api'
 import { useTheme } from '../contexts/ThemeContext'
 
 const PERMISSIONS = [
-    { key: 'order_view', label: 'View Orders', description: 'Can view all orders' },
-    { key: 'order_manage', label: 'Manage Orders', description: 'Can refill/cancel orders' },
-    { key: 'payment_view', label: 'View Payments', description: 'Can view payment requests' },
-    { key: 'payment_approve', label: 'Approve Payments', description: 'Can approve/reject payments' },
-    { key: 'device_manage', label: 'Manage Devices', description: 'Can manage WhatsApp devices' },
-    { key: 'panel_manage', label: 'Manage Panels', description: 'Can manage SMM panels' },
-    { key: 'reports_view', label: 'View Reports', description: 'Can view system reports' },
-    { key: 'support', label: 'Support / Tickets', description: 'Can view and respond to all tickets' },
-    { key: 'user_view', label: 'View User Mappings', description: 'Can view user mappings' },
-    { key: 'voucher_manage', label: 'Manage Invoices', description: 'Can view invoices' }
+    { key: 'dashboard_view', label: 'View Dashboard', description: 'Can view dashboard overview & stats', category: 'General' },
+    { key: 'order_view', label: 'View Orders', description: 'Can view all orders', category: 'Orders' },
+    { key: 'order_manage', label: 'Manage Orders', description: 'Can refill/cancel orders', category: 'Orders' },
+    { key: 'payment_view', label: 'View Payments', description: 'Can view payment requests', category: 'Finance' },
+    { key: 'payment_approve', label: 'Approve Payments', description: 'Can approve/reject payments', category: 'Finance' },
+    { key: 'device_manage', label: 'Manage Devices', description: 'Can manage WhatsApp devices', category: 'Channels' },
+    { key: 'panel_manage', label: 'Manage Panels', description: 'Can manage SMM panels', category: 'SMM' },
+    { key: 'reports_view', label: 'View Reports', description: 'Can view system reports', category: 'Finance' },
+    { key: 'support', label: 'Support / Tickets', description: 'Can view and respond to tickets', category: 'Support' },
+    { key: 'user_view', label: 'View User Mappings', description: 'Can view user mappings', category: 'SMM' },
+    { key: 'voucher_manage', label: 'Manage Invoices', description: 'Can view invoices', category: 'Finance' },
+    { key: 'contacts_view', label: 'View Contacts', description: 'Can view and manage contacts', category: 'Channels' },
+    { key: 'broadcast_manage', label: 'Manage Broadcast', description: 'Can create and send broadcasts', category: 'Marketing' },
+    { key: 'bot_settings', label: 'Bot Settings', description: 'Can view and modify bot feature settings', category: 'Automation' },
+    { key: 'keyword_view', label: 'View Keywords', description: 'Can view and manage keyword responses', category: 'Automation' },
 ]
 
 export default function MyStaff() {
@@ -407,33 +412,59 @@ export default function MyStaff() {
                                         </div>
                                     </div>
 
-                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.375rem' }}>
-                                        {PERMISSIONS.map(perm => (
-                                            <label
-                                                key={perm.key}
-                                                style={{
-                                                    display: 'flex',
-                                                    alignItems: 'center',
-                                                    gap: '0.5rem',
-                                                    padding: '0.5rem 0.75rem',
-                                                    borderRadius: '6px',
-                                                    cursor: 'pointer',
-                                                    background: formData.permissions.includes(perm.key) ? 'var(--primary-light, rgba(59, 130, 246, 0.1))' : 'var(--bg-secondary)',
-                                                    border: `1px solid ${formData.permissions.includes(perm.key) ? 'var(--primary)' : 'var(--border-color)'}`,
-                                                    transition: 'all 0.15s ease'
-                                                }}
-                                            >
-                                                <input
-                                                    type="checkbox"
-                                                    checked={formData.permissions.includes(perm.key)}
-                                                    onChange={() => togglePermission(perm.key)}
-                                                    style={{ accentColor: 'var(--primary)' }}
-                                                />
-                                                <div style={{ flex: 1 }}>
-                                                    <div style={{ fontSize: '0.8rem', fontWeight: 500 }}>{perm.label}</div>
-                                                    <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>{perm.description}</div>
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                                        {Object.entries(
+                                            PERMISSIONS.reduce((acc, perm) => {
+                                                const cat = perm.category || 'Other'
+                                                if (!acc[cat]) acc[cat] = []
+                                                acc[cat].push(perm)
+                                                return acc
+                                            }, {})
+                                        ).map(([category, perms]) => (
+                                            <div key={category}>
+                                                <div style={{
+                                                    fontSize: '0.7rem',
+                                                    fontWeight: 600,
+                                                    textTransform: 'uppercase',
+                                                    letterSpacing: '0.05em',
+                                                    color: 'var(--text-secondary)',
+                                                    marginBottom: '0.35rem',
+                                                    padding: '0.25rem 0.5rem',
+                                                    background: 'var(--bg-tertiary, var(--bg-secondary))',
+                                                    borderRadius: '4px'
+                                                }}>
+                                                    {category}
                                                 </div>
-                                            </label>
+                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                                                    {perms.map(perm => (
+                                                        <label
+                                                            key={perm.key}
+                                                            style={{
+                                                                display: 'flex',
+                                                                alignItems: 'center',
+                                                                gap: '0.5rem',
+                                                                padding: '0.5rem 0.75rem',
+                                                                borderRadius: '6px',
+                                                                cursor: 'pointer',
+                                                                background: formData.permissions.includes(perm.key) ? 'var(--primary-light, rgba(59, 130, 246, 0.1))' : 'var(--bg-secondary)',
+                                                                border: `1px solid ${formData.permissions.includes(perm.key) ? 'var(--primary)' : 'var(--border-color)'}`,
+                                                                transition: 'all 0.15s ease'
+                                                            }}
+                                                        >
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={formData.permissions.includes(perm.key)}
+                                                                onChange={() => togglePermission(perm.key)}
+                                                                style={{ accentColor: 'var(--primary)' }}
+                                                            />
+                                                            <div style={{ flex: 1 }}>
+                                                                <div style={{ fontSize: '0.8rem', fontWeight: 500 }}>{perm.label}</div>
+                                                                <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>{perm.description}</div>
+                                                            </div>
+                                                        </label>
+                                                    ))}
+                                                </div>
+                                            </div>
                                         ))}
                                     </div>
                                 </div>

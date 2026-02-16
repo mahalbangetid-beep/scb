@@ -68,8 +68,8 @@ const KeywordResponses = () => {
                 api.get('/keyword-responses'),
                 api.get('/keyword-responses/stats')
             ]);
-            const responseData = responsesRes.data?.data || responsesRes.data || [];
-            const statsData = statsRes.data?.data || statsRes.data;
+            const responseData = responsesRes.data || [];
+            const statsData = statsRes.data;
             setResponses(Array.isArray(responseData) ? responseData : []);
             setStats(statsData);
             // Clear selection on refresh
@@ -160,7 +160,7 @@ const KeywordResponses = () => {
             fetchData();
             setTimeout(() => setSuccess(''), 3000);
         } catch (err) {
-            setError(err.response?.data?.message || 'Failed to save');
+            setError(err.error?.message || err.message || 'Failed to save');
         }
     };
 
@@ -206,7 +206,7 @@ const KeywordResponses = () => {
         if (!testMessage.trim()) return;
         try {
             const res = await api.post('/keyword-responses/test', { message: testMessage });
-            setTestResult(res.data.data || res.data);
+            setTestResult(res.data);
         } catch (err) {
             setError('Test failed');
         }
