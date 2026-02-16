@@ -212,9 +212,9 @@ function ipFilter(options = {}) {
     } = options;
 
     return (req, res, next) => {
-        const clientIP = req.headers['x-forwarded-for']?.split(',')[0].trim() ||
-            req.connection?.remoteAddress ||
-            req.ip;
+        // Use req.ip — Express handles X-Forwarded-For based on 'trust proxy' setting.
+        // Do NOT read X-Forwarded-For manually — it can be spoofed by clients.
+        const clientIP = req.ip || req.connection?.remoteAddress || '0.0.0.0';
 
         // Normalize IP (remove ::ffff: prefix for IPv4)
         const normalizedIP = clientIP.replace(/^::ffff:/, '');

@@ -308,7 +308,7 @@ const optionalAuth = async (req, res, next) => {
             }
         });
 
-        if (user && user.isActive && user.status === 'ACTIVE') {
+        if (user && user.isActive && user.status !== 'BANNED' && user.status !== 'SUSPENDED') {
             req.user = user;
         }
 
@@ -324,21 +324,38 @@ const optionalAuth = async (req, res, next) => {
  * @param {number} requiredAmount - Required credit amount
  */
 const requireCredit = (requiredAmount = 0) => {
-    return (req, res, next) => {
-        if (!req.user) {
-            return next(new AppError('Not authenticated', 401));
-        }
+    return async (req, res, next) => {
+        try {
+            if (!req.user) {
+                return next(new AppError('Not authenticated', 401));
+            }
 
-        // Admin roles bypass credit check
-        if (req.user.role === ROLES.MASTER_ADMIN || req.user.role === ROLES.ADMIN) {
-            return next();
-        }
+            // Admin roles bypass credit check
+            if (req.user.role === ROLES.MASTER_ADMIN || req.user.role === ROLES.ADMIN) {
+                return next();
+            }
 
-        if ((req.user.creditBalance || 0) < requiredAmount) {
-            return next(new AppError('Insufficient credit balance. Please top up your credits.', 402));
-        }
+            // Re-fetch current balance from DB (req.user.creditBalance may be stale
+            // in concurrent scenarios, e.g. user sends multiple messages at once)
+            const prisma = require('../utils/prisma');
+            const freshUser = await prisma.user.findUnique({
+                where: { id: req.user.id },
+                select: { creditBalance: true }
+            });
 
-        next();
+            const currentBalance = freshUser?.creditBalance || 0;
+
+            if (currentBalance < requiredAmount) {
+                return next(new AppError('Insufficient credit balance. Please top up your credits.', 402));
+            }
+
+            // Update req.user so downstream handlers have fresh value
+            req.user.creditBalance = currentBalance;
+
+            next();
+        } catch (error) {
+            next(error);
+        }
     };
 };
 

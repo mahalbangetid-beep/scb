@@ -891,7 +891,68 @@ class AdminApiService {
         }
     }
 
+    // ==================== FONEPAY METHODS ====================
+
+    /**
+     * Verify FonePay payment via Rental Panel Admin API
+     * @param {Object} panel - Panel object
+     * @param {string} txnId - FonePay Transaction ID
+     * @returns {Object} { exists, status, amount, timestamp }
+     */
+    async verifyFonepayPayment(panel, txnId) {
+        try {
+            const endpoint = panel.fonepayVerifyEndpoint || '/adminapi/verify-payment';
+            const response = await this.makeAdminRequest(panel, 'GET', endpoint, {
+                txn_id: txnId
+            });
+
+            return {
+                success: true,
+                data: response
+            };
+        } catch (error) {
+            console.error('[AdminAPI] verifyFonepayPayment error:', error.message);
+            return {
+                success: false,
+                error: error.message
+            };
+        }
+    }
+
+    /**
+     * Add fund to panel user via Admin API
+     * @param {Object} panel - Panel object
+     * @param {string} username - Panel username
+     * @param {number} amount - Amount to credit
+     * @returns {Object} { success, data }
+     */
+    async addFundToUser(panel, username, amount) {
+        try {
+            const endpoint = panel.fonepayAddFundEndpoint || '/adminapi/add-fund';
+            const response = await this.makeAdminRequest(panel, 'POST', endpoint, {
+                username,
+                amount
+            });
+
+            if (!response || response.success === false || response.error) {
+                throw new Error(response?.error || 'Add fund API call failed');
+            }
+
+            return {
+                success: true,
+                data: response
+            };
+        } catch (error) {
+            console.error('[AdminAPI] addFundToUser error:', error.message);
+            return {
+                success: false,
+                error: error.message
+            };
+        }
+    }
+
     // ==================== HELPER METHODS ====================
+
 
 
     /**

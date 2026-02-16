@@ -5,41 +5,19 @@ const crypto = require('crypto');
 const { authenticate } = require('../middleware/auth');
 const { AppError } = require('../middleware/errorHandler');
 const { successResponse, paginatedResponse, parsePagination } = require('../utils/response');
+const { validateUrlSafety, safeAxiosRequest } = require('../utils/safeFetch');
 
 /**
  * Validate webhook URL to prevent SSRF
- * Blocks internal/private IPs and non-HTTP schemes
+ * Resolves DNS and blocks private/internal IPs (DNS rebinding safe)
  */
-function validateWebhookUrl(urlString) {
-    let parsed;
+async function validateWebhookUrl(urlString) {
     try {
-        parsed = new URL(urlString);
-    } catch {
-        throw new AppError('Invalid URL format', 400);
+        const { url } = await validateUrlSafety(urlString);
+        return url.href;
+    } catch (error) {
+        throw new AppError(error.message || 'Invalid or unsafe webhook URL', 400);
     }
-
-    // Only allow http/https
-    if (!['http:', 'https:'].includes(parsed.protocol)) {
-        throw new AppError('Only HTTP and HTTPS URLs are allowed', 400);
-    }
-
-    // Block private/internal IPs
-    const hostname = parsed.hostname.toLowerCase();
-    const blockedPatterns = [
-        'localhost', '127.0.0.1', '0.0.0.0', '::1',
-        '10.', '172.16.', '172.17.', '172.18.', '172.19.',
-        '172.20.', '172.21.', '172.22.', '172.23.',
-        '172.24.', '172.25.', '172.26.', '172.27.',
-        '172.28.', '172.29.', '172.30.', '172.31.',
-        '192.168.', '169.254.', 'metadata.google',
-        'metadata.aws', '100.100.100.200'
-    ];
-
-    if (blockedPatterns.some(p => hostname === p || hostname.startsWith(p))) {
-        throw new AppError('Internal or private URLs are not allowed', 400);
-    }
-
-    return parsed.href;
 }
 
 // Helper: Safely parse JSON with fallback
@@ -94,7 +72,7 @@ router.get('/', authenticate, async (req, res, next) => {
 
 // GET /api/webhooks/meta/events - Get available events
 // NOTE: This MUST be before /:id route to prevent "meta" being matched as an ID
-router.get('/meta/events', async (req, res, next) => {
+router.get('/meta/events', authenticate, async (req, res, next) => {
     try {
         successResponse(res, validEvents);
     } catch (error) {
@@ -141,8 +119,8 @@ router.post('/', authenticate, async (req, res, next) => {
             throw new AppError(`Invalid events: ${invalidEvents.join(', ')}`, 400);
         }
 
-        // Validate webhook URL (SSRF prevention)
-        const validatedUrl = validateWebhookUrl(url);
+        // Validate webhook URL (SSRF prevention — resolves DNS)
+        const validatedUrl = await validateWebhookUrl(url);
 
         const webhook = await prisma.webhook.create({
             data: {
@@ -154,7 +132,8 @@ router.post('/', authenticate, async (req, res, next) => {
             }
         });
 
-        successResponse(res, { ...webhook, events }, 'Webhook created', 201);
+        const webhookSecret = webhook.secret;
+        successResponse(res, { ...webhook, secret: '***', events }, 'Webhook created. Save your secret: ' + webhookSecret, 201);
     } catch (error) {
         next(error);
     }
@@ -173,9 +152,20 @@ router.put('/:id', authenticate, async (req, res, next) => {
             throw new AppError('Webhook not found', 404);
         }
 
-        // Validate URL if being updated
+        // Validate URL if being updated (async DNS check)
         if (url) {
-            validateWebhookUrl(url);
+            await validateWebhookUrl(url);
+        }
+
+        // Validate events if being updated
+        if (events) {
+            if (!Array.isArray(events)) {
+                throw new AppError('events must be an array', 400);
+            }
+            const invalidEvents = events.filter(e => !validEvents.includes(e));
+            if (invalidEvents.length > 0) {
+                throw new AppError(`Invalid events: ${invalidEvents.join(', ')}`, 400);
+            }
         }
 
         const webhook = await prisma.webhook.update({
@@ -226,7 +216,6 @@ router.post('/:id/test', authenticate, async (req, res, next) => {
             throw new AppError('Webhook not found', 404);
         }
 
-        const axios = require('axios');
         const startTime = Date.now();
 
         const testPayload = {
@@ -246,7 +235,9 @@ router.post('/:id/test', authenticate, async (req, res, next) => {
                     .digest('hex')
                 : undefined;
 
-            const response = await axios.post(webhook.url, testPayload, {
+            const response = await safeAxiosRequest(webhook.url, {
+                method: 'POST',
+                data: testPayload,
                 headers: {
                     'Content-Type': 'application/json',
                     'X-Webhook-Event': 'test',

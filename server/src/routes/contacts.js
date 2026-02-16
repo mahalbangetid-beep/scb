@@ -105,43 +105,47 @@ router.post('/', authenticate, async (req, res, next) => {
             throw new AppError('name and phone are required', 400);
         }
 
-        // Create contact
-        const contact = await prisma.contact.create({
-            data: {
-                name,
-                phone,
-                email,
-                userId: req.user.id
-            }
-        });
+        // Create contact and link tags atomically
+        const contact = await prisma.$transaction(async (tx) => {
+            const newContact = await tx.contact.create({
+                data: {
+                    name,
+                    phone,
+                    email,
+                    userId: req.user.id
+                }
+            });
 
-        // Add tags if provided
-        if (tagNames && Array.isArray(tagNames)) {
-            for (const tagName of tagNames) {
-                // Upsert tag
-                const tag = await prisma.tag.upsert({
-                    where: {
-                        name_userId: {
+            // Add tags if provided
+            if (tagNames && Array.isArray(tagNames)) {
+                for (const tagName of tagNames) {
+                    // Upsert tag
+                    const tag = await tx.tag.upsert({
+                        where: {
+                            name_userId: {
+                                name: tagName,
+                                userId: req.user.id
+                            }
+                        },
+                        update: {},
+                        create: {
                             name: tagName,
                             userId: req.user.id
                         }
-                    },
-                    update: {},
-                    create: {
-                        name: tagName,
-                        userId: req.user.id
-                    }
-                });
+                    });
 
-                // Link to contact
-                await prisma.contactTag.create({
-                    data: {
-                        contactId: contact.id,
-                        tagId: tag.id
-                    }
-                });
+                    // Link to contact
+                    await tx.contactTag.create({
+                        data: {
+                            contactId: newContact.id,
+                            tagId: tag.id
+                        }
+                    });
+                }
             }
-        }
+
+            return newContact;
+        });
 
         successResponse(res, contact, 'Contact created', 201);
     } catch (error) {
@@ -162,41 +166,46 @@ router.put('/:id', authenticate, async (req, res, next) => {
             throw new AppError('Contact not found', 404);
         }
 
-        const contact = await prisma.contact.update({
-            where: { id: req.params.id },
-            data: { name, phone, email }
-        });
-
-        // Update tags if provided
-        if (tagNames && Array.isArray(tagNames)) {
-            // Remove old links
-            await prisma.contactTag.deleteMany({
-                where: { contactId: contact.id }
+        // Update contact and tags atomically
+        const contact = await prisma.$transaction(async (tx) => {
+            const updatedContact = await tx.contact.update({
+                where: { id: req.params.id },
+                data: { name, phone, email }
             });
 
-            for (const tagName of tagNames) {
-                const tag = await prisma.tag.upsert({
-                    where: {
-                        name_userId: {
+            // Update tags if provided
+            if (tagNames && Array.isArray(tagNames)) {
+                // Remove old links
+                await tx.contactTag.deleteMany({
+                    where: { contactId: updatedContact.id }
+                });
+
+                for (const tagName of tagNames) {
+                    const tag = await tx.tag.upsert({
+                        where: {
+                            name_userId: {
+                                name: tagName,
+                                userId: req.user.id
+                            }
+                        },
+                        update: {},
+                        create: {
                             name: tagName,
                             userId: req.user.id
                         }
-                    },
-                    update: {},
-                    create: {
-                        name: tagName,
-                        userId: req.user.id
-                    }
-                });
+                    });
 
-                await prisma.contactTag.create({
-                    data: {
-                        contactId: contact.id,
-                        tagId: tag.id
-                    }
-                });
+                    await tx.contactTag.create({
+                        data: {
+                            contactId: updatedContact.id,
+                            tagId: tag.id
+                        }
+                    });
+                }
             }
-        }
+
+            return updatedContact;
+        });
 
         successResponse(res, contact, 'Contact updated');
     } catch (error) {
@@ -298,82 +307,196 @@ router.post('/import', authenticate, async (req, res, next) => {
         let skipped = 0;
         const errors = [];
 
+        // ========== Phase 1: Pre-process all unique tags ==========
+        const allTagNames = new Set();
         for (const item of contactItems) {
-            try {
-                const { name, phone, email, notes, tags: tagNames } = item;
-                const cleanPhone = normalizePhone(phone || '');
+            if (item.tags && Array.isArray(item.tags)) {
+                for (const t of item.tags) {
+                    if (t && typeof t === 'string' && t.trim()) {
+                        allTagNames.add(t.trim());
+                    }
+                }
+            }
+        }
+
+        // Pre-upsert all tags at once and build lookup map
+        const tagMap = new Map(); // tagName -> tagId
+        if (allTagNames.size > 0) {
+            // Fetch existing tags for this user
+            const existingTags = await prisma.tag.findMany({
+                where: {
+                    userId: req.user.id,
+                    name: { in: [...allTagNames] }
+                },
+                select: { id: true, name: true }
+            });
+
+            for (const tag of existingTags) {
+                tagMap.set(tag.name, tag.id);
+            }
+
+            // Create missing tags
+            const missingTags = [...allTagNames].filter(name => !tagMap.has(name));
+            if (missingTags.length > 0) {
+                await prisma.tag.createMany({
+                    data: missingTags.map(name => ({
+                        name,
+                        userId: req.user.id
+                    })),
+                    skipDuplicates: true
+                });
+
+                // Re-fetch to get IDs of newly created tags
+                const newTags = await prisma.tag.findMany({
+                    where: {
+                        userId: req.user.id,
+                        name: { in: missingTags }
+                    },
+                    select: { id: true, name: true }
+                });
+
+                for (const tag of newTags) {
+                    tagMap.set(tag.name, tag.id);
+                }
+            }
+        }
+
+        // ========== Phase 2: Process contacts in chunks ==========
+        const CHUNK_SIZE = 100;
+        for (let i = 0; i < contactItems.length; i += CHUNK_SIZE) {
+            const chunk = contactItems.slice(i, i + CHUNK_SIZE);
+
+            // Clean and validate phones in this chunk
+            const validItems = [];
+            for (const item of chunk) {
+                const cleanPhone = normalizePhone(item.phone || '');
                 if (!cleanPhone) {
                     skipped++;
                     continue;
                 }
-
-                const contactName = (name || '').trim() || cleanPhone;
-
-                // Check if contact exists (for accurate created/updated count)
-                const existing = await prisma.contact.findFirst({
-                    where: { phone: cleanPhone, userId: req.user.id },
-                    select: { id: true }
+                validItems.push({
+                    ...item,
+                    phone: cleanPhone,
+                    name: (item.name || '').trim() || cleanPhone
                 });
+            }
 
-                // Upsert: auto-dedup by phone+userId
-                const contact = await prisma.contact.upsert({
-                    where: {
-                        phone_userId: {
-                            phone: cleanPhone,
-                            userId: req.user.id
-                        }
-                    },
-                    update: {
-                        name: contactName,
-                        ...(email ? { email } : {}),
-                        ...(notes ? { notes } : {})
-                    },
-                    create: {
-                        name: contactName,
-                        phone: cleanPhone,
-                        email: email || null,
-                        notes: notes || null,
-                        userId: req.user.id
+            if (validItems.length === 0) continue;
+
+            // Save counter snapshots so we can rollback on chunk failure
+            const createdBefore = created;
+            const updatedBefore = updated;
+
+            try {
+                // Process chunk in a transaction
+                await prisma.$transaction(async (tx) => {
+                    // Find which contacts already exist in this chunk
+                    const phones = validItems.map(v => v.phone);
+                    const existingContacts = await tx.contact.findMany({
+                        where: {
+                            userId: req.user.id,
+                            phone: { in: phones }
+                        },
+                        select: { id: true, phone: true }
+                    });
+
+                    const existingPhoneMap = new Map();
+                    for (const c of existingContacts) {
+                        existingPhoneMap.set(c.phone, c.id);
                     }
-                });
 
-                if (existing) updated++;
-                else created++;
+                    // Separate into creates and updates
+                    const toCreate = [];
+                    const toUpdate = [];
 
-                // Assign tags
-                if (tagNames && Array.isArray(tagNames) && tagNames.length > 0) {
-                    for (const tagName of tagNames) {
-                        if (!tagName || typeof tagName !== 'string') continue;
-                        const cleanTag = tagName.trim();
-                        if (!cleanTag) continue;
+                    for (const item of validItems) {
+                        if (existingPhoneMap.has(item.phone)) {
+                            toUpdate.push({ ...item, id: existingPhoneMap.get(item.phone) });
+                        } else {
+                            toCreate.push(item);
+                        }
+                    }
 
-                        const tag = await prisma.tag.upsert({
-                            where: { name_userId: { name: cleanTag, userId: req.user.id } },
-                            update: {},
-                            create: { name: cleanTag, userId: req.user.id }
+                    // Batch create new contacts
+                    if (toCreate.length > 0) {
+                        await tx.contact.createMany({
+                            data: toCreate.map(item => ({
+                                name: item.name,
+                                phone: item.phone,
+                                email: item.email || null,
+                                notes: item.notes || null,
+                                userId: req.user.id
+                            })),
+                            skipDuplicates: true
                         });
 
-                        // Upsert contact-tag link (avoid duplicate errors)
-                        await prisma.contactTag.upsert({
+                        // Fetch IDs of newly created contacts (needed for tag linking)
+                        const createdContacts = await tx.contact.findMany({
                             where: {
-                                contactId_tagId: {
-                                    contactId: contact.id,
-                                    tagId: tag.id
-                                }
+                                userId: req.user.id,
+                                phone: { in: toCreate.map(c => c.phone) }
                             },
-                            update: {},
-                            create: {
-                                contactId: contact.id,
-                                tagId: tag.id
+                            select: { id: true, phone: true }
+                        });
+
+                        for (const c of createdContacts) {
+                            existingPhoneMap.set(c.phone, c.id);
+                        }
+
+                        created += toCreate.length;
+                    }
+
+                    // Update existing contacts (must be individual due to different data per row)
+                    for (const item of toUpdate) {
+                        await tx.contact.update({
+                            where: { id: item.id },
+                            data: {
+                                name: item.name,
+                                ...(item.email ? { email: item.email } : {}),
+                                ...(item.notes ? { notes: item.notes } : {})
                             }
                         });
                     }
-                }
+                    updated += toUpdate.length;
+
+                    // Batch create contact-tag links
+                    const contactTagLinks = [];
+                    for (const item of validItems) {
+                        const contactId = existingPhoneMap.get(item.phone);
+                        if (!contactId) continue;
+
+                        if (item.tags && Array.isArray(item.tags)) {
+                            for (const tagName of item.tags) {
+                                const cleanTag = (tagName || '').trim();
+                                const tagId = tagMap.get(cleanTag);
+                                if (tagId) {
+                                    contactTagLinks.push({ contactId, tagId });
+                                }
+                            }
+                        }
+                    }
+
+                    if (contactTagLinks.length > 0) {
+                        await tx.contactTag.createMany({
+                            data: contactTagLinks,
+                            skipDuplicates: true
+                        });
+                    }
+                });
             } catch (err) {
-                skipped++;
-                errors.push({ phone: item.phone, error: err.message });
+                // Transaction rolled back — restore counters to pre-chunk values
+                created = createdBefore;
+                updated = updatedBefore;
+                skipped += validItems.length;
+                errors.push({
+                    chunk: `${i + 1}-${i + chunk.length}`,
+                    error: err.message
+                });
             }
         }
+
+        // Ensure created count is not negative from error recovery
+        created = Math.max(0, created);
 
         successResponse(res, {
             total: contactItems.length,
@@ -397,7 +520,7 @@ function normalizePhone(phone) {
     } else {
         clean = clean.replace(/\D/g, '');
     }
-    return clean.length >= 7 ? clean : '';
+    return clean.length >= 5 ? clean : '';
 }
 
 // Helper: parse a single CSV line (handles quoted fields)
@@ -405,15 +528,20 @@ function parseCSVLine(line) {
     const result = [];
     let current = '';
     let inQuotes = false;
+    let quoteChar = null;
 
     for (let i = 0; i < line.length; i++) {
         const ch = line[i];
-        if (ch === '"' || ch === "'") {
-            if (inQuotes && i + 1 < line.length && line[i + 1] === ch) {
+        if (!inQuotes && (ch === '"' || ch === "'")) {
+            inQuotes = true;
+            quoteChar = ch;
+        } else if (inQuotes && ch === quoteChar) {
+            if (i + 1 < line.length && line[i + 1] === quoteChar) {
                 current += ch;
                 i++; // skip escaped quote
             } else {
-                inQuotes = !inQuotes;
+                inQuotes = false;
+                quoteChar = null;
             }
         } else if (ch === ',' && !inQuotes) {
             result.push(current.trim());

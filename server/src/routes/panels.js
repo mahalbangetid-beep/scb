@@ -505,15 +505,23 @@ router.put('/:id', async (req, res, next) => {
         let currency = existing.currency;
         let encryptedApiKey = existing.apiKey;
 
-        if (apiKey && apiKey !== existing.apiKey) {
-            const testUrl = url || existing.url;
-            const testResult = await smmPanelService.testConnection(testUrl, apiKey);
-            if (!testResult.success) {
-                throw new AppError(`Connection failed: ${testResult.error}`, 400);
+        // Only re-encrypt and test if apiKey is provided and is a new plaintext key
+        // (not the masked placeholder or the same encrypted value)
+        if (apiKey && apiKey !== '***' && apiKey !== '****' && apiKey !== existing.apiKey) {
+            // Decrypt existing to compare with submitted plaintext
+            let existingDecrypted = null;
+            try { existingDecrypted = decrypt(existing.apiKey); } catch (e) { /* ignore */ }
+
+            if (apiKey !== existingDecrypted) {
+                const testUrl = url || existing.url;
+                const testResult = await smmPanelService.testConnection(testUrl, apiKey);
+                if (!testResult.success) {
+                    throw new AppError(`Connection failed: ${testResult.error}`, 400);
+                }
+                encryptedApiKey = encrypt(apiKey);
+                balance = testResult.balance;
+                currency = testResult.currency;
             }
-            encryptedApiKey = encrypt(apiKey);
-            balance = testResult.balance;
-            currency = testResult.currency;
         }
 
         // If setting as primary, unset other primaries
@@ -577,6 +585,18 @@ router.delete('/:id', async (req, res, next) => {
 
         if (!panel) {
             throw new AppError('Panel not found', 404);
+        }
+
+        // Check for active orders before deleting
+        const activeOrders = await prisma.order.count({
+            where: {
+                panelId: panel.id,
+                status: { in: ['pending', 'processing', 'in_progress'] }
+            }
+        });
+
+        if (activeOrders > 0) {
+            throw new AppError(`Cannot delete panel with ${activeOrders} active order(s). Please wait for them to complete or cancel them first.`, 400);
         }
 
         // Mark backup as deleted BEFORE deleting panel (for Master Admin recovery)

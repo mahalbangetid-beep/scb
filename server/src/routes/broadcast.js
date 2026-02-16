@@ -11,9 +11,7 @@ const fs = require('fs');
 // Setup multer for broadcast media uploads
 const UPLOAD_DIR = path.join(__dirname, '../../uploads/broadcast');
 try {
-    if (!fs.existsSync(UPLOAD_DIR)) {
-        fs.mkdirSync(UPLOAD_DIR, { recursive: true });
-    }
+    fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 } catch (err) {
     console.warn(`[Broadcast] Could not create upload dir: ${err.message}. Image uploads may fail.`);
 }
@@ -121,6 +119,17 @@ router.post('/', authenticate, upload.single('media'), async (req, res, next) =>
             throw new AppError('recipients must be a non-empty array', 400);
         }
 
+        // Validate and clean recipient phone numbers
+        const validRecipients = recipients
+            .map(r => String(r).trim().replace(/[^\d+]/g, ''))
+            .filter(r => r.length >= 5);
+
+        if (validRecipients.length === 0) {
+            throw new AppError('No valid phone numbers found in recipients', 400);
+        }
+
+        recipients = validRecipients;
+
         // If file was uploaded via multer, use its path as mediaUrl
         if (req.file && !mediaUrl) {
             mediaUrl = req.file.path; // Absolute file path — Baileys accepts local file paths
@@ -176,76 +185,92 @@ router.post('/', authenticate, upload.single('media'), async (req, res, next) =>
 
 // Background broadcast processor
 async function processBroadcast(whatsapp, broadcastId, deviceId, message, mediaUrl, userId) {
-    const recipients = await prisma.broadcastRecipient.findMany({
-        where: { broadcastId, status: 'pending' }
-    });
+    try {
+        const recipients = await prisma.broadcastRecipient.findMany({
+            where: { broadcastId, status: 'pending' }
+        });
 
-    let sent = 0, failed = 0;
+        let sent = 0, failed = 0;
 
-    for (const recipient of recipients) {
-        try {
-            if (mediaUrl) {
-                // Embed watermark in caption for image broadcasts
-                let finalCaption = message;
-                if (userId) {
-                    try {
-                        const { watermarkService } = require('../services/watermarkService');
-                        const result = await watermarkService.createAndEmbed({
-                            text: message, userId, deviceId, recipientId: recipient.phone, broadcastId
-                        });
-                        finalCaption = result.watermarkedText;
-                    } catch (e) { /* watermark is non-critical */ }
+        for (const recipient of recipients) {
+            try {
+                if (mediaUrl) {
+                    // Embed watermark in caption for image broadcasts
+                    let finalCaption = message;
+                    if (userId) {
+                        try {
+                            const { watermarkService } = require('../services/watermarkService');
+                            const result = await watermarkService.createAndEmbed({
+                                text: message, userId, deviceId, recipientId: recipient.phone, broadcastId
+                            });
+                            finalCaption = result.watermarkedText;
+                        } catch (e) { /* watermark is non-critical */ }
+                    }
+                    await whatsapp.sendImage(deviceId, recipient.phone, mediaUrl, finalCaption);
+                } else {
+                    await whatsapp.sendMessage(deviceId, recipient.phone, message,
+                        userId ? { userId, broadcastId } : null
+                    );
                 }
-                await whatsapp.sendImage(deviceId, recipient.phone, mediaUrl, finalCaption);
-            } else {
-                await whatsapp.sendMessage(deviceId, recipient.phone, message,
-                    userId ? { userId, broadcastId } : null
-                );
+
+                await prisma.broadcastRecipient.update({
+                    where: { id: recipient.id },
+                    data: { status: 'sent', sentAt: new Date() }
+                });
+                sent++;
+            } catch (error) {
+                await prisma.broadcastRecipient.update({
+                    where: { id: recipient.id },
+                    data: { status: 'failed', error: error.message }
+                });
+                failed++;
             }
 
-            await prisma.broadcastRecipient.update({
-                where: { id: recipient.id },
-                data: { status: 'sent', sentAt: new Date() }
-            });
-            sent++;
-        } catch (error) {
-            await prisma.broadcastRecipient.update({
-                where: { id: recipient.id },
-                data: { status: 'failed', error: error.message }
-            });
-            failed++;
-        }
+            // Delay between messages to avoid spam detection
+            await new Promise(r => setTimeout(r, 1500));
 
-        // Delay between messages to avoid spam detection
-        await new Promise(r => setTimeout(r, 1500));
-
-        // Check if campaign was cancelled mid-processing
-        if ((sent + failed) % 10 === 0) {
-            const current = await prisma.broadcast.findUnique({ where: { id: broadcastId }, select: { status: true } });
-            if (current?.status === 'cancelled') {
-                console.log(`[Broadcast] Campaign ${broadcastId} was cancelled, stopping processing.`);
-                break;
+            // Check if campaign was cancelled mid-processing
+            if ((sent + failed) % 10 === 0) {
+                const current = await prisma.broadcast.findUnique({ where: { id: broadcastId }, select: { status: true } });
+                if (current?.status === 'cancelled') {
+                    console.log(`[Broadcast] Campaign ${broadcastId} was cancelled, stopping processing.`);
+                    break;
+                }
             }
         }
+
+        // Update campaign status (only if not cancelled during processing)
+        const current = await prisma.broadcast.findUnique({ where: { id: broadcastId }, select: { status: true } });
+        let finalStatus;
+        if (current?.status === 'cancelled') {
+            finalStatus = 'cancelled';
+        } else if (failed === recipients.length) {
+            finalStatus = 'failed';
+        } else if (failed > 0 && sent > 0) {
+            finalStatus = 'partial';
+        } else {
+            finalStatus = 'completed';
+        }
+
+        await prisma.broadcast.update({
+            where: { id: broadcastId },
+            data: {
+                status: finalStatus,
+                sent,
+                failed,
+                completedAt: new Date()
+            }
+        });
+
+        console.log(`[Broadcast] Campaign ${broadcastId} completed: ${sent} sent, ${failed} failed`);
+    } catch (error) {
+        console.error(`[Broadcast] Campaign ${broadcastId} crashed:`, error.message);
+        // Mark as failed so it doesn't stay stuck in 'processing'
+        await prisma.broadcast.update({
+            where: { id: broadcastId },
+            data: { status: 'failed', completedAt: new Date() }
+        }).catch(() => { });
     }
-
-    // Update campaign status (only if not cancelled during processing)
-    const current = await prisma.broadcast.findUnique({ where: { id: broadcastId }, select: { status: true } });
-    const finalStatus = current?.status === 'cancelled'
-        ? 'cancelled'
-        : (failed === recipients.length ? 'failed' : 'completed');
-
-    await prisma.broadcast.update({
-        where: { id: broadcastId },
-        data: {
-            status: finalStatus,
-            sent,
-            failed,
-            completedAt: new Date()
-        }
-    });
-
-    console.log(`[Broadcast] Campaign ${broadcastId} completed: ${sent} sent, ${failed} failed`);
 }
 
 // POST /api/broadcast/:id/cancel - Cancel pending broadcast

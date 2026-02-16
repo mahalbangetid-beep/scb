@@ -49,6 +49,7 @@ router.get('/stats/dashboard', authenticate, async (req, res, next) => {
             successfulMessages,
             failedMessages,
             failedYesterday,
+            failedToday,
             autoReplyTriggers,
             webhookCalls,
             userCredit,
@@ -127,6 +128,15 @@ router.get('/stats/dashboard', authenticate, async (req, res, next) => {
                 }
             }),
 
+            // Failed today
+            prisma.message.count({
+                where: {
+                    device: { userId },
+                    status: 'failed',
+                    createdAt: { gte: startOfToday }
+                }
+            }),
+
             // Total AutoReply triggers
             prisma.autoReplyRule.aggregate({
                 where: { userId },
@@ -147,14 +157,20 @@ router.get('/stats/dashboard', authenticate, async (req, res, next) => {
                 select: { creditBalance: true }
             }),
 
-            // Weekly messages (last 7 days, grouped by day)
-            prisma.message.findMany({
-                where: {
-                    device: { userId },
-                    createdAt: { gte: sevenDaysAgo }
-                },
-                select: { createdAt: true, type: true, status: true }
-            }),
+            // Weekly messages (last 7 days) — aggregated in DB, not in JS
+            prisma.$queryRaw`
+                SELECT 
+                    DATE("createdAt") as date,
+                    COUNT(*) FILTER (WHERE "type" = 'outgoing') as sent,
+                    COUNT(*) FILTER (WHERE "type" = 'incoming') as received,
+                    COUNT(*) FILTER (WHERE "status" = 'failed') as failed,
+                    COUNT(*) as total
+                FROM "Message"
+                WHERE "deviceId" IN (SELECT "id" FROM "Device" WHERE "userId" = ${userId})
+                AND "createdAt" >= ${sevenDaysAgo}
+                GROUP BY DATE("createdAt")
+                ORDER BY date ASC
+            `,
 
             // Recent bot activity (order commands)
             prisma.orderCommand.findMany({
@@ -175,30 +191,31 @@ router.get('/stats/dashboard', authenticate, async (req, res, next) => {
 
         // Calculate changes
         const messagesChange = messagesYesterday === 0 ? (messagesToday > 0 ? 100 : 0) : ((messagesToday - messagesYesterday) / messagesYesterday * 100);
-        const successRate = totalMessages === 0 ? 100 : (successfulMessages / totalMessages * 100);
-        const failedChange = failedYesterday === 0 ? (failedMessages > 0 ? 100 : 0) : ((failedMessages - failedYesterday) / failedYesterday * 100);
+        const completedMessages = successfulMessages + failedMessages;
+        const successRate = completedMessages === 0 ? 100 : (successfulMessages / completedMessages * 100);
+        const failedChange = failedYesterday === 0 ? (failedToday > 0 ? 100 : 0) : ((failedToday - failedYesterday) / failedYesterday * 100);
 
-        // Build weekly chart data
+        // Build weekly chart data from aggregated results
         const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
         const weeklyChart = [];
         for (let i = 6; i >= 0; i--) {
             const date = new Date(startOfToday);
             date.setDate(date.getDate() - i);
-            const nextDate = new Date(date);
-            nextDate.setDate(nextDate.getDate() + 1);
+            const dateStr = date.toISOString().split('T')[0];
 
-            const dayMsgs = weeklyMessages.filter(m => m.createdAt >= date && m.createdAt < nextDate);
-            const sent = dayMsgs.filter(m => m.type === 'outgoing').length;
-            const received = dayMsgs.filter(m => m.type === 'incoming').length;
-            const failed = dayMsgs.filter(m => m.status === 'failed').length;
+            // Find aggregated data for this day (weeklyMessages is now DB-grouped)
+            const dayData = weeklyMessages.find(row => {
+                const rowDate = new Date(row.date).toISOString().split('T')[0];
+                return rowDate === dateStr;
+            });
 
             weeklyChart.push({
                 day: dayNames[date.getDay()],
-                date: date.toISOString().split('T')[0],
-                sent,
-                received,
-                failed,
-                total: sent + received
+                date: dateStr,
+                sent: Number(dayData?.sent || 0),
+                received: Number(dayData?.received || 0),
+                failed: Number(dayData?.failed || 0),
+                total: Number(dayData?.total || 0)
             });
         }
 
@@ -229,7 +246,7 @@ router.get('/stats/dashboard', authenticate, async (req, res, next) => {
             receivedToday,
             successfulMessages,
             creditBalance: userCredit?.creditBalance || 0,
-            autoReplyTriggers: autoReplyTriggers._sum.triggerCount || 0,
+            autoReplyTriggers: autoReplyTriggers._sum?.triggerCount ?? 0,
             webhookCalls,
             weeklyChart,
             botActivity
@@ -450,20 +467,32 @@ router.put('/bot-toggles', authenticate, async (req, res, next) => {
             updateData.fallbackMessage = fallbackMessage || null;
         }
 
-        // Handle other toggles dynamically
-        const allowedFields = [
-            'autoHandleFailedOrders', 'failedOrderAction', 'allowForceCompleted',
+        const booleanFields = [
+            'autoHandleFailedOrders', 'allowForceCompleted',
             'allowLinkUpdateViaBot', 'allowPaymentVerification', 'allowAccountDetailsViaBot',
             'allowTicketAutoReply', 'allowRefillCommand', 'allowCancelCommand',
             'allowSpeedUpCommand', 'allowStatusCommand', 'processingSpeedUpEnabled',
-            'processingCancelEnabled', 'autoForwardProcessingCancel',
-            'providerSpeedUpTemplate', 'providerRefillTemplate', 'providerCancelTemplate',
-            'bulkResponseThreshold', 'maxBulkOrders', 'showProviderInResponse', 'showDetailedStatus'
+            'processingCancelEnabled', 'autoForwardProcessingCancel', 'showProviderInResponse', 'showDetailedStatus'
         ];
+        const stringFields = [
+            'failedOrderAction', 'providerSpeedUpTemplate', 'providerRefillTemplate', 'providerCancelTemplate'
+        ];
+        const numericFields = ['bulkResponseThreshold', 'maxBulkOrders'];
 
-        for (const field of allowedFields) {
+        for (const field of booleanFields) {
             if (otherToggles[field] !== undefined) {
-                updateData[field] = otherToggles[field];
+                updateData[field] = Boolean(otherToggles[field]);
+            }
+        }
+        for (const field of stringFields) {
+            if (otherToggles[field] !== undefined) {
+                updateData[field] = String(otherToggles[field]);
+            }
+        }
+        for (const field of numericFields) {
+            if (otherToggles[field] !== undefined) {
+                const val = parseInt(otherToggles[field], 10);
+                if (!isNaN(val)) updateData[field] = val;
             }
         }
 
@@ -517,10 +546,15 @@ router.post('/', authenticate, async (req, res, next) => {
 // GET /api/settings/:key - Get specific setting (MUST BE AFTER NAMED ROUTES)
 router.get('/:key', authenticate, async (req, res, next) => {
     try {
+        const key = req.params.key;
+        if (!key || !/^[a-zA-Z0-9_\-.]{1,100}$/.test(key)) {
+            throw new AppError('Invalid setting key format', 400);
+        }
+
         const setting = await prisma.setting.findUnique({
             where: {
                 key_userId: {
-                    key: req.params.key,
+                    key,
                     userId: req.user.id
                 }
             }
@@ -539,6 +573,11 @@ router.get('/:key', authenticate, async (req, res, next) => {
 // PUT /api/settings/:key - Update or create specific setting (MUST BE AFTER NAMED ROUTES)
 router.put('/:key', authenticate, async (req, res, next) => {
     try {
+        const key = req.params.key;
+        if (!key || !/^[a-zA-Z0-9_\-.]{1,100}$/.test(key)) {
+            throw new AppError('Invalid setting key format', 400);
+        }
+
         const { value } = req.body;
 
         const setting = await prisma.setting.upsert({

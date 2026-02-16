@@ -12,9 +12,15 @@ const BUFFER_SIZE = 100;
 const FLUSH_INTERVAL = 30000; // 30 seconds
 
 // Flush logs periodically
-setInterval(() => {
+const flushIntervalId = setInterval(() => {
     flushLogs();
 }, FLUSH_INTERVAL);
+
+// Allow cleanup on shutdown
+function stopFlushInterval() {
+    clearInterval(flushIntervalId);
+    flushLogs(); // flush any remaining
+}
 
 /**
  * Flush log buffer to console/storage
@@ -253,5 +259,6 @@ module.exports = {
     logLoginActivity,
     detectSuspiciousActivity,
     performanceMonitor,
-    flushLogs
+    flushLogs,
+    stopFlushInterval
 };

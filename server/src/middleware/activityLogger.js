@@ -32,7 +32,7 @@ function createActivityLogger(action, category, getDescription = null) {
                     statusCode: res.statusCode,
                     params: req.params,
                     // Don't log sensitive body data
-                    bodyKeys: req.body ? Object.keys(req.body) : []
+                    bodyKeys: req.body ? Object.keys(req.body).filter(k => !['password', 'apiKey', 'secret', 'token', 'creditCard', 'ssn', 'encryptionKey'].includes(k)) : []
                 },
                 ipAddress: req.ip || req.headers['x-forwarded-for'],
                 userAgent: req.headers['user-agent'],

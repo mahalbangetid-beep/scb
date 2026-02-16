@@ -297,9 +297,9 @@ class ProviderForwardingService {
      */
     async forwardToWebhook(webhookUrl, message, order) {
         try {
-            const fetch = require('node-fetch');
+            const { safeFetch } = require('../utils/safeFetch');
 
-            const response = await fetch(webhookUrl, {
+            const response = await safeFetch(webhookUrl, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -314,8 +314,7 @@ class ProviderForwardingService {
                     },
                     timestamp: new Date().toISOString()
                 }),
-                timeout: 10000
-            });
+            }, { timeout: 10000 });
 
             return {
                 success: response.ok,
@@ -338,22 +337,21 @@ class ProviderForwardingService {
         }
 
         try {
-            const fetch = require('node-fetch');
+            const { safeFetch } = require('../utils/safeFetch');
 
             const apiPayload = {
                 order: order.providerOrderId || order.externalOrderId,
                 action: command.toLowerCase()
             };
 
-            const response = await fetch(providerGroup.apiEndpoint, {
+            const response = await safeFetch(providerGroup.apiEndpoint, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${providerGroup.apiKey}`
                 },
                 body: JSON.stringify(apiPayload),
-                timeout: 15000
-            });
+            }, { timeout: 15000 });
 
             const data = await response.json();
 

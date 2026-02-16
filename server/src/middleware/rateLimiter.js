@@ -5,13 +5,24 @@
 
 // In-memory store for rate limiting (use Redis in production)
 const rateLimitStore = new Map();
+const MAX_STORE_SIZE = 10000; // Prevent unbounded memory growth
 
 // Cleanup old entries every 5 minutes
-setInterval(() => {
+const rateLimitCleanupInterval = setInterval(() => {
     const now = Date.now();
     for (const [key, data] of rateLimitStore.entries()) {
         if (now - data.windowStart > data.windowMs * 2) {
             rateLimitStore.delete(key);
+        }
+    }
+
+    // If still too large after cleanup, evict oldest 20%
+    if (rateLimitStore.size > MAX_STORE_SIZE) {
+        const entries = [...rateLimitStore.entries()]
+            .sort((a, b) => a[1].windowStart - b[1].windowStart);
+        const toRemove = Math.ceil(entries.length * 0.2);
+        for (let i = 0; i < toRemove; i++) {
+            rateLimitStore.delete(entries[i][0]);
         }
     }
 }, 5 * 60 * 1000);
@@ -119,13 +130,12 @@ function createRateLimiter(options = {}) {
 
 /**
  * Get client IP address from request
+ * Uses req.ip which respects Express's 'trust proxy' setting.
  */
 function getClientIP(req) {
-    return req.headers['x-forwarded-for']?.split(',')[0].trim() ||
-        req.headers['x-real-ip'] ||
+    return req.ip ||
         req.connection?.remoteAddress ||
         req.socket?.remoteAddress ||
-        req.ip ||
         'unknown';
 }
 

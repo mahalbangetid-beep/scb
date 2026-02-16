@@ -79,7 +79,7 @@ const emailRoutes = require('./routes/email');
 const { errorHandler, notFound } = require('./middleware/errorHandler');
 const { authLimiter, apiLimiter } = require('./middleware/rateLimiter');
 const { requestLogger, performanceMonitor } = require('./middleware/logger');
-const { securityHeaders, configureCors } = require('./middleware/security');
+const { configureCors } = require('./middleware/security');
 const { sanitizeRequest, securityCheck } = require('./middleware/validation');
 
 // Import WhatsApp Service
@@ -97,7 +97,7 @@ const httpServer = createServer(app);
 // Socket.IO setup
 const io = new Server(httpServer, {
     cors: {
-        origin: process.env.FRONTEND_URL || 'http://localhost:5173',
+        origin: process.env.FRONTEND_URL?.split(',').map(u => u.trim()) || ['http://localhost:5173'],
         methods: ['GET', 'POST']
     }
 });
@@ -118,11 +118,38 @@ groupForwardingService.setDependencies(io, whatsappService);
 const providerForwardingService = require('./services/providerForwardingService');
 providerForwardingService.setWhatsAppService(whatsappService);
 
-// Security Middleware
-app.use(helmet());
-app.use(securityHeaders());
+// Security Middleware — Consolidated (Bug #23: was helmet() + securityHeaders() conflict)
+app.use(helmet({
+    contentSecurityPolicy: {
+        directives: {
+            defaultSrc: ["'self'"],
+            scriptSrc: ["'self'", "'unsafe-inline'"],
+            styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+            fontSrc: ["'self'", "https://fonts.gstatic.com"],
+            imgSrc: ["'self'", "data:", "https:"],
+            connectSrc: ["'self'", "ws:", "wss:"],
+            frameAncestors: ["'none'"]
+        }
+    },
+    frameguard: { action: 'deny' },               // X-Frame-Options: DENY (was SAMEORIGIN in helmet default)
+    hsts: {
+        maxAge: 31536000,
+        includeSubDomains: true
+    },
+    referrerPolicy: {
+        policy: 'strict-origin-when-cross-origin'  // Was 'no-referrer' in helmet default
+    },
+    xContentTypeOptions: true                      // X-Content-Type-Options: nosniff
+    // xXssProtection — intentionally NOT set. Helmet defaults to X-XSS-Protection: 0
+    // which is correct: the browser XSS auditor is deprecated and can introduce vulnerabilities.
+}));
+// Permissions-Policy (not covered by helmet)
+app.use((req, res, next) => {
+    res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=(), payment=()');
+    next();
+});
 app.use(cors(configureCors()));
-app.use(morgan('dev'));
+app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'));
 
 // Request parsing with size limits
 app.use(express.json({ limit: '10mb' }));
@@ -145,14 +172,13 @@ app.get('/health', (req, res) => {
         service: 'SMMChatBot API',
         version: '1.0.0',
         whatsapp: {
-            activeSessions: sessions.length,
-            sessions: sessions.map(s => ({
-                deviceId: s.deviceId,
-                status: s.status
-            }))
+            activeSessions: sessions.length
         }
     });
 });
+
+// Apply API rate limiting to all /api routes
+app.use('/api', apiLimiter);
 
 // API Routes
 app.use('/api/auth', authRoutes);
@@ -195,6 +221,7 @@ app.use('/api/staff', require('./routes/staff'));
 app.use('/api/admin/email', emailRoutes);
 app.use('/api/activity-logs', require('./routes/activityLogs'));
 app.use('/api/watermarks', require('./routes/watermarks'));
+app.use('/api/fonepay', require('./routes/fonepay'));
 
 
 // Socket.IO authentication middleware

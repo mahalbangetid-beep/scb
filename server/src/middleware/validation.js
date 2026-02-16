@@ -41,6 +41,10 @@ const XSS_PATTERNS = [
 
 /**
  * Sanitize a string value
+ * NOTE: We do NOT HTML-encode here. This is a REST API — HTML encoding
+ * should happen at render time (frontend), not at storage time.
+ * Prisma parameterized queries prevent SQL injection.
+ * We only remove actual attack vectors: null bytes, and trim whitespace.
  */
 function sanitizeString(value) {
     if (typeof value !== 'string') return value;
@@ -48,13 +52,8 @@ function sanitizeString(value) {
     // Trim whitespace
     value = value.trim();
 
-    // Encode HTML entities
-    value = value
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#x27;');
+    // Remove null bytes (actual attack vector for C-based systems)
+    value = value.replace(/\0/g, '');
 
     return value;
 }
@@ -66,6 +65,7 @@ function containsDangerousPattern(value) {
     if (typeof value !== 'string') return false;
 
     for (const pattern of [...DANGEROUS_PATTERNS, ...XSS_PATTERNS]) {
+        pattern.lastIndex = 0; // Reset regex state to avoid alternating results with /g flag
         if (pattern.test(value)) {
             return true;
         }
@@ -118,11 +118,7 @@ function sanitizeObject(obj, options = {}) {
     }
 
     if (typeof obj === 'string') {
-        // Check for dangerous patterns unless HTML is allowed
-        if (!allowHtml && containsDangerousPattern(obj)) {
-            return sanitizeString(obj);
-        }
-        return allowHtml ? obj : sanitizeString(obj);
+        return sanitizeString(obj);
     }
 
     return obj;
@@ -318,11 +314,34 @@ function sanitizeRequest(options = {}) {
 
 /**
  * Security check middleware - blocks requests with dangerous patterns
+ *
+ * Content fields (message text, notes, templates) are SKIPPED because:
+ * 1. They are stored via parameterized queries (no SQL injection risk)
+ * 2. They are sent to WhatsApp/Telegram as plaintext (no XSS risk)
+ * 3. Legitimate messages can contain words like "delete", "select", "../"
+ *
+ * Only structural fields (URLs, keys, identifiers) are checked.
  */
 function securityCheck(req, res, next) {
-    const checkValue = (value, path = '') => {
+    // Fields that contain user-generated content — exempt from pattern checking
+    const contentFields = new Set([
+        'message', 'text', 'body', 'content', 'description',
+        'notes', 'note', 'comment', 'reason', 'reply',
+        'responseText', 'template', 'csv', 'customMessage',
+        'response', 'keyword', 'keywords', 'subject',
+        'actionConfig', 'forwardingConfig', 'messageTemplates',
+        'value' // settings value (can be any string)
+    ]);
+
+    const checkValue = (value, path = '', fieldName = '') => {
+        // Skip content fields — they contain user text, not code
+        if (contentFields.has(fieldName)) {
+            return true;
+        }
+
         if (typeof value === 'string') {
             for (const pattern of DANGEROUS_PATTERNS) {
+                pattern.lastIndex = 0; // Reset regex state
                 if (pattern.test(value)) {
                     console.warn(`[Security] Blocked request with dangerous pattern at ${path}:`, {
                         ip: req.ip,
@@ -335,11 +354,16 @@ function securityCheck(req, res, next) {
             }
         } else if (Array.isArray(value)) {
             for (let i = 0; i < value.length; i++) {
-                if (!checkValue(value[i], `${path}[${i}]`)) return false;
+                if (!checkValue(value[i], `${path}[${i}]`, fieldName)) return false;
             }
         } else if (value && typeof value === 'object') {
             for (const [key, val] of Object.entries(value)) {
-                if (!checkValue(val, `${path}.${key}`)) return false;
+                // Always check object KEYS for prototype pollution
+                if (key === '__proto__' || key === 'constructor' || key === 'prototype') {
+                    console.warn(`[Security] Blocked prototype pollution via key: ${key}`);
+                    return false;
+                }
+                if (!checkValue(val, `${path}.${key}`, key)) return false;
             }
         }
         return true;

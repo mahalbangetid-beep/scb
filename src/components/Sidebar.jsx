@@ -95,6 +95,7 @@ const adminNavigation = [
     { name: 'Staff Management', icon: Shield, path: '/admin/staff' },
     { name: 'Payments', icon: CreditCard, path: '/admin/payments' },
     { name: 'Payment Settings', icon: Settings, path: '/admin/payment-settings' },
+    { name: 'FonePay', icon: CreditCard, path: '/admin/fonepay' },
     { name: 'Credit Packages', icon: Package, path: '/admin/credit-packages' },
     { name: 'Vouchers', icon: Gift, path: '/admin/vouchers' },
     { name: 'Contact Backups', icon: Database, path: '/admin/contact-backups' },

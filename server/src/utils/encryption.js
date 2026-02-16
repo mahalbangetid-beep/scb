@@ -21,7 +21,11 @@ const getKey = () => {
         throw new Error('ENCRYPTION_KEY not set in environment');
     }
     // Convert hex string to buffer
-    return Buffer.from(key, 'hex');
+    const keyBuffer = Buffer.from(key, 'hex');
+    if (keyBuffer.length !== 32) {
+        throw new Error(`ENCRYPTION_KEY must be exactly 64 hex characters (32 bytes). Got ${key.length} hex chars (${keyBuffer.length} bytes).`);
+    }
+    return keyBuffer;
 };
 
 /**

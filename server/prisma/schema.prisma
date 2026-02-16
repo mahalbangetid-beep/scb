@@ -86,6 +86,8 @@ model User {
   systemBotSubscriptions    SystemBotSubscription[]
   invoices                  Invoice[]
   emailLogs                 EmailLog[]
+  fonepayTransactions       FonepayTransaction[]  @relation("FonepayTransactions")
+  fonepayAuditLogs          FonepayAuditLog[]     @relation("FonepayAuditLogs")
 }
 
 model ApiKey {
@@ -194,12 +196,19 @@ model SmmPanel {
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
 
+  // ==================== FONEPAY CONFIGURATION ====================
+  fonepayEnabled         Boolean @default(false)  // Enable FonePay for this panel
+  fonepayVerifyEndpoint  String?                   // Custom verify endpoint (default: /adminapi/verify-payment)
+  fonepayAddFundEndpoint String?                   // Custom add-fund endpoint (default: /adminapi/add-fund)
+
   user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
   orders         Order[]
   providerGroups ProviderGroup[]
   devices        Device[] // WhatsApp devices bound to this panel
   telegramBots   TelegramBot[] // Telegram bots bound to this panel
   devicePanelBindings DevicePanelBinding[] // Multi-panel binding support
+  fonepayTransactions FonepayTransaction[] // FonePay transactions for this panel
+  fonepayAuditLogs    FonepayAuditLog[]    // FonePay audit logs for this panel
 
   @@unique([url, userId])
 }
@@ -1617,4 +1626,73 @@ model EmailLog {
   @@index([userId])
   @@index([template])
   @@index([status])
+}
+
+// ==================== FONEPAY TRANSACTIONS ====================
+// Stores all FonePay payment verification requests from WhatsApp
+
+model FonepayTransaction {
+  id               String    @id @default(cuid())
+  whatsappNumber   String    // Sender WhatsApp number
+  panelUsername    String    // Mapped panel username (from UserWhatsAppMapping)
+  panelId          String?   // Reference to SmmPanel (nullable: preserved when panel deleted)
+  userId           String    // Panel owner (WABAR user)
+  txnId            String    // FonePay Transaction ID
+  source           String    @default("WHATSAPP_FONEPAY") // Payment source
+  amountEntered    Float     // Amount sent by user via WhatsApp
+  amountVerified   Float?    // Amount from Admin API (after verification)
+  status           String    @default("pending") // pending, verifying, verified, credited, rejected, failed
+  rejectionReason  String?   // Reason for rejection
+  verifiedAt       DateTime? // When TXN was verified
+  creditedAt       DateTime? // When funds were credited
+  paymentTimestamp DateTime? // Payment timestamp from API (for expiry check)
+
+  // Admin manual override fields
+  adminActionBy    String?   // Admin user ID if manually approved/rejected
+  adminActionAt    DateTime? // Timestamp of manual action
+  adminNote        String?   // Admin note for manual override
+
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  panel SmmPanel? @relation(fields: [panelId], references: [id], onDelete: SetNull)
+  user  User      @relation("FonepayTransactions", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([txnId, panelId]) // TXN ID must be unique per panel
+  @@index([whatsappNumber])
+  @@index([panelId])
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+// ==================== FONEPAY AUDIT LOGS ====================
+// Complete audit trail for every verification attempt (never deletable by normal users)
+
+model FonepayAuditLog {
+  id                 String   @id @default(cuid())
+  whatsappNumber     String   // Sender WhatsApp number
+  panelUsername      String   // Mapped panel username
+  panelId            String?  // Reference to SmmPanel (nullable: preserved when panel deleted)
+  userId             String   // Panel owner
+  txnId              String   // Transaction ID attempted
+  amountEntered      Float    // Amount from WhatsApp message
+  amountFromApi      Float?   // Amount from Admin API response
+  verificationResult String   // success, txn_not_found, amount_mismatch, already_used, api_error, mapping_not_found, rate_limited, format_invalid, panel_not_rental, panel_fonepay_disabled
+  failureReason      String?  // Detailed failure reason
+  ipAddress          String?  // IP address if available
+  deviceId           String?  // WhatsApp device that received the message
+  transactionId      String?  // Reference to FonepayTransaction ID (if created)
+
+  createdAt          DateTime @default(now())
+
+  panel SmmPanel? @relation(fields: [panelId], references: [id], onDelete: SetNull)
+  user  User      @relation("FonepayAuditLogs", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([whatsappNumber])
+  @@index([txnId])
+  @@index([panelId])
+  @@index([userId])
+  @@index([verificationResult])
+  @@index([createdAt])
 }

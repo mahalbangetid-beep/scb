@@ -148,6 +148,11 @@ router.post('/send-media', authenticate, async (req, res, next) => {
             throw new AppError('deviceId, to, and mediaUrl are required', 400);
         }
 
+        const allowedTypes = ['image', 'document', 'video', 'audio'];
+        if (type && !allowedTypes.includes(type)) {
+            throw new AppError(`Invalid media type. Allowed: ${allowedTypes.join(', ')}`, 400);
+        }
+
         // Verify device ownership
         const device = await prisma.device.findFirst({
             where: { id: deviceId, userId: req.user.id }
@@ -155,6 +160,10 @@ router.post('/send-media', authenticate, async (req, res, next) => {
 
         if (!device) {
             throw new AppError('Device not found', 404);
+        }
+
+        if (device.status !== 'connected') {
+            throw new AppError('Device is not connected to WhatsApp', 400);
         }
 
         // Placeholder for real media sending

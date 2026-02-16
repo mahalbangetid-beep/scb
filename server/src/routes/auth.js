@@ -20,7 +20,7 @@ const generateToken = (userId) => {
     return jwt.sign(
         { userId },
         process.env.JWT_SECRET,
-        { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
+        { expiresIn: process.env.JWT_EXPIRES_IN || '24h' }
     );
 };
 
@@ -37,7 +37,7 @@ const generateApiKey = () => {
  * Get client IP address
  */
 const getClientIp = (req) => {
-    return req.headers['x-forwarded-for']?.split(',')[0] ||
+    return (req.headers['x-forwarded-for']?.split(',')[0]?.trim()) ||
         req.connection?.remoteAddress ||
         req.socket?.remoteAddress ||
         'unknown';
@@ -92,8 +92,8 @@ router.post('/register', authLimiter, async (req, res, next) => {
             throw new AppError('Username can only contain letters, numbers, and underscores', 400);
         }
 
-        if (password.length < 6) {
-            throw new AppError('Password must be at least 6 characters', 400);
+        if (password.length < 8) {
+            throw new AppError('Password must be at least 8 characters', 400);
         }
 
         // Validate email format

@@ -1295,16 +1295,50 @@ class CommandHandlerService {
 
     /**
      * Handle payment verification command
-     * Usage: verify [transactionId]
+     * Usage: verify [transactionId] [amount]
+     * If TXN ID + amount provided and user has FonePay mapping → FonePay flow
+     * Otherwise → existing internal payment check
      */
     async handleVerifyPayment(userId, transactionId, needsArgument, senderNumber) {
         // If no transaction ID provided, ask for it
         if (needsArgument || !transactionId) {
             return {
                 success: true,
-                formattedResponse: `💳 *Payment Verification*\n\nPlease provide your Transaction ID:\n\`verify YOUR_TRANSACTION_ID\`\n\nExample: \`verify TXN123456789\``,
+                formattedResponse: `💳 *Payment Verification*\n\nPlease provide your Transaction ID:\n\`verify YOUR_TRANSACTION_ID\`\n\nExample: \`verify TXN123456789\`\n\nFor FonePay: \`verify TXN123456789 5000\``,
                 responses: []
             };
+        }
+
+        try {
+            // Check if this is a FonePay request (TXN ID + amount)
+            const parts = transactionId.trim().split(/\s+/);
+            if (parts.length >= 2 && senderNumber) {
+                const potentialTxnId = parts[0];
+                const potentialAmount = parseFloat(parts[1]);
+
+                if (!isNaN(potentialAmount) && potentialAmount > 0) {
+                    // Pre-check: does this user even have FonePay set up?
+                    // If not, fall through to existing payment check instead of returning FonePay errors
+                    const fonepayService = require('./fonepayService');
+                    const hasFonepay = await fonepayService.hasFonepayMapping(senderNumber, userId);
+
+                    if (hasFonepay) {
+                        const result = await fonepayService.processVerification(
+                            senderNumber, potentialTxnId, potentialAmount, null, userId
+                        );
+
+                        return {
+                            success: result.success,
+                            formattedResponse: result.message,
+                            responses: []
+                        };
+                    }
+                    // No FonePay mapping → fall through to internal payment check
+                }
+            }
+        } catch (fonepayError) {
+            console.error('[CommandHandler] FonePay flow error:', fonepayError.message);
+            // Fall through to existing payment check
         }
 
         try {

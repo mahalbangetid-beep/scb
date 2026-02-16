@@ -49,6 +49,7 @@ import ContactBackups from './pages/admin/ContactBackups'
 import SystemBotManagement from './pages/admin/SystemBotManagement'
 import AdminDashboard from './pages/admin/AdminDashboard'
 import EmailSettings from './pages/admin/EmailSettings'
+import FonepayManagement from './pages/admin/FonepayManagement'
 import './index.css'
 
 
@@ -156,6 +157,7 @@ function AppContent() {
           <Route path="/admin/contact-backups" element={<AdminRoute><ContactBackups /></AdminRoute>} />
           <Route path="/admin/system-bots" element={<AdminRoute><SystemBotManagement /></AdminRoute>} />
           <Route path="/admin/email-settings" element={<AdminRoute><EmailSettings /></AdminRoute>} />
+          <Route path="/admin/fonepay" element={<AdminRoute><FonepayManagement /></AdminRoute>} />
 
           {/* Catch all */}
           <Route path="*" element={<Navigate to="/" replace />} />

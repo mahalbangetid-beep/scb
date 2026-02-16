@@ -225,6 +225,47 @@ class BotMessageHandler {
             }
             return utilityResult;
         }
+        // Priority 0.5: FonePay auto-detection (non-command payment messages)
+        // Only for private messages (not groups), detect TXNID + Amount pattern
+        // Guard: only trigger if user actually has a FonePay-enabled panel mapping
+        if (!isGroup && senderNumber) {
+            try {
+                const fonepayService = require('./fonepayService');
+                const parsed = fonepayService.parsePaymentMessage(message);
+
+                if (parsed) {
+                    // Pre-check: does this sender have a FonePay mapping?
+                    // If not, fall through to normal command processing
+                    const hasFonepay = await fonepayService.hasFonepayMapping(senderNumber, userId);
+
+
+                    if (hasFonepay) {
+                        console.log(`[BotHandler] FonePay pattern detected from ${senderNumber}: TXN=${parsed.txnId} Amount=${parsed.amount}`);
+
+                        // Step 3 (Section 3): Send immediate acknowledgement before verification
+                        const { FONEPAY_MESSAGES } = require('./fonepayService');
+                        await this.sendResponse(deviceId, senderNumber, FONEPAY_MESSAGES.ACKNOWLEDGED);
+
+                        const result = await fonepayService.processVerification(
+                            senderNumber, parsed.txnId, parsed.amount, deviceId, userId
+                        );
+
+                        if (params._systemBotSubscriptionId) {
+                            await this.incrementSystemBotUsage(params._systemBotSubscriptionId);
+                        }
+
+                        return {
+                            handled: true,
+                            type: 'fonepay_verification',
+                            response: result.message
+                        };
+                    }
+                }
+            } catch (fonepayError) {
+                console.error('[BotHandler] FonePay auto-detect error:', fonepayError.message);
+                // Fall through to normal command processing
+            }
+        }
 
         // Priority 1: Check if it's an SMM command
         if (commandParser.isCommandMessage(message)) {

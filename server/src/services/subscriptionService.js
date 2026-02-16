@@ -51,9 +51,14 @@ class SubscriptionService {
         const monthlyFee = await this.getFee(resourceType);
         const now = new Date();
 
-        // Calculate next billing date (1 month from now)
+        // Calculate next billing date (1 month from now, clamped to valid day)
         const nextBillingDate = new Date(now);
-        nextBillingDate.setMonth(nextBillingDate.getMonth() + 1);
+        const targetMonth = nextBillingDate.getMonth() + 1;
+        nextBillingDate.setMonth(targetMonth);
+        // Clamp overflow (e.g., Jan 31 -> Mar 3 becomes Feb 28)
+        if (nextBillingDate.getMonth() !== targetMonth % 12) {
+            nextBillingDate.setDate(0); // set to last day of previous month
+        }
 
         return prisma.monthlySubscription.create({
             data: {
@@ -120,7 +125,7 @@ class SubscriptionService {
                 }
             },
             include: {
-                // We need user info for balance check
+                user: { select: { id: true, creditBalance: true, username: true } }
             }
         });
     }
@@ -177,7 +182,11 @@ class SubscriptionService {
 
         // Calculate next billing date
         const nextBillingDate = new Date();
-        nextBillingDate.setMonth(nextBillingDate.getMonth() + 1);
+        const targetRenewalMonth = nextBillingDate.getMonth() + 1;
+        nextBillingDate.setMonth(targetRenewalMonth);
+        if (nextBillingDate.getMonth() !== targetRenewalMonth % 12) {
+            nextBillingDate.setDate(0);
+        }
 
         // Update subscription
         const updated = await prisma.monthlySubscription.update({
@@ -294,13 +303,12 @@ class SubscriptionService {
             throw new Error(`Failed to resume: ${renewalResult.reason}`);
         }
 
-        // Update status
+        // Update status (failedAttempts already reset by processRenewal)
         const updated = await prisma.monthlySubscription.update({
             where: { id: subscriptionId },
             data: {
                 status: 'ACTIVE',
-                pausedAt: null,
-                failedAttempts: 0
+                pausedAt: null
             }
         });
 
@@ -369,9 +377,10 @@ class SubscriptionService {
 
         switch (resourceType) {
             case 'DEVICE':
+                // Set to disconnected — actual reconnection happens via WhatsApp service
                 await prisma.device.update({
                     where: { id: resourceId },
-                    data: { status: 'connected' }
+                    data: { status: 'disconnected' }
                 }).catch(() => { });
                 break;
 

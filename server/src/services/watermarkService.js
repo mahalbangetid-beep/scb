@@ -168,7 +168,7 @@ class WatermarkService {
             return updated;
         }
 
-        return watermark;
+        return null;
     }
 
     /**

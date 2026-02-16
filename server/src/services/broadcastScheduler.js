@@ -26,11 +26,8 @@ async function processBroadcast(broadcastId) {
         return;
     }
 
-    // Mark as processing
-    await prisma.broadcast.update({
-        where: { id: broadcastId },
-        data: { status: 'processing', startedAt: new Date() }
-    });
+    // Note: status is already set to 'processing' by checkScheduledBroadcasts()
+    // to prevent duplicate triggers. No need to set it again here.
 
     const recipients = await prisma.broadcastRecipient.findMany({
         where: { broadcastId, status: 'pending' }
@@ -77,13 +74,27 @@ async function processBroadcast(broadcastId) {
 
         // Delay between messages
         await new Promise(r => setTimeout(r, 1500));
+
+        // Check if campaign was cancelled mid-processing (every 3 messages ≈ 4.5s max delay)
+        if ((sent + failed) % 3 === 0 && (sent + failed) > 0) {
+            const current = await prisma.broadcast.findUnique({ where: { id: broadcastId }, select: { status: true } });
+            if (current?.status === 'cancelled') {
+                console.log(`[Scheduler] Broadcast ${broadcastId} was cancelled, stopping processing.`);
+                break;
+            }
+        }
     }
 
-    // Update campaign status
+    // Update campaign status (respect cancellation)
+    const current = await prisma.broadcast.findUnique({ where: { id: broadcastId }, select: { status: true } });
+    const finalStatus = current?.status === 'cancelled'
+        ? 'cancelled'
+        : (failed === recipients.length ? 'failed' : 'completed');
+
     await prisma.broadcast.update({
         where: { id: broadcastId },
         data: {
-            status: failed === recipients.length ? 'failed' : 'completed',
+            status: finalStatus,
             sent,
             failed,
             completedAt: new Date()

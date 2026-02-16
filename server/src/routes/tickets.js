@@ -231,24 +231,26 @@ router.post('/:id/reply', async (req, res, next) => {
             replyType
         );
 
-        // Send email notification for ticket reply (non-blocking)
-        try {
-            const emailService = require('../services/emailService');
-            const prisma = require('../utils/prisma');
-            const ticketOwner = await prisma.user.findUnique({
-                where: { id: ticket.userId },
-                select: { email: true, username: true }
-            });
-            if (ticketOwner && ticketOwner.email) {
-                const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
-                emailService.sendTemplateEmail('ticket_reply', ticketOwner.email, {
-                    username: ticketOwner.username,
-                    ticketSubject: ticket.subject || `Ticket #${ticket.ticketNumber}`,
-                    replyContent: content,
-                    ticketUrl: `${frontendUrl}/tickets`
-                }, ticket.userId).catch(() => { });
-            }
-        } catch (e) { /* email is non-critical */ }
+        // Send email notification only for staff replies (don't notify owner about their own replies)
+        if (replyType === 'STAFF') {
+            try {
+                const emailService = require('../services/emailService');
+                const prisma = require('../utils/prisma');
+                const ticketOwner = await prisma.user.findUnique({
+                    where: { id: ticket.userId },
+                    select: { email: true, username: true }
+                });
+                if (ticketOwner && ticketOwner.email) {
+                    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+                    emailService.sendTemplateEmail('ticket_reply', ticketOwner.email, {
+                        username: ticketOwner.username,
+                        ticketSubject: ticket.subject || `Ticket #${ticket.ticketNumber}`,
+                        replyContent: content,
+                        ticketUrl: `${frontendUrl}/tickets`
+                    }, ticket.userId).catch(() => { });
+                }
+            } catch (e) { /* email is non-critical */ }
+        }
 
         successResponse(res, ticketService.parseTicket(ticket), 'Reply added');
     } catch (error) {
@@ -266,6 +268,13 @@ router.put('/:id/status', async (req, res, next) => {
 
         if (!status) {
             throw new AppError('Status is required', 400);
+        }
+
+        // Verify ownership or staff role
+        const isStaff = ['STAFF', 'ADMIN', 'MASTER_ADMIN'].includes(req.user.role);
+        const existing = await ticketService.getById(req.params.id, req.user.id);
+        if (!existing && !isStaff) {
+            throw new AppError('Ticket not found', 404);
         }
 
         const ticket = await ticketService.updateStatus(
@@ -289,6 +298,13 @@ router.post('/:id/resolve', async (req, res, next) => {
     try {
         const { note } = req.body;
 
+        // Verify ownership or staff role
+        const isStaff = ['STAFF', 'ADMIN', 'MASTER_ADMIN'].includes(req.user.role);
+        const existing = await ticketService.getById(req.params.id, req.user.id);
+        if (!existing && !isStaff) {
+            throw new AppError('Ticket not found', 404);
+        }
+
         const ticket = await ticketService.updateStatus(
             req.params.id,
             req.user.id,
@@ -308,6 +324,13 @@ router.post('/:id/resolve', async (req, res, next) => {
  */
 router.post('/:id/close', async (req, res, next) => {
     try {
+        // Verify ownership or staff role
+        const isStaff = ['STAFF', 'ADMIN', 'MASTER_ADMIN'].includes(req.user.role);
+        const existing = await ticketService.getById(req.params.id, req.user.id);
+        if (!existing && !isStaff) {
+            throw new AppError('Ticket not found', 404);
+        }
+
         const ticket = await ticketService.updateStatus(
             req.params.id,
             req.user.id,
@@ -327,6 +350,13 @@ router.post('/:id/close', async (req, res, next) => {
  */
 router.post('/:id/reopen', async (req, res, next) => {
     try {
+        // Verify ownership or staff role
+        const isStaff = ['STAFF', 'ADMIN', 'MASTER_ADMIN'].includes(req.user.role);
+        const existing = await ticketService.getById(req.params.id, req.user.id);
+        if (!existing && !isStaff) {
+            throw new AppError('Ticket not found', 404);
+        }
+
         const ticket = await ticketService.updateStatus(
             req.params.id,
             req.user.id,
@@ -346,6 +376,11 @@ router.post('/:id/reopen', async (req, res, next) => {
  */
 router.post('/:id/notify', async (req, res, next) => {
     try {
+        // Only staff/admin can send notifications
+        if (!['STAFF', 'ADMIN', 'MASTER_ADMIN'].includes(req.user.role)) {
+            throw new AppError('Only staff and admins can send notifications', 403);
+        }
+
         const { message } = req.body;
 
         if (!message) {
