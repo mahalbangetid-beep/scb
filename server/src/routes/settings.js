@@ -435,7 +435,10 @@ router.put('/binance', authenticate, async (req, res, next) => {
 router.get('/bot-toggles', authenticate, async (req, res, next) => {
     try {
         const botFeatureService = require('../services/botFeatureService');
-        const toggles = await botFeatureService.getToggles(req.user.id);
+        const scope = {};
+        if (req.query.deviceId) scope.deviceId = req.query.deviceId;
+        if (req.query.panelId) scope.panelId = req.query.panelId;
+        const toggles = await botFeatureService.getToggles(req.user.id, scope);
 
         successResponse(res, toggles, 'Bot feature toggles retrieved');
     } catch (error) {
@@ -471,7 +474,13 @@ router.put('/bot-toggles', authenticate, async (req, res, next) => {
         const stringFields = [
             'failedOrderAction', 'providerSpeedUpTemplate', 'providerRefillTemplate', 'providerCancelTemplate',
             'callReplyMessage', 'groupCallReplyMessage', 'repeatedCallReplyMessage',
-            'spamWarningMessage'
+            'spamWarningMessage',
+            'massCommandReplyTemplate', 'massForwardingTemplate', 'massSupportReplyTemplate'
+        ];
+        const nullableTextFields = [
+            'callReplyMessage', 'groupCallReplyMessage', 'repeatedCallReplyMessage',
+            'spamWarningMessage',
+            'massCommandReplyTemplate', 'massForwardingTemplate', 'massSupportReplyTemplate'
         ];
         const numericFields = [
             'bulkResponseThreshold', 'maxBulkOrders',
@@ -486,7 +495,12 @@ router.put('/bot-toggles', authenticate, async (req, res, next) => {
         }
         for (const field of stringFields) {
             if (otherToggles[field] !== undefined) {
-                updateData[field] = String(otherToggles[field]);
+                // Convert empty strings to null for nullable text fields
+                if (nullableTextFields.includes(field) && (!otherToggles[field] || otherToggles[field] === '')) {
+                    updateData[field] = null;
+                } else {
+                    updateData[field] = String(otherToggles[field]);
+                }
             }
         }
         for (const field of numericFields) {
@@ -497,7 +511,10 @@ router.put('/bot-toggles', authenticate, async (req, res, next) => {
         }
 
         // Use service method (handles composite key correctly)
-        const toggles = await botFeatureService.updateToggles(req.user.id, updateData);
+        const scope = {};
+        if (req.query.deviceId) scope.deviceId = req.query.deviceId;
+        if (req.query.panelId) scope.panelId = req.query.panelId;
+        const toggles = await botFeatureService.updateToggles(req.user.id, updateData, scope);
 
         successResponse(res, toggles, 'Bot feature toggles updated');
     } catch (error) {

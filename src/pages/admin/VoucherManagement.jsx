@@ -43,10 +43,10 @@ export default function VoucherManagement() {
     const fetchVouchers = async () => {
         try {
             setLoading(true)
-            const res = await api.get('/wallet/admin/vouchers')
+            const res = await api.get('/wallet/admin/vouchers?limit=100')
             setVouchers(res.data || [])
         } catch (err) {
-            setError(err.message || 'Failed to fetch vouchers')
+            setError(err.error?.message || err.message || 'Failed to fetch vouchers')
         } finally {
             setLoading(false)
         }
@@ -118,8 +118,8 @@ export default function VoucherManagement() {
                 count: parseInt(generateData.count),
                 expiresAt: generateData.expiresAt || null
             })
-            setGeneratedVouchers(res.vouchers || [])
-            setSuccess(`Generated ${res.count} vouchers`)
+            setGeneratedVouchers(res.data?.vouchers || [])
+            setSuccess(`Generated ${res.data?.count || 0} vouchers`)
             fetchVouchers()
         } catch (err) {
             setError(err.error?.message || err.message)

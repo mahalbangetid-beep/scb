@@ -319,20 +319,71 @@ router.post('/admin/:id/feature', requireRole(['ADMIN', 'MASTER_ADMIN']), async 
 router.post('/admin/:id/grant', requireRole(['ADMIN', 'MASTER_ADMIN']), async (req, res, next) => {
     try {
         const { userId, quantity, note } = req.body;
+        const packageId = req.params.id;
 
         if (!userId) {
             throw new AppError('User ID is required', 400);
         }
 
-        const result = await creditPackageService.purchase(
-            userId,
-            req.params.id,
-            quantity || 1,
-            `ADMIN_GRANT_${req.user.id}_${Date.now()}`
-        );
+        const pkg = await creditPackageService.getById(packageId);
+        if (!pkg) {
+            throw new AppError('Package not found', 404);
+        }
+
+        const qty = quantity || 1;
+        const baseCredits = pkg.credits * qty;
+        const bonusCredits = (pkg.bonusCredits || 0) * qty;
+        const totalCredits = baseCredits + bonusCredits;
+
+        const prisma = require('../utils/prisma');
+
+        // Grant message credits atomically
+        const result = await prisma.$transaction(async (tx) => {
+            const user = await tx.user.findUnique({
+                where: { id: userId },
+                select: { messageCredits: true }
+            });
+
+            if (!user) {
+                throw new AppError('User not found', 404);
+            }
+
+            const creditsBefore = user.messageCredits || 0;
+            const creditsAfter = creditsBefore + totalCredits;
+
+            await tx.user.update({
+                where: { id: userId },
+                data: { messageCredits: { increment: totalCredits } }
+            });
+
+            // Log message credit transaction
+            try {
+                await tx.messageCreditTransaction.create({
+                    data: {
+                        userId,
+                        type: 'CREDIT',
+                        amount: totalCredits,
+                        description: `Admin granted ${qty}x ${pkg.name} Package${note ? ` — ${note}` : ''}`,
+                        balanceBefore: creditsBefore,
+                        balanceAfter: creditsAfter,
+                        reference: `ADMIN_GRANT_${req.user.id}_${Date.now()}`
+                    }
+                });
+            } catch (e) {
+                console.log('[CreditPackage] MessageCreditTransaction logging skipped:', e.message);
+            }
+
+            return {
+                packageName: pkg.name,
+                quantity: qty,
+                baseCredits,
+                bonusCredits,
+                totalCredits,
+                newCreditBalance: creditsAfter
+            };
+        });
 
         // Log activity
-        const prisma = require('../utils/prisma');
         await prisma.activityLog.create({
             data: {
                 userId: req.user.id,
@@ -340,7 +391,7 @@ router.post('/admin/:id/grant', requireRole(['ADMIN', 'MASTER_ADMIN']), async (r
                 category: 'ADMIN',
                 details: JSON.stringify({
                     targetUser: userId,
-                    packageId: req.params.id,
+                    packageId,
                     packageName: result.packageName,
                     credits: result.totalCredits,
                     note: note || null
@@ -349,7 +400,8 @@ router.post('/admin/:id/grant', requireRole(['ADMIN', 'MASTER_ADMIN']), async (r
             }
         });
 
-        successResponse(res, result, `Granted ${result.totalCredits} credits to user`);
+        console.log(`[CreditPackage] Admin ${req.user.id} granted ${result.totalCredits} credits to user ${userId}`);
+        successResponse(res, result, `Granted ${result.totalCredits} message credits to user`);
     } catch (error) {
         next(error);
     }

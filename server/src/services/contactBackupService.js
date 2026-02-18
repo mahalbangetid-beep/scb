@@ -477,63 +477,343 @@ class ContactBackupService {
 
     /**
      * Export ALL backups as a single JSON (Master Admin only)
-     * Returns the latest backup from each device
+     * Comprehensive structured export including:
+     * - WhatsApp contacts + groups
+     * - All panels with provider details
+     * - Provider configs (templates, forwarding rules)
+     * - Provider groups
+     * - Device-panel bindings
+     * - Configuration data
+     * 
+     * Section 19: Everything properly structured and restorable
      */
     async getMasterBackupExport() {
-        // Get latest backup for each device
-        const devices = await prisma.device.findMany({
-            where: { type: 'WHATSAPP' },
-            include: {
-                user: { select: { id: true, username: true, email: true, name: true } }
+        // Get all users
+        const users = await prisma.user.findMany({
+            select: {
+                id: true,
+                username: true,
+                email: true,
+                name: true,
+                role: true,
+                creditBalance: true,
+                messageCredits: true,
+                createdAt: true
             }
         });
 
         const exportData = {
             exportedAt: new Date().toISOString(),
-            exportType: 'MASTER_ADMIN_FULL_EXPORT',
-            totalDevices: 0,
-            totalContacts: 0,
-            totalGroups: 0,
-            devices: []
+            exportType: 'COMPREHENSIVE_BACKUP',
+            version: '2.0',
+            summary: {
+                totalUsers: users.length,
+                totalDevices: 0,
+                totalPanels: 0,
+                totalContacts: 0,
+                totalGroups: 0,
+                totalProviderConfigs: 0,
+                totalProviderGroups: 0
+            },
+            users: []
         };
 
+        for (const user of users) {
+            // Get all devices for this user
+            const devices = await prisma.device.findMany({
+                where: { userId: user.id },
+                select: {
+                    id: true, name: true, phone: true, type: true,
+                    status: true, isActive: true, panelId: true, groupOnly: true
+                }
+            });
+
+            // Get latest contact backup for each device
+            const deviceBackups = [];
+            for (const device of devices) {
+                const latestBackup = await prisma.contactBackup.findFirst({
+                    where: { deviceId: device.id, status: 'COMPLETED' },
+                    orderBy: { createdAt: 'desc' }
+                });
+
+                deviceBackups.push({
+                    device: {
+                        id: device.id,
+                        name: device.name,
+                        phone: device.phone,
+                        type: device.type,
+                        status: device.status,
+                        isActive: device.isActive
+                    },
+                    backup: latestBackup ? {
+                        backupDate: latestBackup.createdAt,
+                        totalContacts: latestBackup.totalContacts,
+                        totalGroups: latestBackup.totalGroups,
+                        contacts: latestBackup.contacts || [],
+                        groups: latestBackup.groups || []
+                    } : null
+                });
+
+                exportData.summary.totalContacts += latestBackup?.totalContacts || 0;
+                exportData.summary.totalGroups += latestBackup?.totalGroups || 0;
+            }
+
+            // Get all panels for this user
+            const panels = await prisma.smmPanel.findMany({
+                where: { userId: user.id },
+                select: {
+                    id: true, name: true, alias: true, url: true,
+                    apiKey: true, adminApiKey: true, panelType: true,
+                    isActive: true, createdAt: true
+                }
+            });
+
+            // Get all provider configs for this user
+            const providerConfigs = await prisma.providerConfig.findMany({
+                where: { userId: user.id }
+            });
+
+            // Get all provider groups for this user
+            const providerGroups = await prisma.providerGroup.findMany({
+                where: { userId: user.id },
+                select: {
+                    id: true, panelId: true, deviceId: true,
+                    providerName: true, type: true, groupId: true,
+                    groupName: true, messageTemplate: true,
+                    serviceIdRules: true, isManualServiceGroup: true,
+                    useSimpleFormat: true, isActive: true
+                }
+            });
+
+            // Get provider domain mappings
+            const providerDomains = await prisma.providerDomainMapping.findMany({
+                where: { userId: user.id }
+            });
+
+            // Get support groups
+            let supportGroups = [];
+            try {
+                supportGroups = await prisma.supportGroup.findMany({
+                    where: { userId: user.id }
+                });
+            } catch (e) {
+                // Model may not exist yet
+            }
+
+            // Get device-panel bindings
+            const devicePanelBindings = await prisma.devicePanelBinding.findMany({
+                where: {
+                    device: { userId: user.id }
+                },
+                select: {
+                    deviceId: true, panelId: true
+                }
+            });
+
+            // Build user export
+            const userData = {
+                user: {
+                    id: user.id,
+                    username: user.username,
+                    email: user.email,
+                    name: user.name,
+                    role: user.role,
+                    creditBalance: user.creditBalance,
+                    messageCredits: user.messageCredits,
+                    createdAt: user.createdAt
+                },
+                devices: deviceBackups,
+                panels: panels.map(p => ({
+                    id: p.id,
+                    name: p.name,
+                    alias: p.alias,
+                    url: p.url,
+                    apiKey: p.apiKey,
+                    adminApiKey: p.adminApiKey,
+                    panelType: p.panelType,
+                    isActive: p.isActive,
+                    createdAt: p.createdAt
+                })),
+                providerConfigs: providerConfigs.map(pc => ({
+                    id: pc.id,
+                    providerName: pc.providerName,
+                    alias: pc.alias,
+                    providerDomain: pc.providerDomain,
+                    forwardRefill: pc.forwardRefill,
+                    forwardCancel: pc.forwardCancel,
+                    forwardSpeedup: pc.forwardSpeedup,
+                    forwardStatus: pc.forwardStatus,
+                    whatsappGroupJid: pc.whatsappGroupJid,
+                    whatsappNumber: pc.whatsappNumber,
+                    telegramChatId: pc.telegramChatId,
+                    errorGroupJid: pc.errorGroupJid,
+                    newOrderTemplate: pc.newOrderTemplate,
+                    refillTemplate: pc.refillTemplate,
+                    cancelTemplate: pc.cancelTemplate,
+                    speedupTemplate: pc.speedupTemplate,
+                    errorTemplate: pc.errorTemplate,
+                    deviceId: pc.deviceId,
+                    priority: pc.priority,
+                    isActive: pc.isActive
+                })),
+                providerGroups: providerGroups,
+                providerDomains: providerDomains.map(pd => ({
+                    providerId: pd.providerId,
+                    providerName: pd.providerName,
+                    hiddenDomain: pd.hiddenDomain,
+                    publicAlias: pd.publicAlias,
+                    forwardDestinations: pd.forwardDestinations,
+                    isForwardingEnabled: pd.isForwardingEnabled,
+                    isApiRequestEnabled: pd.isApiRequestEnabled
+                })),
+                supportGroups: supportGroups.map(sg => ({
+                    id: sg.id,
+                    groupJid: sg.groupJid,
+                    groupName: sg.groupName,
+                    purpose: sg.purpose,
+                    notes: sg.notes,
+                    isActive: sg.isActive
+                })),
+                devicePanelBindings: devicePanelBindings
+            };
+
+            exportData.users.push(userData);
+            exportData.summary.totalDevices += devices.length;
+            exportData.summary.totalPanels += panels.length;
+            exportData.summary.totalProviderConfigs += providerConfigs.length;
+            exportData.summary.totalProviderGroups += providerGroups.length;
+        }
+
+        return exportData;
+    }
+
+    /**
+     * Export comprehensive backup for a single user (Section 19)
+     * Includes: contacts, panels, providers, configs — structured and restorable
+     * @param {string} userId - User ID
+     */
+    async getUserComprehensiveExport(userId) {
+        const user = await prisma.user.findUnique({
+            where: { id: userId },
+            select: { id: true, username: true, email: true, name: true, role: true }
+        });
+
+        if (!user) throw new Error('User not found');
+
+        // Get devices + latest contact backups
+        const devices = await prisma.device.findMany({
+            where: { userId },
+            select: {
+                id: true, name: true, phone: true, type: true,
+                status: true, isActive: true, panelId: true
+            }
+        });
+
+        const deviceBackups = [];
         for (const device of devices) {
             const latestBackup = await prisma.contactBackup.findFirst({
-                where: {
-                    deviceId: device.id,
-                    status: 'COMPLETED'
-                },
+                where: { deviceId: device.id, status: 'COMPLETED' },
                 orderBy: { createdAt: 'desc' }
             });
 
-            if (latestBackup) {
-                exportData.devices.push({
-                    deviceId: device.id,
-                    deviceName: device.name,
-                    devicePhone: device.phone,
-                    deviceStatus: device.status,
-                    owner: {
-                        userId: device.user?.id,
-                        username: device.user?.username,
-                        email: device.user?.email,
-                        name: device.user?.name
-                    },
-                    backupId: latestBackup.id,
+            deviceBackups.push({
+                device,
+                backup: latestBackup ? {
                     backupDate: latestBackup.createdAt,
-                    backupType: latestBackup.backupType,
                     totalContacts: latestBackup.totalContacts,
                     totalGroups: latestBackup.totalGroups,
                     contacts: latestBackup.contacts || [],
                     groups: latestBackup.groups || []
-                });
-
-                exportData.totalContacts += latestBackup.totalContacts || 0;
-                exportData.totalGroups += latestBackup.totalGroups || 0;
-                exportData.totalDevices++;
-            }
+                } : null
+            });
         }
 
-        return exportData;
+        // Get panels
+        const panels = await prisma.smmPanel.findMany({
+            where: { userId },
+            select: {
+                id: true, name: true, alias: true, url: true,
+                apiKey: true, adminApiKey: true, panelType: true,
+                isActive: true, createdAt: true
+            }
+        });
+
+        // Get provider configs
+        const providerConfigs = await prisma.providerConfig.findMany({
+            where: { userId }
+        });
+
+        // Get provider groups
+        const providerGroups = await prisma.providerGroup.findMany({
+            where: { userId },
+            select: {
+                id: true, panelId: true, deviceId: true,
+                providerName: true, type: true, groupId: true,
+                groupName: true, messageTemplate: true,
+                serviceIdRules: true, isManualServiceGroup: true,
+                useSimpleFormat: true, isActive: true
+            }
+        });
+
+        // Get provider domain mappings
+        const providerDomains = await prisma.providerDomainMapping.findMany({
+            where: { userId }
+        });
+
+        // Get support groups
+        let supportGroups = [];
+        try {
+            supportGroups = await prisma.supportGroup.findMany({
+                where: { userId }
+            });
+        } catch (e) { /* Model may not exist */ }
+
+        // Get device-panel bindings
+        const devicePanelBindings = await prisma.devicePanelBinding.findMany({
+            where: { device: { userId } },
+            select: { deviceId: true, panelId: true }
+        });
+
+        return {
+            exportedAt: new Date().toISOString(),
+            exportType: 'USER_COMPREHENSIVE_BACKUP',
+            version: '2.0',
+            user: { id: user.id, username: user.username, email: user.email, name: user.name },
+            summary: {
+                totalDevices: devices.length,
+                totalPanels: panels.length,
+                totalContacts: deviceBackups.reduce((sum, db) => sum + (db.backup?.totalContacts || 0), 0),
+                totalGroups: deviceBackups.reduce((sum, db) => sum + (db.backup?.totalGroups || 0), 0),
+                totalProviderConfigs: providerConfigs.length,
+                totalProviderGroups: providerGroups.length
+            },
+            devices: deviceBackups,
+            panels,
+            providerConfigs: providerConfigs.map(pc => ({
+                providerName: pc.providerName, alias: pc.alias,
+                providerDomain: pc.providerDomain,
+                forwardRefill: pc.forwardRefill, forwardCancel: pc.forwardCancel,
+                forwardSpeedup: pc.forwardSpeedup, forwardStatus: pc.forwardStatus,
+                whatsappGroupJid: pc.whatsappGroupJid, whatsappNumber: pc.whatsappNumber,
+                telegramChatId: pc.telegramChatId, errorGroupJid: pc.errorGroupJid,
+                newOrderTemplate: pc.newOrderTemplate, refillTemplate: pc.refillTemplate,
+                cancelTemplate: pc.cancelTemplate, speedupTemplate: pc.speedupTemplate,
+                errorTemplate: pc.errorTemplate,
+                deviceId: pc.deviceId, priority: pc.priority, isActive: pc.isActive
+            })),
+            providerGroups,
+            providerDomains: providerDomains.map(pd => ({
+                providerId: pd.providerId, providerName: pd.providerName,
+                hiddenDomain: pd.hiddenDomain, publicAlias: pd.publicAlias,
+                forwardDestinations: pd.forwardDestinations,
+                isForwardingEnabled: pd.isForwardingEnabled, isApiRequestEnabled: pd.isApiRequestEnabled
+            })),
+            supportGroups: supportGroups.map(sg => ({
+                groupJid: sg.groupJid, groupName: sg.groupName,
+                purpose: sg.purpose, notes: sg.notes, isActive: sg.isActive
+            })),
+            devicePanelBindings
+        };
     }
 
     /**

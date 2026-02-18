@@ -5,6 +5,7 @@ import {
     HelpCircle, FileText
 } from 'lucide-react';
 import api from '../services/api';
+import ScopeSelector from '../components/ScopeSelector';
 
 const COMMAND_CATEGORIES = [
     {
@@ -57,10 +58,12 @@ function CommandTemplates() {
     const [showPreview, setShowPreview] = useState(false);
     const [saveStatus, setSaveStatus] = useState({ show: false, success: false, message: '' });
     const [expandedVariables, setExpandedVariables] = useState(true);
+    const [scope, setScope] = useState({ deviceId: null, panelId: null });
 
     useEffect(() => {
+        setSaveStatus({ show: false, success: false, message: '' });
         fetchTemplates();
-    }, []);
+    }, [scope.deviceId, scope.panelId]);
 
     useEffect(() => {
         if (templates[activeCommand]) {
@@ -71,7 +74,11 @@ function CommandTemplates() {
     const fetchTemplates = async () => {
         try {
             setLoading(true);
-            const response = await api.get('/command-templates');
+            const params = new URLSearchParams();
+            if (scope.deviceId) params.set('deviceId', scope.deviceId);
+            if (scope.panelId) params.set('panelId', scope.panelId);
+            const qs = params.toString();
+            const response = await api.get(`/command-templates${qs ? `?${qs}` : ''}`);
             setTemplates(response.data.templates || {});
             setVariables(response.data.variables || {});
             setCommandList(response.data.commandList || []);
@@ -84,7 +91,11 @@ function CommandTemplates() {
 
     const handlePreview = async () => {
         try {
-            const response = await api.post('/command-templates/preview', {
+            const params = new URLSearchParams();
+            if (scope.deviceId) params.set('deviceId', scope.deviceId);
+            if (scope.panelId) params.set('panelId', scope.panelId);
+            const qs = params.toString();
+            const response = await api.post(`/command-templates/preview${qs ? `?${qs}` : ''}`, {
                 template: editedTemplate
             });
             setPreview(response.data.preview);
@@ -97,7 +108,11 @@ function CommandTemplates() {
     const handleSave = async () => {
         try {
             setSaving(true);
-            await api.put(`/command-templates/${activeCommand}`, {
+            const params = new URLSearchParams();
+            if (scope.deviceId) params.set('deviceId', scope.deviceId);
+            if (scope.panelId) params.set('panelId', scope.panelId);
+            const qs = params.toString();
+            await api.put(`/command-templates/${activeCommand}${qs ? `?${qs}` : ''}`, {
                 template: editedTemplate
             });
 
@@ -125,7 +140,11 @@ function CommandTemplates() {
         if (!window.confirm('Reset this template to default?')) return;
 
         try {
-            const response = await api.delete(`/command-templates/${activeCommand}`);
+            const params = new URLSearchParams();
+            if (scope.deviceId) params.set('deviceId', scope.deviceId);
+            if (scope.panelId) params.set('panelId', scope.panelId);
+            const qs = params.toString();
+            const response = await api.delete(`/command-templates/${activeCommand}${qs ? `?${qs}` : ''}`);
             const newTemplate = response.data.template || '';
             setEditedTemplate(newTemplate);
             setTemplates(prev => ({
@@ -197,6 +216,12 @@ function CommandTemplates() {
                     </p>
                 </div>
             </div>
+
+            <ScopeSelector
+                deviceId={scope.deviceId}
+                panelId={scope.panelId}
+                onChange={setScope}
+            />
 
             <div className="command-templates-layout">
                 {/* Left Sidebar - Categories & Commands */}

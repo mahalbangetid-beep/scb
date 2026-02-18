@@ -107,6 +107,7 @@ const adminNavigation = [
     { name: 'Contact Backups', icon: Database, path: '/admin/contact-backups' },
     { name: 'System Bots', icon: Bot, path: '/admin/system-bots' },
     { name: 'Email Settings', icon: Mail, path: '/admin/email-settings' },
+    { name: 'Default Charges', icon: CreditCard, path: '/admin/charges' },
     { name: 'System Settings', icon: Settings, path: '/admin/settings' },
 ]
 

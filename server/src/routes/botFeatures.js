@@ -86,6 +86,19 @@ router.put('/', async (req, res, next) => {
             }
         }
 
+        // Sanitize nullable text fields: convert empty strings to null
+        // This ensures scope inheritance works correctly (empty string would override parent)
+        const nullableTextKeys = [
+            'fallbackMessage', 'callReplyMessage', 'groupCallReplyMessage',
+            'repeatedCallReplyMessage', 'spamWarningMessage',
+            'massCommandReplyTemplate', 'massForwardingTemplate', 'massSupportReplyTemplate'
+        ];
+        for (const key of nullableTextKeys) {
+            if (updates[key] !== undefined && (updates[key] === '' || updates[key] === null)) {
+                updates[key] = null;
+            }
+        }
+
         // Log high-risk feature changes
         const highRiskKeys = [
             'autoHandleFailedOrders',

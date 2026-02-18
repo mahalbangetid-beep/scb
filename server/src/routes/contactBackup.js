@@ -111,6 +111,26 @@ router.post('/device/:deviceId', async (req, res, next) => {
 });
 
 /**
+ * GET /api/contact-backup/export-all
+ * Comprehensive export: contacts + panels + providers + configs (Section 19)
+ * Structured, restorable JSON format for current user
+ */
+router.get('/export-all', async (req, res, next) => {
+    try {
+        const exportData = await contactBackupService.getUserComprehensiveExport(req.user.id);
+
+        const filename = `comprehensive_backup_${req.user.username || 'user'}_${new Date().toISOString().split('T')[0]}.json`;
+
+        res.setHeader('Content-Type', 'application/json');
+        res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+
+        res.json(exportData);
+    } catch (error) {
+        next(error);
+    }
+});
+
+/**
  * GET /api/contact-backup/:backupId
  * Get specific backup with full data
  */

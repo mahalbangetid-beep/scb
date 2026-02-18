@@ -1,13 +1,15 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
     Bot, CreditCard, AlertTriangle, Users, MessageSquare,
-    CheckCircle, XCircle, ArrowRightLeft, Clock,
+    CheckCircle, XCircle, Clock,
     Loader2, Shield, RefreshCw, X, Signal, Search, Plus,
     Trash2, PlayCircle, Radio, Headphones
 } from 'lucide-react';
 import api from '../services/api';
 
 const SystemBots = () => {
+    const navigate = useNavigate();
     const [bots, setBots] = useState([]);
     const [mySubs, setMySubs] = useState([]);
     const [supportGroups, setSupportGroups] = useState([]);
@@ -71,7 +73,14 @@ const SystemBots = () => {
             setSuccess(res.message || `Subscribed to ${botName}!`);
             fetchData();
         } catch (err) {
-            setError(err.error?.message || err.message || 'Failed to subscribe');
+            const errorMsg = err.error?.message || err.message || 'Failed to subscribe';
+            // Per spec 12.2: If System Bot activated → redirect to payment page
+            if (errorMsg.toLowerCase().includes('insufficient balance')) {
+                setError(`${errorMsg} — Redirecting to Wallet...`);
+                setTimeout(() => navigate('/wallet'), 2000);
+            } else {
+                setError(errorMsg);
+            }
         } finally {
             setActionLoading(null);
         }

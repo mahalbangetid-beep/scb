@@ -30,40 +30,58 @@ class MasterBackupService {
                 where: { panelId: panel.id },
                 select: {
                     id: true,
-                    name: true,
                     providerName: true,
+                    type: true,
                     groupId: true,
                     groupName: true,
-                    platform: true
+                    messageTemplate: true,
+                    serviceIdRules: true,
+                    isManualServiceGroup: true,
+                    useSimpleFormat: true,
+                    isActive: true
                 }
             });
 
-            // Get provider domain mappings for this user
+            // Get provider domain mappings for this panel
             const providerDomains = await prisma.providerDomainMapping.findMany({
+                where: { userId: user.id, panelId: panel.id },
+                select: {
+                    id: true,
+                    providerId: true,
+                    providerName: true,
+                    hiddenDomain: true,
+                    publicAlias: true,
+                    forwardDestinations: true,
+                    isForwardingEnabled: true,
+                    isApiRequestEnabled: true
+                }
+            });
+
+            // Get provider configs for this user (not panel-specific)
+            const providerConfigs = await prisma.providerConfig.findMany({
                 where: { userId: user.id },
                 select: {
                     id: true,
                     providerName: true,
-                    aliases: true,
-                    panelUrl: true
+                    alias: true,
+                    providerDomain: true,
+                    forwardRefill: true,
+                    forwardCancel: true,
+                    forwardSpeedup: true,
+                    whatsappGroupJid: true,
+                    whatsappNumber: true,
+                    deviceId: true,
+                    isActive: true
                 }
             });
 
             // Extract aliases from provider domains
-            const providerAliases = [];
-            for (const pd of providerDomains) {
-                try {
-                    const aliases = typeof pd.aliases === 'string' ? JSON.parse(pd.aliases) : pd.aliases;
-                    if (Array.isArray(aliases)) {
-                        providerAliases.push(...aliases.map(a => ({
-                            providerName: pd.providerName,
-                            alias: a
-                        })));
-                    }
-                } catch (e) {
-                    // Skip invalid JSON
-                }
-            }
+            const providerAliases = providerDomains
+                .filter(pd => pd.publicAlias)
+                .map(pd => ({
+                    providerName: pd.providerName,
+                    alias: pd.publicAlias
+                }));
 
             const backup = await prisma.masterBackup.create({
                 data: {
@@ -114,11 +132,15 @@ class MasterBackupService {
                 where: { panelId: panel.id },
                 select: {
                     id: true,
-                    name: true,
                     providerName: true,
+                    type: true,
                     groupId: true,
                     groupName: true,
-                    platform: true
+                    messageTemplate: true,
+                    serviceIdRules: true,
+                    isManualServiceGroup: true,
+                    useSimpleFormat: true,
+                    isActive: true
                 }
             });
 

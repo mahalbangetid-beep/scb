@@ -334,6 +334,11 @@ httpServer.listen(PORT, async () => {
     startScheduler(whatsappService);
     console.log('[Server] Broadcast Scheduler initialized');
 
+    // Initialize Subscription Scheduler (auto-renewal cron)
+    const subscriptionScheduler = require('./services/subscriptionScheduler');
+    subscriptionScheduler.initialize();
+    console.log('[Server] Subscription Scheduler initialized');
+
     // Seed default email templates
     try {
         const emailService = require('./services/emailService');

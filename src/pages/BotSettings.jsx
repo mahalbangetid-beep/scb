@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Settings, Shield, Zap, MessageSquare, AlertTriangle, RotateCcw, Save, ChevronDown, ChevronRight, Bell, Package, Users, Search, Phone, ShieldAlert } from 'lucide-react';
 import api from '../services/api';
+import ScopeSelector from '../components/ScopeSelector';
 
 const BotSettings = () => {
     const [toggles, setToggles] = useState(null);
@@ -9,6 +10,7 @@ const BotSettings = () => {
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
     const [searchQuery, setSearchQuery] = useState('');
+    const [scope, setScope] = useState({ deviceId: null, panelId: null });
     const [expandedSections, setExpandedSections] = useState({
         commands: true,
         highRisk: false,
@@ -17,17 +19,24 @@ const BotSettings = () => {
         response: true,
         fallback: true,
         callResponse: true,
-        spamProtection: true
+        spamProtection: true,
+        massTemplates: false
     });
 
     useEffect(() => {
+        setError('');
+        setSuccess('');
         fetchToggles();
-    }, []);
+    }, [scope.deviceId, scope.panelId]);
 
     const fetchToggles = async () => {
         try {
             setLoading(true);
-            const response = await api.get('/bot-features');
+            const params = new URLSearchParams();
+            if (scope.deviceId) params.set('deviceId', scope.deviceId);
+            if (scope.panelId) params.set('panelId', scope.panelId);
+            const qs = params.toString();
+            const response = await api.get(`/bot-features${qs ? `?${qs}` : ''}`);
             setToggles(response.data);
         } catch (err) {
             setError('Failed to load bot settings');
@@ -47,7 +56,11 @@ const BotSettings = () => {
             setError('');
             setSuccess('');
 
-            const response = await api.put('/bot-features', toggles);
+            const params = new URLSearchParams();
+            if (scope.deviceId) params.set('deviceId', scope.deviceId);
+            if (scope.panelId) params.set('panelId', scope.panelId);
+            const qs = params.toString();
+            const response = await api.put(`/bot-features${qs ? `?${qs}` : ''}`, toggles);
             setToggles(response.data);
             setSuccess('Bot settings saved successfully!');
 
@@ -66,7 +79,11 @@ const BotSettings = () => {
 
         try {
             setSaving(true);
-            const response = await api.post('/bot-features/reset');
+            const params = new URLSearchParams();
+            if (scope.deviceId) params.set('deviceId', scope.deviceId);
+            if (scope.panelId) params.set('panelId', scope.panelId);
+            const qs = params.toString();
+            const response = await api.post(`/bot-features/reset${qs ? `?${qs}` : ''}`);
             setToggles(response.data);
             setSuccess('Settings reset to defaults!');
             setTimeout(() => setSuccess(''), 3000);
@@ -284,6 +301,12 @@ const BotSettings = () => {
                     </button>
                 </div>
             </div>
+
+            <ScopeSelector
+                deviceId={scope.deviceId}
+                panelId={scope.panelId}
+                onChange={setScope}
+            />
 
             {error && (
                 <div className="alert alert-error">
@@ -543,6 +566,52 @@ Example: 12345 status`}
                             />
                         </>
                     )}
+                </Section>
+
+                {/* Mass/Bulk Order Templates (Section 18) */}
+                <Section
+                    id="massTemplates"
+                    title="Mass/Bulk Order Templates"
+                    icon={Package}
+                    description="Customize formats for mass order operations — replies, forwarding, and support responses"
+                >
+                    <TextAreaRow
+                        label="Mass Command Reply Template"
+                        description="Format used when replying to bulk order commands (multiple IDs in one message). Variables: {command}, {total}, {success_count}, {failed_count}, {results}"
+                        inputKey="massCommandReplyTemplate"
+                        rows={6}
+                        placeholder={`📋 *{command} Results*
+━━━━━━━━━━━━━━━━
+
+{results}
+
+━━━━━━━━━━━━━━━━
+📊 Total: {total} | ✅ {success_count} | ❌ {failed_count}`}
+                    />
+                    <TextAreaRow
+                        label="Mass Forwarding Template"
+                        description="Format for batch forwarding messages to provider/support groups. Variables: {order_ids}, {command}, {provider}, {panel}, {count}"
+                        inputKey="massForwardingTemplate"
+                        rows={5}
+                        placeholder={`📦 *BATCH {command}*
+
+Provider: {provider}
+Panel: {panel}
+Orders ({count}): {order_ids}
+
+Action: {command}`}
+                    />
+                    <TextAreaRow
+                        label="Support Side Mass Reply Template"
+                        description="Format for replying when processing mass orders from support groups. Variables: {order_ids}, {command}, {results}, {total}, {success_count}, {failed_count}"
+                        inputKey="massSupportReplyTemplate"
+                        rows={5}
+                        placeholder={`📋 *Mass {command} Processed*
+
+{results}
+
+Total: {total} | ✅ {success_count} | ❌ {failed_count}`}
+                    />
                 </Section>
 
                 {/* High Risk Features */}

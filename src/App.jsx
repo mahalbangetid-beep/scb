@@ -53,6 +53,7 @@ import SystemBotManagement from './pages/admin/SystemBotManagement'
 import AdminDashboard from './pages/admin/AdminDashboard'
 import EmailSettings from './pages/admin/EmailSettings'
 import FonepayManagement from './pages/admin/FonepayManagement'
+import DefaultCharges from './pages/admin/DefaultCharges'
 import './index.css'
 
 
@@ -164,6 +165,7 @@ function AppContent() {
           <Route path="/admin/system-bots" element={<AdminRoute><SystemBotManagement /></AdminRoute>} />
           <Route path="/admin/email-settings" element={<AdminRoute><EmailSettings /></AdminRoute>} />
           <Route path="/admin/fonepay" element={<AdminRoute><FonepayManagement /></AdminRoute>} />
+          <Route path="/admin/charges" element={<AdminRoute><DefaultCharges /></AdminRoute>} />
 
           {/* Catch all */}
           <Route path="*" element={<Navigate to="/" replace />} />

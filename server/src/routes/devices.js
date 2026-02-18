@@ -4,6 +4,7 @@ const prisma = require('../utils/prisma');
 const { authenticate } = require('../middleware/auth');
 const { AppError } = require('../middleware/errorHandler');
 const { successResponse, paginatedResponse, parsePagination } = require('../utils/response');
+const resourceSubscriptionHook = require('../services/resourceSubscriptionHook');
 
 // GET /api/devices - List all devices for current user
 router.get('/', authenticate, async (req, res, next) => {
@@ -145,10 +146,21 @@ router.post('/', authenticate, async (req, res, next) => {
         const whatsapp = req.app.get('whatsapp');
         const session = await whatsapp.createSession(device.id);
 
+        // Auto-create subscription (1st device free, subsequent ones charged monthly)
+        let subscriptionInfo = null;
+        try {
+            subscriptionInfo = await resourceSubscriptionHook.onResourceCreated(
+                req.user.id, 'DEVICE', device.id, device.name
+            );
+        } catch (hookErr) {
+            console.error('[Devices] Subscription hook error:', hookErr.message);
+        }
+
         successResponse(res, {
             ...device,
-            qrCode: session.qr // Note: This might be null if already connected or error
-        }, `Device created${panelId ? ' and bound to panel' : ''}. Please scan the QR code to connect.`, 201);
+            qrCode: session.qr,
+            subscription: subscriptionInfo
+        }, `Device created${panelId ? ' and bound to panel' : ''}${subscriptionInfo?.charged ? `. Monthly subscription: $${subscriptionInfo.subscription?.monthlyFee}` : '. First device is free!'}. Please scan the QR code to connect.`, 201);
     } catch (error) {
         next(error);
     }
@@ -171,6 +183,13 @@ router.delete('/:id', authenticate, async (req, res, next) => {
         // Disconnect from WhatsApp
         const whatsapp = req.app.get('whatsapp');
         await whatsapp.deleteSession(device.id);
+
+        // Cancel any associated subscription (before deleting the resource)
+        try {
+            await resourceSubscriptionHook.onResourceDeleted(req.user.id, 'DEVICE', device.id);
+        } catch (hookErr) {
+            console.error('[Devices] Subscription cancel hook error:', hookErr.message);
+        }
 
         // Delete from database
         await prisma.device.delete({

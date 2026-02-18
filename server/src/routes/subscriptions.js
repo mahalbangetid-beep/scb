@@ -221,6 +221,63 @@ router.post('/admin/create', requireRole(['ADMIN', 'MASTER_ADMIN']), async (req,
 });
 
 /**
+ * POST /api/subscriptions/admin/:id/extend
+ * Extend subscription expiry (Master Admin only)
+ * Per spec: "Master Admin can extend expiry"
+ */
+router.post('/admin/:id/extend', requireRole(['MASTER_ADMIN']), async (req, res, next) => {
+    try {
+        const { days, months } = req.body;
+
+        if (!days && !months) {
+            throw new AppError('days or months is required', 400);
+        }
+
+        const parsedDays = days ? parseInt(days) : 0;
+        const parsedMonths = months ? parseInt(months) : 0;
+
+        if ((days && (isNaN(parsedDays) || parsedDays <= 0)) || (months && (isNaN(parsedMonths) || parsedMonths <= 0))) {
+            throw new AppError('days and months must be positive numbers', 400);
+        }
+
+        const prisma = require('../utils/prisma');
+        const subscription = await prisma.monthlySubscription.findUnique({
+            where: { id: req.params.id }
+        });
+
+        if (!subscription) {
+            throw new AppError('Subscription not found', 404);
+        }
+
+        // Calculate new billing date
+        const currentBillingDate = new Date(subscription.nextBillingDate);
+        const newBillingDate = new Date(currentBillingDate);
+
+        if (parsedMonths) {
+            newBillingDate.setMonth(newBillingDate.getMonth() + parsedMonths);
+        }
+        if (parsedDays) {
+            newBillingDate.setDate(newBillingDate.getDate() + parsedDays);
+        }
+
+        const updated = await prisma.monthlySubscription.update({
+            where: { id: req.params.id },
+            data: {
+                nextBillingDate: newBillingDate,
+                status: 'ACTIVE', // Re-activate if was paused/expired
+                pausedAt: null,
+                failedAttempts: 0,
+                lastFailReason: null
+            }
+        });
+
+        successResponse(res, updated, `Subscription extended to ${newBillingDate.toISOString().split('T')[0]}`);
+    } catch (error) {
+        next(error);
+    }
+});
+
+/**
  * GET /api/subscriptions/admin/expiring
  * Get subscriptions expiring soon (admin only)
  */

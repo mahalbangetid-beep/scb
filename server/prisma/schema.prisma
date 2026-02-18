@@ -91,6 +91,7 @@ model User {
   marketingIntervals        MarketingInterval[]
   marketingConfig           MarketingConfig?          // Section 6: Marketing configuration
   supportGroups             SupportGroup[]            // Section 7: Support groups
+  monthlySubscriptions      MonthlySubscription[]     // Section 13: Device/bot subscriptions
 }
 
 model ApiKey {
@@ -1231,6 +1232,21 @@ model BotFeatureToggles {
   spamTimeWindowMinutes  Int     @default(5)       // Time window for counting repeats
   spamDisableDurationMin Int     @default(60)      // Disable bot for user (minutes)
 
+  // ==================== MASS/BULK TEMPLATES (Section 18) ====================
+  // Customizable formats for mass/bulk order operations
+
+  // Mass command reply: Format used when replying to bulk order commands (multiple IDs)
+  // Variables: {command}, {total}, {success_count}, {failed_count}, {results}
+  massCommandReplyTemplate   String? @db.Text
+
+  // Mass forwarding to support/provider groups: Format for batch forwarding messages
+  // Variables: {order_ids}, {command}, {provider}, {panel}, {count}
+  massForwardingTemplate     String? @db.Text
+
+  // Support side mass reply: Format for reply when processing mass orders from support groups
+  // Variables: {order_ids}, {command}, {results}, {total}, {success_count}, {failed_count}
+  massSupportReplyTemplate   String? @db.Text
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -1366,6 +1382,9 @@ model MonthlySubscription {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@index([resourceType, resourceId])

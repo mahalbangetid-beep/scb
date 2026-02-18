@@ -373,7 +373,7 @@ export default function SystemSettings() {
                                             <MessageSquare size={18} />
                                             <div>
                                                 <strong>Credits Mode Active</strong>
-                                                <p>Users pay 1 credit per bot message. Users can convert their dollar balance to credits.</p>
+                                                <p>Users pay 1 credit per bot message. Users can buy message packages to get credits.</p>
                                             </div>
                                         </div>
                                     ) : (

@@ -182,7 +182,7 @@ class CommandHandlerService {
             command,
             responses,
             summary,
-            formattedResponse: this.formatResponses(command, responses),
+            formattedResponse: await this.formatResponses(command, responses, userId, scope, { isStaffOverride }),
             batchForward: batchForwardResult
         };
     }
@@ -1179,7 +1179,8 @@ class CommandHandlerService {
     /**
      * Format all responses into a single message
      */
-    formatResponses(command, responses, userId = null) {
+    async formatResponses(command, responses, userId = null, scope = {}, options = {}) {
+        const { isStaffOverride = false } = options;
         if (responses.length === 0) {
             return 'No orders processed.';
         }
@@ -1192,7 +1193,48 @@ class CommandHandlerService {
         const successful = responses.filter(r => r.success);
         const failed = responses.filter(r => !r.success);
 
-        // Get templates (use defaults, will be customizable via UI)
+        // Check for user's custom mass reply template
+        let customTemplate = null;
+        if (userId) {
+            try {
+                const toggles = await botFeatureService.getToggles(userId, scope);
+                // Use support-side template if from staff override group, otherwise use regular mass reply template
+                customTemplate = isStaffOverride
+                    ? (toggles?.massSupportReplyTemplate || toggles?.massCommandReplyTemplate)
+                    : toggles?.massCommandReplyTemplate;
+            } catch (err) {
+                console.error('[CommandHandler] Failed to get mass reply template:', err.message);
+            }
+        }
+
+        if (customTemplate) {
+            // Build results text
+            let resultsText = '';
+            if (successful.length > 0) {
+                resultsText += `✅ Successful (${successful.length}):\n`;
+                for (const r of successful.slice(0, 20)) {
+                    resultsText += `• ${r.orderId}\n`;
+                }
+                if (successful.length > 20) resultsText += `... and ${successful.length - 20} more\n`;
+            }
+            if (failed.length > 0) {
+                if (resultsText) resultsText += '\n';
+                resultsText += `❌ Failed (${failed.length}):\n`;
+                for (const r of failed.slice(0, 10)) {
+                    resultsText += `• ${r.orderId}: ${r.details?.error || r.details?.reason || 'Error'}\n`;
+                }
+                if (failed.length > 10) resultsText += `... and ${failed.length - 10} more\n`;
+            }
+
+            return customTemplate
+                .replace(/\{command\}/g, commandParser.getDisplayCommand(command))
+                .replace(/\{total\}/g, responses.length.toString())
+                .replace(/\{success_count\}/g, successful.length.toString())
+                .replace(/\{failed_count\}/g, failed.length.toString())
+                .replace(/\{results\}/g, resultsText.trim());
+        }
+
+        // Default format using response templates
         const defaults = responseTemplateService.defaultTemplates;
 
         // Format header
@@ -1795,8 +1837,27 @@ class CommandHandlerService {
                 };
                 const cmdText = commandMap[command.toLowerCase()] || command.toLowerCase();
 
-                // Build batch message
-                const batchMessage = `${providerOrderIds} ${cmdText}`;
+                // Check for custom mass forwarding template
+                let batchMessage = `${providerOrderIds} ${cmdText}`;
+                try {
+                    const toggles = await botFeatureService.getToggles(userId, { panelId: providerData.panelId || panelId });
+                    if (toggles?.massForwardingTemplate) {
+                        // Get panel alias for template
+                        let panelAlias = 'Panel';
+                        if (providerData.panelId || panelId) {
+                            const panel = await prisma.smmPanel.findUnique({ where: { id: providerData.panelId || panelId }, select: { alias: true, name: true } });
+                            panelAlias = panel?.alias || panel?.name || 'Panel';
+                        }
+                        batchMessage = toggles.massForwardingTemplate
+                            .replace(/\{order_ids\}/g, providerOrderIds)
+                            .replace(/\{command\}/g, cmdText)
+                            .replace(/\{provider\}/g, providerData.providerName || 'Unknown')
+                            .replace(/\{panel\}/g, panelAlias)
+                            .replace(/\{count\}/g, providerData.orders.length.toString());
+                    }
+                } catch (tplErr) {
+                    console.error('[CommandHandler] Failed to get mass forwarding template:', tplErr.message);
+                }
 
                 console.log(`[CommandHandler] Sending batch forward to ${providerGroup.groupName}: ${batchMessage}`);
 

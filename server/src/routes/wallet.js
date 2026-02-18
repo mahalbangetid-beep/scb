@@ -531,6 +531,7 @@ router.put('/admin/payments/:id/approve', requireAdmin, async (req, res, next) =
                 where: { id: payment.id },
                 data: {
                     status: 'COMPLETED',
+                    completedAt: new Date(),
                     processedAt: new Date(),
                     processedBy: req.user.id
                 }
@@ -580,37 +581,39 @@ router.put('/admin/payments/:id/reject', requireAdmin, async (req, res, next) =>
     try {
         const { reason } = req.body;
 
-        const payment = await prisma.payment.findUnique({
-            where: { id: req.params.id }
-        });
+        await prisma.$transaction(async (tx) => {
+            const payment = await tx.payment.findUnique({
+                where: { id: req.params.id }
+            });
 
-        if (!payment) {
-            throw new AppError('Payment not found', 404);
-        }
-
-        if (payment.status !== 'PENDING') {
-            throw new AppError('Payment is not pending', 400);
-        }
-
-        // Safe parse existing metadata
-        let existingMeta = {};
-        try {
-            existingMeta = JSON.parse(payment.metadata || '{}');
-        } catch {
-            existingMeta = {};
-        }
-
-        await prisma.payment.update({
-            where: { id: payment.id },
-            data: {
-                status: 'REJECTED',
-                processedAt: new Date(),
-                processedBy: req.user.id,
-                metadata: JSON.stringify({
-                    ...existingMeta,
-                    rejectReason: reason
-                })
+            if (!payment) {
+                throw new AppError('Payment not found', 404);
             }
+
+            if (payment.status !== 'PENDING') {
+                throw new AppError('Payment is not pending', 400);
+            }
+
+            // Safe parse existing metadata
+            let existingMeta = {};
+            try {
+                existingMeta = JSON.parse(payment.metadata || '{}');
+            } catch {
+                existingMeta = {};
+            }
+
+            await tx.payment.update({
+                where: { id: payment.id },
+                data: {
+                    status: 'REJECTED',
+                    processedAt: new Date(),
+                    processedBy: req.user.id,
+                    metadata: JSON.stringify({
+                        ...existingMeta,
+                        rejectReason: reason
+                    })
+                }
+            });
         });
 
         successResponse(res, null, 'Payment rejected');
@@ -650,6 +653,10 @@ router.post('/admin/vouchers', requireAdmin, async (req, res, next) => {
             throw new AppError('Code and amount are required', 400);
         }
 
+        if (typeof amount !== 'number' || amount <= 0) {
+            throw new AppError('Amount must be a positive number', 400);
+        }
+
         // Check if code exists (normalize to uppercase to match storage format)
         const normalizedCode = code.toUpperCase();
         const existing = await prisma.voucher.findUnique({ where: { code: normalizedCode } });
@@ -679,6 +686,14 @@ router.post('/admin/vouchers', requireAdmin, async (req, res, next) => {
 router.put('/admin/vouchers/:id', requireAdmin, async (req, res, next) => {
     try {
         const { amount, maxUsage, expiresAt, isActive, singleUsePerUser } = req.body;
+
+        if (amount !== undefined && (typeof amount !== 'number' || amount <= 0)) {
+            throw new AppError('Amount must be a positive number', 400);
+        }
+
+        if (maxUsage !== undefined && maxUsage !== null && (typeof maxUsage !== 'number' || maxUsage < 1)) {
+            throw new AppError('Max usage must be at least 1', 400);
+        }
 
         const voucher = await prisma.voucher.update({
             where: { id: req.params.id },
@@ -717,6 +732,10 @@ router.post('/admin/vouchers/generate', requireAdmin, async (req, res, next) => 
 
         if (!amount || !count) {
             throw new AppError('Amount and count are required', 400);
+        }
+
+        if (typeof amount !== 'number' || amount <= 0) {
+            throw new AppError('Amount must be a positive number', 400);
         }
 
         if (count > 100) {

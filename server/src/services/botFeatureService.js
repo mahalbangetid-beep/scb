@@ -68,7 +68,12 @@ class BotFeatureService {
             spamWarningMessage: null,
             spamRepeatThreshold: 3,
             spamTimeWindowMinutes: 5,
-            spamDisableDurationMin: 60
+            spamDisableDurationMin: 60,
+
+            // Mass/Bulk templates (Section 18)
+            massCommandReplyTemplate: null,
+            massForwardingTemplate: null,
+            massSupportReplyTemplate: null
         };
 
         // Fields that should NOT be inherited from parent scope

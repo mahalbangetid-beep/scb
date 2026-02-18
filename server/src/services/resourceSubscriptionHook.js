@@ -101,11 +101,13 @@ class ResourceSubscriptionHook {
 
         // Create subscription
         try {
-            const subscription = await subscriptionService.createSubscription(userId, {
+            const subscription = await subscriptionService.createSubscription(
+                userId,
                 resourceType,
                 resourceId,
-                resourceName: resourceName || `${resourceType} ${resourceId.slice(-6)}`
-            });
+                resourceName || `${resourceType} ${resourceId.slice(-6)}`,
+                true // 1st month free per spec — billing starts on second month
+            );
 
             console.log(`[ResourceHook] Subscription created: ${subscription.id} for ${resourceType}`);
 
@@ -140,8 +142,7 @@ class ResourceSubscriptionHook {
         }
 
         // Check if user has enough balance for first month
-        const fees = subscriptionService.getResourceFees();
-        const fee = fees[resourceType] || 0;
+        const fee = await subscriptionService.getFee(resourceType);
 
         const user = await prisma.user.findUnique({
             where: { id: userId },

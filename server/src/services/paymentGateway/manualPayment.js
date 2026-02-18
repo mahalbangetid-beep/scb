@@ -328,6 +328,17 @@ class ManualPaymentService {
      * Get gateway info
      */
     async getGatewayInfo() {
+        // Check admin setting for manual payment
+        let isEnabled = false;
+        try {
+            const config = await prisma.systemConfig.findFirst({
+                where: { key: 'manual_enabled' }
+            });
+            isEnabled = config?.value === 'true' || config?.value === true;
+        } catch (e) {
+            // Default to disabled
+        }
+
         return {
             id: 'manual',
             name: 'Manual Payment',
@@ -336,7 +347,7 @@ class ManualPaymentService {
             currency: 'USD',
             minAmount: 5,
             maxAmount: 10000,
-            isAvailable: true,
+            isAvailable: isEnabled,
             requiresProof: true,
             processingTime: '1-24 hours'
         };

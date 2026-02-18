@@ -145,6 +145,31 @@ class SubscriptionService {
 
         const fee = subscription.monthlyFee;
 
+        // Handle "1st month free" — skip charge, just advance billing date and clear the flag
+        if (subscription.isFreeFirst) {
+            const nextBillingDate = new Date();
+            const targetRenewalMonth = nextBillingDate.getMonth() + 1;
+            nextBillingDate.setMonth(targetRenewalMonth);
+            if (nextBillingDate.getMonth() !== targetRenewalMonth % 12) {
+                nextBillingDate.setDate(0);
+            }
+
+            const updated = await prisma.monthlySubscription.update({
+                where: { id: subscription.id },
+                data: {
+                    isFreeFirst: false, // Clear free flag — next renewal will charge
+                    lastBilledAt: new Date(),
+                    nextBillingDate,
+                    failedAttempts: 0,
+                    lastFailReason: null,
+                    lastFailedAt: null
+                }
+            });
+
+            console.log(`[Subscription] Free first month processed: ${subscription.resourceType} for user ${subscription.userId}`);
+            return { success: true, subscription: updated, freeMonth: true };
+        }
+
         // Check balance
         if ((user.creditBalance || 0) < fee) {
             // Insufficient balance - handle based on failed attempts

@@ -28,11 +28,10 @@ router.get('/balance', authenticate, async (req, res, next) => {
         successResponse(res, {
             dollarBalance: balances.dollarBalance,
             messageCredits: balances.messageCredits,
-            conversionRate: balances.conversionRate,
             creditsPerMessage: balances.creditsPerMessage,
             // Helper calculations
             canSendMessages: Math.floor(balances.messageCredits / balances.creditsPerMessage),
-            potentialCredits: Math.floor(balances.dollarBalance * balances.conversionRate)
+            todayUsage: 0 // Will be populated if tracking is added
         });
     } catch (error) {
         next(error);
@@ -41,35 +40,16 @@ router.get('/balance', authenticate, async (req, res, next) => {
 
 /**
  * POST /api/message-credits/convert
- * Convert dollar balance to message credits
+ * DISABLED — Per spec 12.2: "No custom exchange allowed."
+ * This endpoint is intentionally disabled. Users must buy predefined packages instead.
  */
-router.post('/convert', authenticate, async (req, res, next) => {
-    try {
-        const { amount } = req.body;
-
-        if (!amount || amount <= 0) {
-            throw new AppError('Invalid amount. Must be greater than 0', 400);
+router.post('/convert', authenticate, async (req, res) => {
+    return res.status(403).json({
+        success: false,
+        error: {
+            message: 'Dollar-to-credits conversion is no longer available. Please purchase a message package instead.'
         }
-
-        const result = await messageCreditService.convertDollarToCredits(req.user.id, amount);
-
-        successResponse(res, {
-            success: true,
-            dollarDeducted: result.dollarDeducted,
-            creditsReceived: result.creditsAdded,
-            conversionRate: result.conversionRate,
-            newDollarBalance: result.dollarBalance,
-            newCreditBalance: result.creditBalance
-        }, `Successfully converted $${amount} to ${result.creditsAdded} message credits`);
-    } catch (error) {
-        if (error.message === 'Insufficient dollar balance') {
-            next(new AppError('Insufficient dollar balance for conversion', 400));
-        } else if (error.message === 'Amount too small to convert') {
-            next(new AppError('Amount too small to convert to credits', 400));
-        } else {
-            next(error);
-        }
-    }
+    });
 });
 
 /**
@@ -107,9 +87,8 @@ router.get('/config', authenticate, async (req, res, next) => {
 
         successResponse(res, {
             freeSignupCredits: config.freeSignupCredits,
-            conversionRate: config.conversionRate,
             creditsPerMessage: config.creditsPerMessage,
-            description: `$1 = ${config.conversionRate} message credits, 1 message = ${config.creditsPerMessage} credit(s)`
+            description: `1 message = ${config.creditsPerMessage} credit(s). Purchase packages to get credits.`
         });
     } catch (error) {
         next(error);

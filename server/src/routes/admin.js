@@ -993,7 +993,169 @@ function formatUptime(seconds) {
     return `${m}m`;
 }
 
+// ==================== DEFAULT CHARGES PAGE (Section 14) ====================
+
+// GET /api/admin/charges - Get all charges & rates in one place
+router.get('/charges', requireMasterAdmin, async (req, res, next) => {
+    try {
+        // 1. Message rates from SystemConfig (category: pricing)
+        const pricingConfigs = await prisma.systemConfig.findMany({
+            where: { category: 'pricing' }
+        });
+
+        const pricingMap = {};
+        for (const c of pricingConfigs) {
+            try { pricingMap[c.key] = JSON.parse(c.value); }
+            catch { pricingMap[c.key] = c.value; }
+        }
+
+        // 2. Subscription fees (try SystemConfig, fallback to defaults)
+        const subscriptionKeys = ['SUBSCRIPTION_FEE_DEVICE', 'SUBSCRIPTION_FEE_TELEGRAM_BOT', 'SUBSCRIPTION_FEE_SMM_PANEL'];
+        const subConfigs = await prisma.systemConfig.findMany({
+            where: { key: { in: subscriptionKeys } }
+        });
+        const subMap = {};
+        for (const c of subConfigs) {
+            try { subMap[c.key] = JSON.parse(c.value); }
+            catch { subMap[c.key] = parseFloat(c.value) || 0; }
+        }
+
+        // 3. Credit packages
+        const creditPackages = await prisma.creditPackage.findMany({
+            orderBy: { sortOrder: 'asc' }
+        });
+
+        // Build unified response
+        const charges = {
+            messageRates: {
+                wa_message_rate: pricingMap.wa_message_rate ?? 0.01,
+                tg_message_rate: pricingMap.tg_message_rate ?? 0.01,
+                group_message_rate: pricingMap.group_message_rate ?? 0.02,
+            },
+            loginFees: {
+                wa_login_fee: pricingMap.wa_login_fee ?? 5.00,
+                tg_login_fee: pricingMap.tg_login_fee ?? 5.00,
+            },
+            subscriptionFees: {
+                DEVICE: subMap.SUBSCRIPTION_FEE_DEVICE ?? 5.00,
+                TELEGRAM_BOT: subMap.SUBSCRIPTION_FEE_TELEGRAM_BOT ?? 3.00,
+                SMM_PANEL: subMap.SUBSCRIPTION_FEE_SMM_PANEL ?? 2.00,
+            },
+            creditPackages: creditPackages.map(p => ({
+                id: p.id,
+                name: p.name,
+                description: p.description,
+                category: p.category,
+                price: p.price,
+                credits: p.credits,
+                bonusCredits: p.bonusCredits,
+                discountPct: p.discountPct,
+                isActive: p.isActive,
+                isFeatured: p.isFeatured,
+                sortOrder: p.sortOrder,
+            })),
+            other: {
+                low_balance_threshold: pricingMap.low_balance_threshold ?? 5.00,
+                default_user_credit: pricingMap.default_user_credit ?? 0,
+            }
+        };
+
+        successResponse(res, charges);
+    } catch (error) {
+        next(error);
+    }
+});
+
+// PUT /api/admin/charges - Update all charges at once
+router.put('/charges', requireMasterAdmin, async (req, res, next) => {
+    try {
+        const { messageRates, loginFees, subscriptionFees, other } = req.body;
+
+        const upserts = [];
+
+        // Validate and build upserts for message rates
+        if (messageRates) {
+            for (const [key, value] of Object.entries(messageRates)) {
+                const num = parseFloat(value);
+                if (isNaN(num) || num < 0) {
+                    throw new AppError(`Invalid value for ${key}: must be a non-negative number`, 400);
+                }
+                upserts.push(prisma.systemConfig.upsert({
+                    where: { key },
+                    update: { value: JSON.stringify(num), category: 'pricing' },
+                    create: { key, value: JSON.stringify(num), category: 'pricing' }
+                }));
+            }
+        }
+
+        // Login fees
+        if (loginFees) {
+            for (const [key, value] of Object.entries(loginFees)) {
+                const num = parseFloat(value);
+                if (isNaN(num) || num < 0) {
+                    throw new AppError(`Invalid value for ${key}: must be a non-negative number`, 400);
+                }
+                upserts.push(prisma.systemConfig.upsert({
+                    where: { key },
+                    update: { value: JSON.stringify(num), category: 'pricing' },
+                    create: { key, value: JSON.stringify(num), category: 'pricing' }
+                }));
+            }
+        }
+
+        // Subscription fees
+        if (subscriptionFees) {
+            for (const [rtype, value] of Object.entries(subscriptionFees)) {
+                const num = parseFloat(value);
+                if (isNaN(num) || num < 0) {
+                    throw new AppError(`Invalid subscription fee for ${rtype}: must be a non-negative number`, 400);
+                }
+                const key = `SUBSCRIPTION_FEE_${rtype}`;
+                upserts.push(prisma.systemConfig.upsert({
+                    where: { key },
+                    update: { value: JSON.stringify(num), category: 'pricing' },
+                    create: { key, value: JSON.stringify(num), category: 'pricing' }
+                }));
+            }
+        }
+
+        // Other settings
+        if (other) {
+            for (const [key, value] of Object.entries(other)) {
+                const num = parseFloat(value);
+                if (isNaN(num) || num < 0) {
+                    throw new AppError(`Invalid value for ${key}: must be a non-negative number`, 400);
+                }
+                upserts.push(prisma.systemConfig.upsert({
+                    where: { key },
+                    update: { value: JSON.stringify(num), category: 'pricing' },
+                    create: { key, value: JSON.stringify(num), category: 'pricing' }
+                }));
+            }
+        }
+
+        if (upserts.length === 0) {
+            throw new AppError('No charges to update', 400);
+        }
+
+        // Atomic transaction
+        await prisma.$transaction(upserts);
+
+        // Invalidate credit service cache
+        try {
+            const creditService = require('../services/creditService');
+            creditService.configCache = null;
+            creditService.configCacheTime = 0;
+        } catch (e) { /* ignore */ }
+
+        successResponse(res, { updated: upserts.length }, `Updated ${upserts.length} charge settings`);
+    } catch (error) {
+        next(error);
+    }
+});
+
 // ==================== SYSTEM CONFIG (Master Admin Only) ====================
+
 
 // GET /api/admin/config - Get system configuration
 router.get('/config', requireMasterAdmin, async (req, res, next) => {

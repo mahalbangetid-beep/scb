@@ -19,7 +19,7 @@ export default function WalletPage() {
     const [showTopUpModal, setShowTopUpModal] = useState(false)
     const [showVoucherModal, setShowVoucherModal] = useState(false)
     const [showPackagesModal, setShowPackagesModal] = useState(false)
-    const [topUpForm, setTopUpForm] = useState({ amount: '', method: 'ESEWA' })
+    const [topUpForm, setTopUpForm] = useState({ amount: '', method: '' })
     const [voucherCode, setVoucherCode] = useState('')
     const [formLoading, setFormLoading] = useState(false)
     const [purchaseLoading, setPurchaseLoading] = useState(null)
@@ -39,6 +39,7 @@ export default function WalletPage() {
 
     const [billingMode, setBillingMode] = useState('CREDITS') // CREDITS or DOLLARS
     const [txSearchQuery, setTxSearchQuery] = useState('')
+    const [availableGateways, setAvailableGateways] = useState([])
 
     useEffect(() => {
         fetchData()
@@ -47,14 +48,15 @@ export default function WalletPage() {
     const fetchData = async () => {
         try {
             setLoading(true)
-            const [walletRes, summaryRes, txRes, payRes, packagesRes, creditRes, modeRes] = await Promise.all([
+            const [walletRes, summaryRes, txRes, payRes, packagesRes, creditRes, modeRes, gatewaysRes] = await Promise.all([
                 api.get('/wallet'),
                 api.get('/wallet/summary'),
                 api.get('/wallet/transactions?limit=10'),
                 api.get('/wallet/payments?limit=10'),
                 api.get('/credit-packages').catch(() => ({ data: { data: [] } })),
                 api.get('/message-credits/balance').catch(() => ({ data: null })),
-                api.get('/billing-mode').catch(() => ({ data: { mode: 'CREDITS' } }))
+                api.get('/billing-mode').catch(() => ({ data: { mode: 'CREDITS' } })),
+                api.get('/payments/gateways').catch(() => ({ gateways: [] }))
             ])
             // API returns { success, message, data } - extract .data
             setWalletInfo(walletRes.data || walletRes)
@@ -64,6 +66,21 @@ export default function WalletPage() {
             setCreditPackages(packagesRes.data || [])
             setMessageCreditInfo(creditRes.data || null)
             setBillingMode(modeRes.data?.mode || 'CREDITS')
+
+            // Parse available gateways for top-up modal
+            const gateways = gatewaysRes.gateways || gatewaysRes.data?.gateways || []
+            const activeGateways = gateways.filter(g => g.isAvailable || g.enabled)
+            setAvailableGateways(activeGateways)
+
+            // Set default payment method to first available gateway
+            if (activeGateways.length > 0) {
+                const gatewayToMethod = { esewa: 'ESEWA', cryptomus: 'CRYPTOMUS', binance_pay: 'BINANCE', binance: 'BINANCE' }
+                const firstMethod = gatewayToMethod[activeGateways[0].id] || activeGateways[0].id?.toUpperCase()
+                if (firstMethod) setTopUpForm(prev => ({ ...prev, method: prev.method || firstMethod }))
+            } else {
+                // No active gateways — keep method empty, user cannot top up
+                // Validation will catch empty method on submit
+            }
         } catch (err) {
             setError(err.message || 'Failed to load wallet data')
         } finally {
@@ -75,6 +92,10 @@ export default function WalletPage() {
         e.preventDefault()
         if (!topUpForm.amount || parseFloat(topUpForm.amount) <= 0) {
             setError('Please enter a valid amount')
+            return
+        }
+        if (!topUpForm.method) {
+            setError('Please select a payment method')
             return
         }
 
@@ -141,22 +162,24 @@ export default function WalletPage() {
             return
         }
 
+        // Manual or other payment methods — submit as manual payment for admin approval
         setFormLoading(true)
         setError(null)
 
         try {
-            await api.post('/wallet/payments', {
+            await api.post('/payments/manual/submit', {
                 amount: parseFloat(topUpForm.amount),
-                method: topUpForm.method
+                paymentMethod: topUpForm.method,
+                notes: `Wallet top-up via ${topUpForm.method}`
             })
-            setSuccess('Payment request created! Please complete the payment.')
+            setSuccess('Payment request submitted! Admin will review and approve your top-up.')
             setShowTopUpModal(false)
-            setTopUpForm({ amount: '', method: 'ESEWA' })
+            setTopUpForm({ amount: '', method: '' })
             fetchData()
             // Dispatch event to refresh sidebar
             window.dispatchEvent(new CustomEvent('user-data-updated'))
         } catch (err) {
-            setError(err.error?.message || err.message || 'Failed to create payment')
+            setError(err.error?.message || err.message || 'Failed to submit payment request')
         } finally {
             setFormLoading(false)
         }
@@ -259,7 +282,7 @@ export default function WalletPage() {
 
         try {
             const res = await api.post('/wallet/vouchers/redeem', { code: voucherCode.trim() })
-            setSuccess(res.message || `Voucher redeemed! +$${res.amount}`)
+            setSuccess(res.data?.message || `Voucher redeemed! +$${res.data?.amount || 0}`)
             setShowVoucherModal(false)
             setVoucherCode('')
             fetchData()
@@ -751,11 +774,29 @@ export default function WalletPage() {
                                             value={topUpForm.method}
                                             onChange={(e) => setTopUpForm({ ...topUpForm, method: e.target.value })}
                                         >
-                                            <option value="ESEWA">eSewa (Nepal)</option>
-                                            <option value="BINANCE">Binance (Crypto)</option>
-                                            <option value="CRYPTOMUS">Cryptomus (Crypto)</option>
-                                            <option value="BANK_TRANSFER">Bank Transfer</option>
-                                            <option value="MANUAL">Manual Payment</option>
+                                            {/* Placeholder when no method selected */}
+                                            {!topUpForm.method && (
+                                                <option value="" disabled>Select payment method...</option>
+                                            )}
+                                            {/* Dynamic gateways from admin settings */}
+                                            {availableGateways.length > 0 ? (
+                                                availableGateways.map(gw => {
+                                                    const methodMap = {
+                                                        esewa: { value: 'ESEWA', label: 'eSewa (Nepal)' },
+                                                        cryptomus: { value: 'CRYPTOMUS', label: 'Cryptomus (Crypto)' },
+                                                        binance_pay: { value: 'BINANCE', label: 'Binance (Crypto)' },
+                                                        binance: { value: 'BINANCE', label: 'Binance (Crypto)' },
+                                                        manual: { value: 'MANUAL', label: 'Manual Payment' }
+                                                    }
+                                                    const mapping = methodMap[gw.id] || { value: gw.id?.toUpperCase(), label: gw.name || gw.id }
+                                                    return (
+                                                        <option key={gw.id} value={mapping.value}>{mapping.label}</option>
+                                                    )
+                                                })
+                                            ) : (
+                                                /* No active gateways configured by admin */
+                                                <option value="" disabled>No payment methods available</option>
+                                            )}
                                         </select>
                                     </div>
                                     <div className="quick-amounts">
