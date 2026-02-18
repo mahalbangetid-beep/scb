@@ -653,7 +653,7 @@ router.get('/settings', async (req, res, next) => {
  * PATCH /api/fonepay/panels/:panelId/toggle
  * Enable/disable FonePay for a specific panel
  */
-router.patch('/panels/:panelId/toggle', async (req, res) => {
+router.patch('/panels/:panelId/toggle', async (req, res, next) => {
     try {
         const { enabled, verifyEndpoint, addFundEndpoint } = req.body;
 

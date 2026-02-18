@@ -168,15 +168,27 @@ class CommandParserService {
         }
 
         // Last word should be command
-        const potentialCommand = parts[parts.length - 1].toLowerCase();
-        const command = this.commandLookup[potentialCommand];
+        let potentialCommand = parts[parts.length - 1].toLowerCase();
+        let command = this.commandLookup[potentialCommand];
+        let commandWordCount = 1;
+
+        // If single word didn't match, try last two words (e.g., "speed up")
+        if (!command && parts.length >= 3) {
+            const twoWordCommand = parts.slice(-2).join(' ').toLowerCase();
+            const twoWordMatch = this.commandLookup[twoWordCommand];
+            if (twoWordMatch) {
+                command = twoWordMatch;
+                potentialCommand = twoWordCommand;
+                commandWordCount = 2;
+            }
+        }
 
         if (!command) {
             return { isValid: false };
         }
 
         // Everything before the command is order IDs
-        const orderIdPart = parts.slice(0, -1).join(' ');
+        const orderIdPart = parts.slice(0, -commandWordCount).join(' ');
         const orderIds = this.extractOrderIds(orderIdPart);
 
         if (orderIds.length === 0) {

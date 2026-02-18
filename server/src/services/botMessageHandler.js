@@ -16,6 +16,16 @@ class BotMessageHandler {
     constructor() {
         this.io = null;
         this.whatsappService = null;
+
+        // ==================== SPAM PROTECTION (1.4) ====================
+        // In-memory tracking for same-text detection
+        // Key: `${userId}:${senderNumber}` → { messages: [{text, ts}], warned: bool }
+        this._spamTracker = new Map();
+        // Key: `${userId}:${senderNumber}` → disabledUntil timestamp
+        this._disabledUsers = new Map();
+
+        // Periodic cleanup every 10 minutes
+        setInterval(() => this._cleanupSpamTrackers(), 10 * 60 * 1000);
     }
 
     /**
@@ -53,13 +63,31 @@ class BotMessageHandler {
         // Check if this device is a system bot and enforce restrictions
 
         if (device?.isSystemBot) {
-            // System bot: Group-only restriction
+            // System bot: Group-only restriction with configurable auto-reply (1.1)
             if (device.groupOnly && !isGroup) {
-                console.log(`[BotHandler] System bot ${deviceId} - rejected private message (group-only mode)`);
+                console.log(`[BotHandler] System bot ${deviceId} - private message (group-only mode)`);
+
+                // Check Master Admin's System Bot auto-reply config
+                let autoReplyMsg = '⚠️ This bot only works in WhatsApp groups. Please use this bot in a group chat.';
+                try {
+                    const sysConfig = await prisma.systemConfig.findUnique({
+                        where: { key: 'system_bot_auto_reply' }
+                    });
+                    if (sysConfig) {
+                        const settings = JSON.parse(sysConfig.value);
+                        if (settings.enabled && settings.message &&
+                            (settings.triggerType === 'all' || settings.triggerType === 'personal')) {
+                            autoReplyMsg = settings.message;
+                        }
+                    }
+                } catch (e) {
+                    console.error('[BotHandler] Error reading system bot auto-reply config:', e.message);
+                }
+
                 return {
                     handled: true,
-                    type: 'system_bot_restriction',
-                    response: '⚠️ This bot only works in WhatsApp groups. Please use this bot in a group chat.'
+                    type: 'system_bot_auto_reply',
+                    response: autoReplyMsg
                 };
             }
 
@@ -120,6 +148,16 @@ class BotMessageHandler {
                 };
             }
 
+            // ==================== STAFF OVERRIDE GROUP (Section 5) ====================
+            // Check if this group is a staff override group
+            // Staff in these groups can send any order ID, any command, no validation
+            const securityService = require('./securityService');
+            const isStaffOverride = await securityService.isStaffOverrideGroup(userId, groupJid);
+            if (isStaffOverride) {
+                console.log(`[BotHandler] Staff override group detected: ${groupJid}`);
+                params.isStaffOverride = true;
+            }
+
             // ==================== MARKETING INTERVAL TRACKING ====================
             // Track group message count for marketing interval triggers
             // Runs asynchronously — does NOT block normal message processing
@@ -149,6 +187,22 @@ class BotMessageHandler {
         if (!user || user.status !== 'ACTIVE') {
             console.log(`[BotHandler] User not active or not found: ${userId}`);
             return { handled: false, reason: 'user_inactive' };
+        }
+
+        // ==================== SPAM PROTECTION (1.4) ====================
+        // Detect repeated same text → warning → temporary user disable
+        // Staff override groups bypass spam protection (Section 5)
+        if (!params.isStaffOverride) {
+            const spamCheck = await this._checkSpamProtection(userId, deviceId, senderNumber, message);
+            if (spamCheck.blocked) {
+                console.log(`[BotHandler] Spam blocked: ${senderNumber} (${spamCheck.reason})`);
+                return {
+                    handled: true,
+                    type: 'spam_blocked',
+                    response: spamCheck.response,
+                    reason: spamCheck.reason
+                };
+            }
         }
 
         // Priority 0: Check for pending username verification conversation
@@ -185,6 +239,7 @@ class BotMessageHandler {
                         // Now process the original command
                         const result = await commandHandler.processCommand({
                             userId,
+                            deviceId,
                             message: `${orderId} ${originalCommand}`,
                             senderNumber,
                             platform
@@ -285,7 +340,8 @@ class BotMessageHandler {
                 panelId,
                 panelIds,   // Pass panelIds for multi-panel lookup
                 platform,
-                isGroup
+                isGroup,
+                isStaffOverride: params.isStaffOverride || false  // Staff Override Group bypass (Section 5)
             });
             // Increment system bot usage for SMM commands
             if (smmResult.handled && params._systemBotSubscriptionId) {
@@ -319,9 +375,11 @@ class BotMessageHandler {
         // Priority 4: Reply to all messages fallback
         // If enabled, bot will reply to ANY message with a fallback response
         try {
-            const botToggles = await prisma.botFeatureToggles.findUnique({
-                where: { userId }
-            });
+            const botFeatureService = require('./botFeatureService');
+            const scope = {};
+            if (deviceId) scope.deviceId = deviceId;
+            if (panelId) scope.panelId = panelId;
+            const botToggles = await botFeatureService.getToggles(userId, scope);
 
             if (botToggles?.replyToAllMessages) {
                 const fallbackMessage = botToggles.fallbackMessage ||
@@ -463,7 +521,7 @@ class BotMessageHandler {
      * Handle SMM command
      */
     async handleSmmCommand(params) {
-        const { userId, user, message, senderNumber, deviceId, panelId, panelIds, platform = 'WHATSAPP', isGroup = false } = params;
+        const { userId, user, message, senderNumber, deviceId, panelId, panelIds, platform = 'WHATSAPP', isGroup = false, isStaffOverride = false } = params;
 
         // Check billing mode
         const isCreditsMode = await billingModeService.isCreditsMode();
@@ -506,10 +564,12 @@ class BotMessageHandler {
             userId,
             panelId,
             panelIds,   // Pass panelIds for multi-panel order lookup
+            deviceId,   // Pass deviceId for per-device settings/templates
             message,
             senderNumber,
             platform,
-            isGroup
+            isGroup,
+            isStaffOverride  // Staff Override Group bypass (Section 5)
         });
 
         if (!result.success && result.error) {
@@ -814,6 +874,117 @@ class BotMessageHandler {
         } catch (error) {
             console.error(`[BotHandler] Error checking provider support group:`, error.message);
             return false;
+        }
+    }
+
+    // ==================== SPAM PROTECTION METHODS (1.4) ====================
+
+    /**
+     * Check if a user is spam-blocked or if their message triggers spam detection
+     * @param {string} userId - Device owner's user ID
+     * @param {string} deviceId - Device ID
+     * @param {string} senderNumber - Sender's phone number
+     * @param {string} message - Message text
+     * @returns {Object} { blocked: bool, response?: string, reason?: string }
+     */
+    async _checkSpamProtection(userId, deviceId, senderNumber, message) {
+        const key = `${userId}:${senderNumber}`;
+
+        // 1. Check if user is currently disabled
+        const disabledUntil = this._disabledUsers.get(key);
+        if (disabledUntil) {
+            if (Date.now() < disabledUntil) {
+                const remainMin = Math.ceil((disabledUntil - Date.now()) / 60000);
+                return {
+                    blocked: true,
+                    response: null, // Silent block — no reply to spammer
+                    reason: `temp_disabled (${remainMin}min remaining)`
+                };
+            }
+            // Expired — remove block
+            this._disabledUsers.delete(key);
+        }
+
+        // 2. Get spam protection settings
+        const botFeatureService = require('./botFeatureService');
+        const toggles = await botFeatureService.getToggles(userId, { deviceId });
+
+        if (!toggles.spamProtectionEnabled) {
+            return { blocked: false };
+        }
+
+        const threshold = toggles.spamRepeatThreshold || 3;
+        const windowMs = (toggles.spamTimeWindowMinutes || 5) * 60 * 1000;
+        const disableDurationMs = (toggles.spamDisableDurationMin || 60) * 60 * 1000;
+
+        // 3. Track this message
+        const now = Date.now();
+        const normalizedText = message.trim().toLowerCase();
+
+        if (!this._spamTracker.has(key)) {
+            this._spamTracker.set(key, { messages: [], warned: false });
+        }
+
+        const tracker = this._spamTracker.get(key);
+
+        // Add current message and clean old ones
+        tracker.messages.push({ text: normalizedText, ts: now });
+        tracker.messages = tracker.messages.filter(m => now - m.ts < windowMs);
+
+        // 4. Count repeated same text
+        const sameTextCount = tracker.messages.filter(m => m.text === normalizedText).length;
+
+        if (sameTextCount >= threshold) {
+            if (!tracker.warned) {
+                // First time hitting threshold → send warning
+                tracker.warned = true;
+                const warningMsg = toggles.spamWarningMessage ||
+                    `⚠️ *Spam Detected*\n\nYou have sent the same message ${sameTextCount} times.\nIf you continue, the bot will stop responding to you for ${toggles.spamDisableDurationMin || 60} minutes.`;
+                return {
+                    blocked: true,
+                    response: warningMsg,
+                    reason: 'spam_warning'
+                };
+            } else {
+                // Already warned → disable user
+                this._disabledUsers.set(key, now + disableDurationMs);
+                this._spamTracker.delete(key); // Reset tracker
+
+                const disableMin = toggles.spamDisableDurationMin || 60;
+                const disableMsg = `🚫 *Bot Disabled*\n\nDue to repeated spam, the bot will not respond to your messages for ${disableMin} minutes.`;
+                console.log(`[BotHandler] Spam: user ${senderNumber} disabled for ${disableMin}min (owner: ${userId})`);
+                return {
+                    blocked: true,
+                    response: disableMsg,
+                    reason: 'spam_disabled'
+                };
+            }
+        }
+
+        return { blocked: false };
+    }
+
+    /**
+     * Cleanup expired spam tracker entries to prevent memory leaks
+     */
+    _cleanupSpamTrackers() {
+        const now = Date.now();
+
+        // Cleanup disabled users
+        for (const [key, expiry] of this._disabledUsers.entries()) {
+            if (now >= expiry) {
+                this._disabledUsers.delete(key);
+            }
+        }
+
+        // Cleanup old trackers (no messages in last 10 minutes)
+        for (const [key, tracker] of this._spamTracker.entries()) {
+            const recentMessages = tracker.messages.filter(m => now - m.ts < 10 * 60 * 1000);
+            if (recentMessages.length === 0) {
+                this._spamTracker.delete(key);
+            } else {
+                tracker.messages = recentMessages;
+            }
         }
     }
 }

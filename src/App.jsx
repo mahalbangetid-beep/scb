@@ -37,6 +37,7 @@ import MyStaff from './pages/MyStaff'
 import ActivityLogs from './pages/ActivityLogs'
 import Watermarks from './pages/Watermarks'
 import MarketingIntervals from './pages/MarketingIntervals'
+import SupportGroups from './pages/SupportGroups'
 import './styles/landing.css'
 // Admin Pages
 import UserManagement from './pages/admin/UserManagement'
@@ -146,6 +147,7 @@ function AppContent() {
           <Route path="/activity-logs" element={<ProtectedRoute><ActivityLogs /></ProtectedRoute>} />
           <Route path="/watermarks" element={<ProtectedRoute><Watermarks /></ProtectedRoute>} />
           <Route path="/marketing-intervals" element={<ProtectedRoute><MarketingIntervals /></ProtectedRoute>} />
+          <Route path="/support-groups" element={<ProtectedRoute><SupportGroups /></ProtectedRoute>} />
 
           {/* Admin Routes */}
           <Route path="/admin/dashboard" element={<AdminRoute><AdminDashboard /></AdminRoute>} />

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Settings, Shield, Zap, MessageSquare, AlertTriangle, RotateCcw, Save, ChevronDown, ChevronRight, Bell, Package, Users, Search } from 'lucide-react';
+import { Settings, Shield, Zap, MessageSquare, AlertTriangle, RotateCcw, Save, ChevronDown, ChevronRight, Bell, Package, Users, Search, Phone, ShieldAlert } from 'lucide-react';
 import api from '../services/api';
 
 const BotSettings = () => {
@@ -15,7 +15,9 @@ const BotSettings = () => {
         processing: true,
         templates: false,
         response: true,
-        fallback: true
+        fallback: true,
+        callResponse: true,
+        spamProtection: true
     });
 
     useEffect(() => {
@@ -175,8 +177,36 @@ const BotSettings = () => {
                 <input
                     type={type}
                     className="form-input compact"
+                    value={toggles?.[inputKey] ?? ''}
+                    onChange={(e) => {
+                        if (type === 'number') {
+                            const val = parseInt(e.target.value, 10);
+                            handleToggle(inputKey, isNaN(val) ? '' : val);
+                        } else {
+                            handleToggle(inputKey, e.target.value);
+                        }
+                    }}
+                    placeholder={placeholder}
+                    min={type === 'number' ? 0 : undefined}
+                />
+            </div>
+        );
+    };
+
+    const TextAreaRow = ({ label, description, inputKey, placeholder, rows = 3 }) => {
+        if (!matchesSearch(label, description)) return null;
+        return (
+            <div className="toggle-row" style={{ flexDirection: 'column', alignItems: 'flex-start', gap: '0.5rem' }}>
+                <div className="toggle-info">
+                    <span className="toggle-label">{label}</span>
+                    {description && <span className="toggle-description">{description}</span>}
+                </div>
+                <textarea
+                    className="form-input"
+                    rows={rows}
+                    style={{ width: '100%', fontFamily: 'inherit', resize: 'vertical' }}
                     value={toggles?.[inputKey] || ''}
-                    onChange={(e) => handleToggle(inputKey, type === 'number' ? parseInt(e.target.value) : e.target.value)}
+                    onChange={(e) => handleToggle(inputKey, e.target.value)}
                     placeholder={placeholder}
                 />
             </div>
@@ -421,6 +451,98 @@ const BotSettings = () => {
 Example: 12345 status`}
                         />
                     </div>
+                </Section>
+
+                {/* Call Auto-Reply (1.2 / 1.3) */}
+                <Section
+                    id="callResponse"
+                    title="Call Auto-Reply"
+                    icon={Phone}
+                    description="Automatically reply when someone calls the bot number"
+                >
+                    <ToggleRow
+                        label="Enable Call Auto-Reply"
+                        description="Automatically reject calls and send a text reply"
+                        toggleKey="callAutoReplyEnabled"
+                    />
+
+                    {toggles?.callAutoReplyEnabled && (
+                        <>
+                            <TextAreaRow
+                                label="Personal Call Reply"
+                                description="Message sent when someone calls the bot directly"
+                                inputKey="callReplyMessage"
+                                placeholder="📵 This is an automated bot. We cannot answer calls.\n\nPlease send a text message or use the available bot commands instead."
+                            />
+                            <TextAreaRow
+                                label="Group Call Reply"
+                                description="Message sent when someone calls inside a group"
+                                inputKey="groupCallReplyMessage"
+                                placeholder="📵 This bot cannot answer calls in groups. Please send a text command."
+                            />
+                            <TextAreaRow
+                                label="Repeated Call Reply"
+                                description="Message sent when the same person calls repeatedly (spam calls)"
+                                inputKey="repeatedCallReplyMessage"
+                                placeholder="🚫 You have called too many times. This bot cannot answer calls. Please stop calling and use text commands."
+                            />
+                            <InputRow
+                                label="Repeated Call Threshold"
+                                description="How many calls before it's considered spam"
+                                inputKey="repeatedCallThreshold"
+                                placeholder="3"
+                            />
+                            <InputRow
+                                label="Call Window (minutes)"
+                                description="Time window to count repeated calls"
+                                inputKey="repeatedCallWindowMinutes"
+                                placeholder="5"
+                            />
+                        </>
+                    )}
+                </Section>
+
+                {/* Spam Protection (1.4) */}
+                <Section
+                    id="spamProtection"
+                    title="Spam Protection"
+                    icon={ShieldAlert}
+                    description="Detect repeated same text and temporarily disable bot for spammers"
+                >
+                    <ToggleRow
+                        label="Enable Spam Protection"
+                        description="Automatically detect and block users who send the same text repeatedly"
+                        toggleKey="spamProtectionEnabled"
+                    />
+
+                    {toggles?.spamProtectionEnabled && (
+                        <>
+                            <InputRow
+                                label="Repeat Threshold"
+                                description="How many times same text must be sent to trigger action"
+                                inputKey="spamRepeatThreshold"
+                                placeholder="3"
+                            />
+                            <InputRow
+                                label="Time Window (minutes)"
+                                description="Time period to count repeated messages"
+                                inputKey="spamTimeWindowMinutes"
+                                placeholder="5"
+                            />
+                            <InputRow
+                                label="Disable Duration (minutes)"
+                                description="How long to disable bot for the spammer"
+                                inputKey="spamDisableDurationMin"
+                                placeholder="60"
+                            />
+                            <TextAreaRow
+                                label="Warning Message"
+                                description="Message sent as warning before disabling (leave empty for default)"
+                                inputKey="spamWarningMessage"
+                                placeholder="⚠️ *Spam Detected*\n\nYou have sent the same message multiple times.\nIf you continue, the bot will stop responding to you."
+                            />
+                        </>
+                    )}
                 </Section>
 
                 {/* High Risk Features */}

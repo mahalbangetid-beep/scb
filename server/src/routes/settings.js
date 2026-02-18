@@ -434,16 +434,8 @@ router.put('/binance', authenticate, async (req, res, next) => {
 // GET /api/settings/bot-toggles - Get bot feature toggles
 router.get('/bot-toggles', authenticate, async (req, res, next) => {
     try {
-        let toggles = await prisma.botFeatureToggles.findUnique({
-            where: { userId: req.user.id }
-        });
-
-        // Create default if not exists
-        if (!toggles) {
-            toggles = await prisma.botFeatureToggles.create({
-                data: { userId: req.user.id }
-            });
-        }
+        const botFeatureService = require('../services/botFeatureService');
+        const toggles = await botFeatureService.getToggles(req.user.id);
 
         successResponse(res, toggles, 'Bot feature toggles retrieved');
     } catch (error) {
@@ -454,6 +446,7 @@ router.get('/bot-toggles', authenticate, async (req, res, next) => {
 // PUT /api/settings/bot-toggles - Update bot feature toggles
 router.put('/bot-toggles', authenticate, async (req, res, next) => {
     try {
+        const botFeatureService = require('../services/botFeatureService');
         const { replyToAllMessages, fallbackMessage, ...otherToggles } = req.body;
 
         // Prepare update data
@@ -472,12 +465,19 @@ router.put('/bot-toggles', authenticate, async (req, res, next) => {
             'allowLinkUpdateViaBot', 'allowPaymentVerification', 'allowAccountDetailsViaBot',
             'allowTicketAutoReply', 'allowRefillCommand', 'allowCancelCommand',
             'allowSpeedUpCommand', 'allowStatusCommand', 'processingSpeedUpEnabled',
-            'processingCancelEnabled', 'autoForwardProcessingCancel', 'showProviderInResponse', 'showDetailedStatus'
+            'processingCancelEnabled', 'autoForwardProcessingCancel', 'showProviderInResponse', 'showDetailedStatus',
+            'callAutoReplyEnabled', 'spamProtectionEnabled'
         ];
         const stringFields = [
-            'failedOrderAction', 'providerSpeedUpTemplate', 'providerRefillTemplate', 'providerCancelTemplate'
+            'failedOrderAction', 'providerSpeedUpTemplate', 'providerRefillTemplate', 'providerCancelTemplate',
+            'callReplyMessage', 'groupCallReplyMessage', 'repeatedCallReplyMessage',
+            'spamWarningMessage'
         ];
-        const numericFields = ['bulkResponseThreshold', 'maxBulkOrders'];
+        const numericFields = [
+            'bulkResponseThreshold', 'maxBulkOrders',
+            'repeatedCallThreshold', 'repeatedCallWindowMinutes',
+            'spamRepeatThreshold', 'spamTimeWindowMinutes', 'spamDisableDurationMin'
+        ];
 
         for (const field of booleanFields) {
             if (otherToggles[field] !== undefined) {
@@ -496,12 +496,8 @@ router.put('/bot-toggles', authenticate, async (req, res, next) => {
             }
         }
 
-        // Upsert toggles
-        const toggles = await prisma.botFeatureToggles.upsert({
-            where: { userId: req.user.id },
-            update: updateData,
-            create: { userId: req.user.id, ...updateData }
-        });
+        // Use service method (handles composite key correctly)
+        const toggles = await botFeatureService.updateToggles(req.user.id, updateData);
 
         successResponse(res, toggles, 'Bot feature toggles updated');
     } catch (error) {
@@ -538,6 +534,65 @@ router.post('/', authenticate, async (req, res, next) => {
         await Promise.all(operations);
 
         successResponse(res, null, 'Settings updated');
+    } catch (error) {
+        next(error);
+    }
+});
+
+// ==================== STAFF OVERRIDE GROUP (Section 5) ====================
+// IMPORTANT: These MUST be before /:key wildcard routes below!
+
+// GET /api/settings/staff-override-groups - Get staff override group config
+router.get('/staff-override-groups', authenticate, async (req, res, next) => {
+    try {
+        const securityService = require('../services/securityService');
+        const config = await securityService.getStaffOverrideConfig(req.user.id);
+        successResponse(res, config, 'Staff override groups retrieved');
+    } catch (error) {
+        next(error);
+    }
+});
+
+// PUT /api/settings/staff-override-groups - Update staff override group config
+router.put('/staff-override-groups', authenticate, async (req, res, next) => {
+    try {
+        const securityService = require('../services/securityService');
+        const { enabled, groups } = req.body;
+        const updated = await securityService.updateStaffOverrideConfig(req.user.id, { enabled, groups });
+        successResponse(res, {
+            enabled: updated.staffOverrideEnabled,
+            groups: updated.staffOverrideGroups || []
+        }, 'Staff override groups updated');
+    } catch (error) {
+        next(error);
+    }
+});
+
+// POST /api/settings/staff-override-groups/add - Add a group JID
+router.post('/staff-override-groups/add', authenticate, async (req, res, next) => {
+    try {
+        const securityService = require('../services/securityService');
+        const { groupJid } = req.body;
+        if (!groupJid || typeof groupJid !== 'string') {
+            throw new AppError('groupJid is required', 400);
+        }
+        const groups = await securityService.addStaffOverrideGroup(req.user.id, groupJid.trim());
+        successResponse(res, { groups }, 'Staff override group added');
+    } catch (error) {
+        next(error);
+    }
+});
+
+// DELETE /api/settings/staff-override-groups/:groupJid - Remove a group JID
+router.delete('/staff-override-groups/:groupJid', authenticate, async (req, res, next) => {
+    try {
+        const securityService = require('../services/securityService');
+        const groupJid = decodeURIComponent(req.params.groupJid);
+        if (!groupJid) {
+            throw new AppError('groupJid is required', 400);
+        }
+        const groups = await securityService.removeStaffOverrideGroup(req.user.id, groupJid);
+        successResponse(res, { groups }, 'Staff override group removed');
     } catch (error) {
         next(error);
     }

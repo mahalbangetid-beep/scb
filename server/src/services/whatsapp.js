@@ -79,6 +79,23 @@ class WhatsAppService {
     constructor(io) {
         this.io = io; // Socket.IO instance untuk realtime updates
         this.initialized = false;
+
+        // Call tracker for repeated call detection (1.2/1.3)
+        this._callTracker = new Map();
+
+        // Cleanup call tracker every 10 minutes
+        setInterval(() => {
+            const now = Date.now();
+            const maxAge = 30 * 60 * 1000; // 30 minutes
+            for (const [key, calls] of this._callTracker.entries()) {
+                const recent = calls.filter(ts => now - ts < maxAge);
+                if (recent.length === 0) {
+                    this._callTracker.delete(key);
+                } else {
+                    this._callTracker.set(key, recent);
+                }
+            }
+        }, 10 * 60 * 1000);
     }
 
     /**
@@ -450,6 +467,75 @@ class WhatsAppService {
 
                 if (callbacks.onMessage) {
                     callbacks.onMessage(messageData);
+                }
+            }
+        });
+
+        // ==================== CALL EVENT HANDLER (1.2 / 1.3) ====================
+        // Auto-reply when someone calls the bot number
+        socket.ev.on('call', async (calls) => {
+            for (const call of calls) {
+                try {
+                    // Only handle incoming (offer) calls
+                    if (call.status !== 'offer') continue;
+
+                    const callerJid = call.from;
+                    const isGroup = callerJid?.endsWith('@g.us') || false;
+                    const callerNumber = callerJid?.split('@')[0] || 'unknown';
+
+                    console.log(`[WA:${deviceId}] Incoming ${isGroup ? 'group' : 'personal'} call from ${callerNumber}`);
+
+                    // Reject the call automatically
+                    try {
+                        await socket.rejectCall(call.id, call.from);
+                        console.log(`[WA:${deviceId}] Call rejected from ${callerNumber}`);
+                    } catch (rejectErr) {
+                        console.log(`[WA:${deviceId}] Could not reject call: ${rejectErr.message}`);
+                    }
+
+                    // Get device owner's bot feature settings
+                    const device = await prisma.device.findUnique({
+                        where: { id: deviceId },
+                        select: { userId: true }
+                    });
+                    if (!device) continue;
+
+                    const botFeatureService = require('./botFeatureService');
+                    const toggles = await botFeatureService.getToggles(device.userId, { deviceId });
+
+                    if (!toggles.callAutoReplyEnabled) continue;
+
+                    // Track repeated calls (in-memory)
+                    const callKey = `call:${deviceId}:${callerNumber}`;
+
+                    const now = Date.now();
+                    const windowMs = (toggles.repeatedCallWindowMinutes || 5) * 60 * 1000;
+                    const prevCalls = this._callTracker.get(callKey) || [];
+                    const recentCalls = prevCalls.filter(ts => now - ts < windowMs);
+                    recentCalls.push(now);
+                    this._callTracker.set(callKey, recentCalls);
+
+                    // Determine which reply to send
+                    let replyMessage;
+                    const isRepeated = recentCalls.length >= (toggles.repeatedCallThreshold || 3);
+
+                    if (isRepeated && toggles.repeatedCallReplyMessage) {
+                        replyMessage = toggles.repeatedCallReplyMessage;
+                    } else if (isGroup && toggles.groupCallReplyMessage) {
+                        replyMessage = toggles.groupCallReplyMessage;
+                    } else if (toggles.callReplyMessage) {
+                        replyMessage = toggles.callReplyMessage;
+                    } else {
+                        // Default message
+                        replyMessage = '📵 This is an automated bot. We cannot answer calls.\n\nPlease send a text message or use the available bot commands instead.';
+                    }
+
+                    // Send the reply message
+                    await socket.sendMessage(callerJid, { text: replyMessage });
+                    console.log(`[WA:${deviceId}] Call auto-reply sent to ${callerNumber} (${isRepeated ? 'repeated' : isGroup ? 'group' : 'personal'})`);
+
+                } catch (err) {
+                    console.error(`[WA:${deviceId}] Call handler error:`, err.message);
                 }
             }
         });

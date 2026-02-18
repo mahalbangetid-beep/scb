@@ -176,13 +176,13 @@ router.put('/:id', authenticate, async (req, res, next) => {
         const rule = await prisma.autoReplyRule.update({
             where: { id: req.params.id },
             data: {
-                name,
-                keywords: trigger,
-                triggerType,
-                response,
-                isActive,
-                priority,
-                deviceId: deviceId || null
+                ...(name !== undefined && { name }),
+                ...(trigger !== undefined && { keywords: trigger }),
+                ...(triggerType !== undefined && { triggerType }),
+                ...(response !== undefined && { response }),
+                ...(isActive !== undefined && { isActive }),
+                ...(priority !== undefined && { priority }),
+                ...(deviceId !== undefined && { deviceId: deviceId || null })
             }
         });
 

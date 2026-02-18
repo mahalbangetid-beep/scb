@@ -223,6 +223,8 @@ app.use('/api/activity-logs', require('./routes/activityLogs'));
 app.use('/api/watermarks', require('./routes/watermarks'));
 app.use('/api/fonepay', require('./routes/fonepay'));
 app.use('/api/marketing-intervals', require('./routes/marketingIntervals'));
+app.use('/api/marketing', require('./routes/marketing'));
+app.use('/api/support-groups', require('./routes/supportGroups')); // Section 7
 
 
 // Socket.IO authentication middleware

@@ -102,7 +102,10 @@ router.get('/:id', authenticate, async (req, res, next) => {
 router.post('/', authenticate, upload.single('media'), async (req, res, next) => {
     try {
         const { name, deviceId, message, scheduledAt } = req.body;
-        let { recipients, mediaUrl } = req.body;
+        let { recipients, mediaUrl, broadcastType, targetGroups, watermarkText, autoIdEnabled, chargeCategory } = req.body;
+
+        // Section 6.4: Determine broadcast type
+        broadcastType = broadcastType || 'number'; // number, group, both
 
         // Handle recipients from form data (recipients[]) or JSON array
         if (!recipients && req.body['recipients[]']) {
@@ -111,24 +114,59 @@ router.post('/', authenticate, upload.single('media'), async (req, res, next) =>
                 : [req.body['recipients[]']];
         }
 
-        if (!name || !deviceId || !recipients || !message) {
-            throw new AppError('name, deviceId, recipients, and message are required', 400);
+        // Parse targetGroups if string
+        if (targetGroups && typeof targetGroups === 'string') {
+            try { targetGroups = JSON.parse(targetGroups); } catch { targetGroups = [targetGroups]; }
         }
 
-        if (!Array.isArray(recipients) || recipients.length === 0) {
-            throw new AppError('recipients must be a non-empty array', 400);
+        // Validate based on broadcast type
+        if (broadcastType === 'group') {
+            // Group-only: requires targetGroups, recipients optional
+            if (!targetGroups || (Array.isArray(targetGroups) && targetGroups.length === 0)) {
+                throw new AppError('targetGroups is required for group broadcast', 400);
+            }
+        } else if (broadcastType === 'both') {
+            // Both: requires at least one of recipients or targetGroups
+            const hasRecipients = recipients && Array.isArray(recipients) && recipients.length > 0;
+            const hasGroups = targetGroups && Array.isArray(targetGroups) && targetGroups.length > 0;
+            if (!hasRecipients && !hasGroups) {
+                throw new AppError('At least one of recipients or targetGroups is required for combined broadcast', 400);
+            }
+        } else {
+            // Number-only: requires recipients
+            if (!recipients || !Array.isArray(recipients) || recipients.length === 0) {
+                throw new AppError('recipients must be a non-empty array', 400);
+            }
         }
 
-        // Validate and clean recipient phone numbers
-        const validRecipients = recipients
-            .map(r => String(r).trim().replace(/[^\d+]/g, ''))
-            .filter(r => r.length >= 5);
-
-        if (validRecipients.length === 0) {
-            throw new AppError('No valid phone numbers found in recipients', 400);
+        if (!name || !deviceId || !message) {
+            throw new AppError('name, deviceId, and message are required', 400);
         }
 
-        recipients = validRecipients;
+        // Section 6.3: Auto duplicate removal with country code normalization
+        const marketingService = require('../services/marketingService');
+        // Pre-fetch config (needed for dedup, auto ID, watermark, charges)
+        const mktConfig = await marketingService.getConfig(req.user.id);
+
+        if (recipients && recipients.length > 0) {
+            // Validate and clean recipient phone numbers
+            recipients = recipients
+                .map(r => String(r).trim().replace(/[^\d+]/g, ''))
+                .filter(r => r.length >= 5);
+
+            if (recipients.length === 0) {
+                throw new AppError('No valid phone numbers found in recipients', 400);
+            }
+
+            // Auto-remove duplicates (Section 6.3)
+            if (mktConfig.removeDuplicates) {
+                const dedupResult = marketingService.removeDuplicateNumbers(recipients, mktConfig.countryCode);
+                if (dedupResult.duplicateCount > 0) {
+                    console.log(`[Broadcast] Removed ${dedupResult.duplicateCount} duplicate numbers`);
+                }
+                recipients = dedupResult.unique;
+            }
+        }
 
         // If file was uploaded via multer, use its path as mediaUrl
         if (req.file && !mediaUrl) {
@@ -148,6 +186,28 @@ router.post('/', authenticate, upload.single('media'), async (req, res, next) =>
             throw new AppError('Device is not connected', 400);
         }
 
+        // Section 6.1 & 6.2: Compose final message (Message + Watermark + Auto ID)
+        const useAutoId = autoIdEnabled !== undefined ? autoIdEnabled === true || autoIdEnabled === 'true' : mktConfig.autoIdEnabled;
+        let autoIdStart = null;
+        const autoIdPrefix = mktConfig.autoIdPrefix || '';
+
+        // Determine total recipients including groups (needed for ID reservation)
+        const totalRecipients = (recipients ? recipients.length : 0) + (targetGroups ? targetGroups.length : 0);
+
+        if (useAutoId) {
+            autoIdStart = mktConfig.autoIdCounter;
+
+            // BUG #9 fix: Immediately reserve the ID range by advancing the counter
+            // This prevents duplicate IDs when multiple broadcasts are created concurrently
+            await prisma.marketingConfig.update({
+                where: { userId: req.user.id },
+                data: { autoIdCounter: { increment: totalRecipients } }
+            });
+        }
+
+        // Section 6.5: Charge category
+        const effectiveChargeCategory = chargeCategory || (device.isSystemBot ? 'system_bot' : 'own_device');
+
         const campaign = await prisma.broadcast.create({
             data: {
                 name,
@@ -155,21 +215,34 @@ router.post('/', authenticate, upload.single('media'), async (req, res, next) =>
                 message,
                 mediaUrl: mediaUrl || null,
                 status: scheduledAt ? 'scheduled' : 'processing',
-                totalRecipients: recipients.length,
-                scheduledAt: scheduledAt ? new Date(scheduledAt) : null
+                totalRecipients,
+                scheduledAt: scheduledAt ? new Date(scheduledAt) : null,
+                // Section 6.1
+                autoIdEnabled: useAutoId,
+                autoIdStart,
+                autoIdPrefix,  // BUG #12 fix: snapshot prefix at create time
+                // Section 6.2
+                watermarkText: watermarkText || (mktConfig.watermarkEnabled ? mktConfig.defaultWatermark : null),
+                // Section 6.4
+                broadcastType,
+                targetGroups: targetGroups || null,
+                // Section 6.5
+                chargeCategory: effectiveChargeCategory
             }
         });
 
-        // Create recipients
-        const recipientData = recipients.map(phone => ({
-            broadcastId: campaign.id,
-            phone,
-            status: 'pending'
-        }));
+        // Create recipients for number broadcast
+        if (recipients && recipients.length > 0) {
+            const recipientData = recipients.map(phone => ({
+                broadcastId: campaign.id,
+                phone,
+                status: 'pending'
+            }));
 
-        await prisma.broadcastRecipient.createMany({
-            data: recipientData
-        });
+            await prisma.broadcastRecipient.createMany({
+                data: recipientData
+            });
+        }
 
         // Process broadcast in background (don't await)
         if (!scheduledAt) {
@@ -183,9 +256,39 @@ router.post('/', authenticate, upload.single('media'), async (req, res, next) =>
     }
 });
 
-// Background broadcast processor
+// Background broadcast processor — Section 6 enhanced
 async function processBroadcast(whatsapp, broadcastId, deviceId, message, mediaUrl, userId) {
     try {
+        const broadcast = await prisma.broadcast.findUnique({ where: { id: broadcastId } });
+        if (!broadcast) return;
+
+        const marketingService = require('../services/marketingService');
+        const { watermarkService } = require('../services/watermarkService');
+
+        // Auto ID counter for this campaign
+        let autoIdCounter = broadcast.autoIdStart || 1;
+        const autoIdEnabled = broadcast.autoIdEnabled;
+        const visibleWatermark = broadcast.watermarkText;
+
+        // BUG #12 fix: use prefix from broadcast record (snapshot at create time)
+        const autoIdPrefix = broadcast.autoIdPrefix || '';
+
+        // Compose a per-message final text: Message + Watermark + Auto ID (Section 6.2)
+        function composeFinalText(baseMessage) {
+            let text = baseMessage;
+            // Step 1: Add visible watermark (Section 6.2)
+            if (visibleWatermark) {
+                text = `${text}\n\n${visibleWatermark}`;
+            }
+            // Step 2: Add auto ID with prefix (Section 6.1)
+            if (autoIdEnabled) {
+                text = `${text}\nID: ${autoIdPrefix}${autoIdCounter}`;
+                autoIdCounter++;
+            }
+            return text;
+        }
+
+        // ==================== PHASE 1: SEND TO NUMBER RECIPIENTS ====================
         const recipients = await prisma.broadcastRecipient.findMany({
             where: { broadcastId, status: 'pending' }
         });
@@ -194,21 +297,22 @@ async function processBroadcast(whatsapp, broadcastId, deviceId, message, mediaU
 
         for (const recipient of recipients) {
             try {
+                const finalText = composeFinalText(message);
+
                 if (mediaUrl) {
-                    // Embed watermark in caption for image broadcasts
-                    let finalCaption = message;
+                    // Embed ZWC watermark in caption for tracking
+                    let finalCaption = finalText;
                     if (userId) {
                         try {
-                            const { watermarkService } = require('../services/watermarkService');
                             const result = await watermarkService.createAndEmbed({
-                                text: message, userId, deviceId, recipientId: recipient.phone, broadcastId
+                                text: finalText, userId, deviceId, recipientId: recipient.phone, broadcastId
                             });
                             finalCaption = result.watermarkedText;
                         } catch (e) { /* watermark is non-critical */ }
                     }
                     await whatsapp.sendImage(deviceId, recipient.phone, mediaUrl, finalCaption);
                 } else {
-                    await whatsapp.sendMessage(deviceId, recipient.phone, message,
+                    await whatsapp.sendMessage(deviceId, recipient.phone, finalText,
                         userId ? { userId, broadcastId } : null
                     );
                 }
@@ -239,12 +343,71 @@ async function processBroadcast(whatsapp, broadcastId, deviceId, message, mediaU
             }
         }
 
-        // Update campaign status (only if not cancelled during processing)
+        // ==================== PHASE 2: SEND TO GROUP TARGETS (Section 6.4) ====================
+        let targetGroups = broadcast.targetGroups;
+        if (targetGroups && typeof targetGroups === 'string') {
+            try { targetGroups = JSON.parse(targetGroups); } catch { targetGroups = []; }
+        }
+
+        if (Array.isArray(targetGroups) && targetGroups.length > 0) {
+            for (const groupJid of targetGroups) {
+                // Check cancellation
+                const current = await prisma.broadcast.findUnique({ where: { id: broadcastId }, select: { status: true } });
+                if (current?.status === 'cancelled') break;
+
+                try {
+                    const finalText = composeFinalText(message);
+
+                    if (mediaUrl) {
+                        await whatsapp.sendImage(deviceId, groupJid, mediaUrl, finalText);
+                    } else {
+                        await whatsapp.sendMessage(deviceId, groupJid, finalText,
+                            userId ? { userId, broadcastId } : null
+                        );
+                    }
+                    sent++;
+                } catch (error) {
+                    console.error(`[Broadcast] Failed to send to group ${groupJid}:`, error.message);
+                    failed++;
+                }
+
+                await new Promise(r => setTimeout(r, 2000));
+            }
+        }
+
+        // PHASE 3 (REMOVED): Auto ID counter update no longer needed here.
+        // IDs are now reserved upfront at broadcast creation time (BUG #9 fix).
+        // Updating the counter here would overwrite IDs already reserved by newer campaigns.
+
+        // ==================== PHASE 4: CHARGE CREDITS (Section 6.5) ====================
+        if (userId && sent > 0) {
+            try {
+                const messageCreditService = require('../services/messageCreditService');
+                const chargeCategory = broadcast.chargeCategory || 'own_device';
+                const rate = await marketingService.getChargeRate(userId, chargeCategory);
+                const totalCharge = sent * rate;
+
+                if (totalCharge > 0) {
+                    await messageCreditService.deductCredits(
+                        userId, totalCharge,
+                        `Broadcast: ${broadcast.name} (${chargeCategory})`,
+                        broadcastId
+                    );
+                    console.log(`[Broadcast] Charged ${totalCharge} credits for ${sent} messages (${chargeCategory})`);
+                }
+            } catch (e) {
+                console.warn('[Broadcast] Failed to charge credits:', e.message);
+                // Don't fail the entire broadcast for a billing error
+            }
+        }
+
+        // ==================== PHASE 5: UPDATE CAMPAIGN STATUS ====================
         const current = await prisma.broadcast.findUnique({ where: { id: broadcastId }, select: { status: true } });
+        const totalTargets = recipients.length + (Array.isArray(targetGroups) ? targetGroups.length : 0);
         let finalStatus;
         if (current?.status === 'cancelled') {
             finalStatus = 'cancelled';
-        } else if (failed === recipients.length) {
+        } else if (failed === totalTargets) {
             finalStatus = 'failed';
         } else if (failed > 0 && sent > 0) {
             finalStatus = 'partial';

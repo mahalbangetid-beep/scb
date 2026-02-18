@@ -512,39 +512,62 @@ router.get('/admin/payments', requireAdmin, async (req, res, next) => {
 // PUT /api/wallet/admin/payments/:id/approve - Approve payment (Admin)
 router.put('/admin/payments/:id/approve', requireAdmin, async (req, res, next) => {
     try {
-        const payment = await prisma.payment.findUnique({
-            where: { id: req.params.id }
-        });
+        // Use transaction for atomicity to prevent double-credit
+        const result = await prisma.$transaction(async (tx) => {
+            const payment = await tx.payment.findUnique({
+                where: { id: req.params.id }
+            });
 
-        if (!payment) {
-            throw new AppError('Payment not found', 404);
-        }
-
-        if (payment.status !== 'PENDING') {
-            throw new AppError('Payment is not pending', 400);
-        }
-
-        // Add credit to user
-        const result = await creditService.addCredit(
-            payment.userId,
-            payment.amount,
-            `Payment approved: ${payment.reference}`,
-            `PAYMENT_${payment.id}`
-        );
-
-        // Update payment status
-        await prisma.payment.update({
-            where: { id: payment.id },
-            data: {
-                status: 'COMPLETED',
-                processedAt: new Date(),
-                processedBy: req.user.id
+            if (!payment) {
+                throw new AppError('Payment not found', 404);
             }
+
+            if (payment.status !== 'PENDING') {
+                throw new AppError('Payment is not pending', 400);
+            }
+
+            // Update payment status FIRST to prevent re-approval
+            await tx.payment.update({
+                where: { id: payment.id },
+                data: {
+                    status: 'COMPLETED',
+                    processedAt: new Date(),
+                    processedBy: req.user.id
+                }
+            });
+
+            // Then add credit to user (within the same transaction)
+            const user = await tx.user.findUnique({
+                where: { id: payment.userId },
+                select: { creditBalance: true }
+            });
+
+            const balanceBefore = user?.creditBalance || 0;
+            const balanceAfter = balanceBefore + payment.amount;
+
+            await tx.user.update({
+                where: { id: payment.userId },
+                data: { creditBalance: { increment: payment.amount } }
+            });
+
+            await tx.creditTransaction.create({
+                data: {
+                    userId: payment.userId,
+                    type: 'CREDIT',
+                    amount: payment.amount,
+                    balanceBefore,
+                    balanceAfter,
+                    description: `Payment approved: ${payment.reference}`,
+                    reference: `PAYMENT_${payment.id}`
+                }
+            });
+
+            return { payment, balanceAfter };
         });
 
         successResponse(res, {
             success: true,
-            payment: { ...payment, status: 'COMPLETED' },
+            payment: { ...result.payment, status: 'COMPLETED' },
             userBalance: result.balanceAfter
         });
     } catch (error) {

@@ -4,8 +4,14 @@
  * Service for managing bot feature toggles
  * Phase 4: Rule-Based Bot Control
  * 
- * Each user can configure which bot features are enabled/disabled
+ * Each user can configure which bot features are enabled/disabled.
+ * Supports per-device and per-panel scoping with fallback chain:
+ *   device+panel → panel only → device only → user default
+ * 
  * High-risk features are disabled by default and require explicit opt-in
+ * 
+ * NOTE: Prisma doesn't support null in composite unique findUnique/upsert,
+ * so we use findFirst + manual create/update pattern throughout.
  */
 
 const prisma = require('../utils/prisma');
@@ -43,51 +49,168 @@ class BotFeatureService {
             bulkResponseThreshold: 5,
             maxBulkOrders: 100,
             showProviderInResponse: false,
-            showDetailedStatus: false
+            showDetailedStatus: false,
+
+            // Reply to all messages
+            replyToAllMessages: false,
+            fallbackMessage: null,
+
+            // Call response (1.2 / 1.3)
+            callAutoReplyEnabled: true,
+            callReplyMessage: null,
+            groupCallReplyMessage: null,
+            repeatedCallReplyMessage: null,
+            repeatedCallThreshold: 3,
+            repeatedCallWindowMinutes: 5,
+
+            // Spam protection (1.4)
+            spamProtectionEnabled: true,
+            spamWarningMessage: null,
+            spamRepeatThreshold: 3,
+            spamTimeWindowMinutes: 5,
+            spamDisableDurationMin: 60
         };
+
+        // Fields that should NOT be inherited from parent scope
+        this.scopeFields = ['deviceId', 'panelId', 'id', 'userId', 'createdAt', 'updatedAt'];
     }
 
     /**
-     * Get feature toggles for a user
-     * Creates default settings if none exist
-     * @param {string} userId - User ID
-     * @returns {Object} Feature toggles
+     * Build a findFirst-compatible where clause for scoped lookups.
+     * Prisma doesn't support null in composite unique findUnique,
+     * so we use findFirst with explicit null checks instead.
+     * 
+     * @param {string} userId
+     * @param {string|null} deviceId
+     * @param {string|null} panelId
+     * @returns {Object} Where clause for prisma.findFirst
      */
-    async getToggles(userId) {
+    _buildWhere(userId, deviceId = null, panelId = null) {
+        const where = { userId };
+
+        // Explicitly handle null vs value for each scope field
+        if (deviceId) {
+            where.deviceId = deviceId;
+        } else {
+            where.deviceId = null;  // IS NULL
+        }
+
+        if (panelId) {
+            where.panelId = panelId;
+        } else {
+            where.panelId = null;  // IS NULL
+        }
+
+        return where;
+    }
+
+    /**
+     * Find a scoped toggle record
+     */
+    async _findScoped(userId, deviceId = null, panelId = null) {
+        return prisma.botFeatureToggles.findFirst({
+            where: this._buildWhere(userId, deviceId, panelId)
+        });
+    }
+
+    /**
+     * Merge a scoped toggle with its parent, preferring scoped values for non-default fields
+     */
+    _mergeToggles(parentToggles, scopedToggles) {
+        if (!scopedToggles) return parentToggles;
+        if (!parentToggles) return scopedToggles;
+
+        const merged = { ...parentToggles };
+        for (const [key, value] of Object.entries(scopedToggles)) {
+            if (!this.scopeFields.includes(key) && value !== null && value !== undefined) {
+                merged[key] = value;
+            }
+        }
+        merged.id = scopedToggles.id;
+        merged.deviceId = scopedToggles.deviceId;
+        merged.panelId = scopedToggles.panelId;
+        return merged;
+    }
+
+    /**
+     * Get feature toggles with fallback chain:
+     *   device+panel → panel only → device only → user default
+     * 
+     * @param {string} userId - User ID
+     * @param {Object} scope - Optional { deviceId, panelId }
+     * @returns {Object} Resolved feature toggles
+     */
+    async getToggles(userId, scope = {}) {
         if (!userId) {
             throw new Error('User ID is required');
         }
 
-        let toggles = await prisma.botFeatureToggles.findUnique({
-            where: { userId }
-        });
+        const { deviceId = null, panelId = null } = scope;
 
-        // Create default settings if none exist
-        if (!toggles) {
-            toggles = await prisma.botFeatureToggles.create({
+        // Always get user default first (deviceId=null, panelId=null)
+        let userDefault = await this._findScoped(userId, null, null);
+
+        // Create user default if none exists
+        if (!userDefault) {
+            userDefault = await prisma.botFeatureToggles.create({
                 data: {
                     userId,
+                    deviceId: null,
+                    panelId: null,
                     ...this.defaultSettings
                 }
             });
         }
 
-        return toggles;
+        // If no scope requested, return user default
+        if (!deviceId && !panelId) {
+            return userDefault;
+        }
+
+        // Build fallback chain: device+panel → panel → device → user default
+        const candidates = [];
+
+        // Try device+panel specific (most specific)
+        if (deviceId && panelId) {
+            const specific = await this._findScoped(userId, deviceId, panelId);
+            if (specific) candidates.push(specific);
+        }
+
+        // Try panel-only
+        if (panelId) {
+            const panelOnly = await this._findScoped(userId, null, panelId);
+            if (panelOnly) candidates.push(panelOnly);
+        }
+
+        // Try device-only
+        if (deviceId) {
+            const deviceOnly = await this._findScoped(userId, deviceId, null);
+            if (deviceOnly) candidates.push(deviceOnly);
+        }
+
+        // If no scoped config found, return user default with requested scope info
+        if (candidates.length === 0) {
+            return { ...userDefault, _resolvedFrom: 'user_default', _requestedDeviceId: deviceId, _requestedPanelId: panelId };
+        }
+
+        // Most specific match wins (first candidate)
+        const resolved = this._mergeToggles(userDefault, candidates[0]);
+        resolved._resolvedFrom = candidates[0].deviceId && candidates[0].panelId
+            ? 'device_panel'
+            : candidates[0].panelId ? 'panel' : 'device';
+        return resolved;
     }
 
     /**
-     * Update feature toggles for a user
-     * @param {string} userId - User ID
-     * @param {Object} updates - Partial updates
-     * @returns {Object} Updated toggles
+     * Update feature toggles for a specific scope
+     * Uses find + create/update pattern (Prisma doesn't support null in upsert composite keys)
      */
-    async updateToggles(userId, updates) {
+    async updateToggles(userId, updates, scope = {}) {
         if (!userId) {
             throw new Error('User ID is required');
         }
 
-        // Make sure user has toggles record first
-        await this.getToggles(userId);
+        const { deviceId = null, panelId = null } = scope;
 
         // Filter out invalid fields
         const validFields = Object.keys(this.defaultSettings);
@@ -99,22 +222,79 @@ class BotFeatureService {
             }
         }
 
-        const toggles = await prisma.botFeatureToggles.update({
+        // Find existing record
+        const existing = await this._findScoped(userId, deviceId, panelId);
+
+        if (existing) {
+            // Update existing
+            return prisma.botFeatureToggles.update({
+                where: { id: existing.id },
+                data: filteredUpdates
+            });
+        } else {
+            // Create new
+            return prisma.botFeatureToggles.create({
+                data: {
+                    userId,
+                    deviceId: deviceId || null,
+                    panelId: panelId || null,
+                    ...this.defaultSettings,
+                    ...filteredUpdates
+                }
+            });
+        }
+    }
+
+    /**
+     * Get all scoped configs for a user (for listing in UI)
+     */
+    async getAllScopes(userId) {
+        const allToggles = await prisma.botFeatureToggles.findMany({
             where: { userId },
-            data: filteredUpdates
+            include: {
+                device: { select: { id: true, name: true, phone: true } },
+                panel: { select: { id: true, name: true, alias: true } }
+            },
+            orderBy: { createdAt: 'asc' }
         });
 
-        return toggles;
+        return allToggles.map(t => ({
+            ...t,
+            scopeType: !t.deviceId && !t.panelId ? 'default'
+                : t.deviceId && t.panelId ? 'device_panel'
+                    : t.deviceId ? 'device' : 'panel'
+        }));
+    }
+
+    /**
+     * Delete a scoped config (reverts to parent fallback)
+     * Cannot delete user default (deviceId=null, panelId=null)
+     */
+    async deleteScope(userId, toggleId) {
+        const toggle = await prisma.botFeatureToggles.findFirst({
+            where: { id: toggleId, userId }
+        });
+
+        if (!toggle) {
+            throw new Error('Toggle config not found');
+        }
+
+        if (!toggle.deviceId && !toggle.panelId) {
+            throw new Error('Cannot delete default user config. Use reset instead.');
+        }
+
+        await prisma.botFeatureToggles.delete({
+            where: { id: toggleId }
+        });
+
+        return { deleted: true };
     }
 
     /**
      * Check if a specific command is allowed
-     * @param {string} userId - User ID
-     * @param {string} command - Command type (REFILL, CANCEL, SPEEDUP, STATUS)
-     * @returns {boolean} Whether command is allowed
      */
-    async isCommandAllowed(userId, command) {
-        const toggles = await this.getToggles(userId);
+    async isCommandAllowed(userId, command, scope = {}) {
+        const toggles = await this.getToggles(userId, scope);
 
         const commandMap = {
             'REFILL': toggles.allowRefillCommand,
@@ -125,17 +305,14 @@ class BotFeatureService {
         };
 
         const commandUpper = command.toUpperCase();
-        return commandMap[commandUpper] ?? true; // Default to allowed if unknown
+        return commandMap[commandUpper] ?? true;
     }
 
     /**
      * Check if a user command (verify, account) is allowed
-     * @param {string} userId - User ID
-     * @param {string} command - Command type (verify, account)
-     * @returns {boolean} Whether command is allowed
      */
-    async isUserCommandAllowed(userId, command) {
-        const toggles = await this.getToggles(userId);
+    async isUserCommandAllowed(userId, command, scope = {}) {
+        const toggles = await this.getToggles(userId, scope);
 
         const commandMap = {
             'verify': toggles.allowPaymentVerification,
@@ -143,28 +320,22 @@ class BotFeatureService {
         };
 
         const commandLower = command.toLowerCase();
-        return commandMap[commandLower] ?? false; // Default to NOT allowed for user commands
+        return commandMap[commandLower] ?? false;
     }
 
     /**
      * Check if a feature is enabled
-     * @param {string} userId - User ID
-     * @param {string} feature - Feature name
-     * @returns {boolean} Whether feature is enabled
      */
-    async isFeatureEnabled(userId, feature) {
-        const toggles = await this.getToggles(userId);
+    async isFeatureEnabled(userId, feature, scope = {}) {
+        const toggles = await this.getToggles(userId, scope);
         return toggles[feature] ?? false;
     }
 
     /**
      * Get provider command template
-     * @param {string} userId - User ID
-     * @param {string} command - Command type
-     * @returns {string} Template string
      */
-    async getProviderTemplate(userId, command) {
-        const toggles = await this.getToggles(userId);
+    async getProviderTemplate(userId, command, scope = {}) {
+        const toggles = await this.getToggles(userId, scope);
 
         const templateMap = {
             'REFILL': toggles.providerRefillTemplate,
@@ -178,12 +349,9 @@ class BotFeatureService {
 
     /**
      * Check if processing status action is allowed
-     * @param {string} userId - User ID
-     * @param {string} action - speedup or cancel
-     * @returns {Object} { allowed, autoForward }
      */
-    async checkProcessingAction(userId, action) {
-        const toggles = await this.getToggles(userId);
+    async checkProcessingAction(userId, action, scope = {}) {
+        const toggles = await this.getToggles(userId, scope);
 
         if (action.toUpperCase() === 'SPEEDUP' || action.toUpperCase() === 'SPEED_UP') {
             return {
@@ -204,11 +372,9 @@ class BotFeatureService {
 
     /**
      * Get bulk response settings
-     * @param {string} userId - User ID
-     * @returns {Object} { threshold, maxOrders }
      */
-    async getBulkSettings(userId) {
-        const toggles = await this.getToggles(userId);
+    async getBulkSettings(userId, scope = {}) {
+        const toggles = await this.getToggles(userId, scope);
         return {
             threshold: toggles.bulkResponseThreshold,
             maxOrders: toggles.maxBulkOrders
@@ -216,27 +382,37 @@ class BotFeatureService {
     }
 
     /**
-     * Reset toggles to default
-     * @param {string} userId - User ID
-     * @returns {Object} Reset toggles
+     * Reset toggles to default for a specific scope
      */
-    async resetToDefaults(userId) {
-        await this.getToggles(userId); // Ensure exists
+    async resetToDefaults(userId, scope = {}) {
+        const { deviceId = null, panelId = null } = scope;
 
-        return prisma.botFeatureToggles.update({
-            where: { userId },
-            data: this.defaultSettings
-        });
+        // Find existing record
+        const existing = await this._findScoped(userId, deviceId, panelId);
+
+        if (existing) {
+            return prisma.botFeatureToggles.update({
+                where: { id: existing.id },
+                data: this.defaultSettings
+            });
+        } else {
+            // Create with defaults
+            return prisma.botFeatureToggles.create({
+                data: {
+                    userId,
+                    deviceId: deviceId || null,
+                    panelId: panelId || null,
+                    ...this.defaultSettings
+                }
+            });
+        }
     }
 
     /**
      * Get high-risk features status
-     * Returns which dangerous features are enabled
-     * @param {string} userId - User ID
-     * @returns {Object[]} List of enabled high-risk features
      */
-    async getHighRiskStatus(userId) {
-        const toggles = await this.getToggles(userId);
+    async getHighRiskStatus(userId, scope = {}) {
+        const toggles = await this.getToggles(userId, scope);
 
         const highRiskFeatures = [
             { key: 'autoHandleFailedOrders', label: 'Auto Handle Failed Orders', danger: 'medium' },

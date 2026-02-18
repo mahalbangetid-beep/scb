@@ -49,7 +49,10 @@ class SecurityService {
                     refillActionMode: 'forward',
                     cancelActionMode: 'forward',
                     speedupActionMode: 'forward',
-                    statusResponseMode: 'standard'
+                    statusResponseMode: 'standard',
+                    // Staff Override Group (Section 5)
+                    staffOverrideEnabled: false,
+                    staffOverrideGroups: []
                 }
             });
         }
@@ -464,14 +467,27 @@ class SecurityService {
 
     /**
      * Perform all security checks for a command
-     * @param {Object} params - { order, senderNumber, isGroup, userId, command }
+     * @param {Object} params - { order, senderNumber, isGroup, userId, command, isStaffOverride }
      * @returns {Object} { allowed, message, shouldClaim, needsUsernameVerification, settings }
      */
     async performSecurityChecks(params) {
-        const { order, senderNumber, isGroup, userId, command } = params;
+        const { order, senderNumber, isGroup, userId, command, isStaffOverride = false } = params;
 
         // Get user settings
         const settings = await this.getUserSettings(userId);
+
+        // ==================== STAFF OVERRIDE (Section 5) ====================
+        // If sender is from a staff override group, bypass ALL validation checks.
+        // Staff can send any order ID, any command, no restrictions.
+        if (isStaffOverride) {
+            console.log(`[Security] Staff override: bypassing all validation for ${senderNumber}`);
+            return {
+                allowed: true,
+                shouldClaim: false,
+                isStaffOverride: true,
+                settings
+            };
+        }
 
         // 1. Check sender rate limit
         const rateCheck = await this.checkSenderRateLimit(senderNumber, userId, settings);
@@ -694,6 +710,111 @@ class SecurityService {
         }
     }
 
+
+    // ==================== STAFF OVERRIDE GROUP (Section 5) ====================
+
+    /**
+     * Check if a group JID is a staff override group for this user
+     * @param {string} userId - Panel owner's user ID
+     * @param {string} groupJid - WhatsApp group JID or Telegram chat ID
+     * @returns {boolean} True if this is a staff override group
+     */
+    async isStaffOverrideGroup(userId, groupJid) {
+        if (!groupJid) return false;
+
+        try {
+            const settings = await this.getUserSettings(userId);
+
+            // Must be enabled
+            if (!settings.staffOverrideEnabled) return false;
+
+            // Parse staffOverrideGroups (JSON array)
+            let groups = settings.staffOverrideGroups;
+            if (!groups) return false;
+            if (typeof groups === 'string') {
+                try { groups = JSON.parse(groups); } catch { return false; }
+            }
+
+            if (!Array.isArray(groups)) return false;
+
+            return groups.includes(groupJid);
+        } catch (error) {
+            console.error('[Security] Staff override group check error:', error.message);
+            return false;
+        }
+    }
+
+    /**
+     * Get staff override groups for a user
+     * @param {string} userId - User ID
+     * @returns {Object} { enabled, groups }
+     */
+    async getStaffOverrideConfig(userId) {
+        const settings = await this.getUserSettings(userId);
+        let groups = settings.staffOverrideGroups || [];
+        if (typeof groups === 'string') {
+            try { groups = JSON.parse(groups); } catch { groups = []; }
+        }
+        return {
+            enabled: settings.staffOverrideEnabled || false,
+            groups: Array.isArray(groups) ? groups : []
+        };
+    }
+
+    /**
+     * Update staff override group config
+     * @param {string} userId - User ID
+     * @param {Object} config - { enabled?, groups? }
+     * @returns {Object} Updated settings
+     */
+    async updateStaffOverrideConfig(userId, config) {
+        // Ensure settings exist first (getUserSettings creates defaults if missing)
+        await this.getUserSettings(userId);
+
+        const updateData = {};
+        if (config.enabled !== undefined) {
+            updateData.staffOverrideEnabled = !!config.enabled;
+        }
+        if (config.groups !== undefined) {
+            if (!Array.isArray(config.groups)) {
+                throw new Error('groups must be an array');
+            }
+            // Sanitize: only strings, no duplicates
+            const sanitized = [...new Set(config.groups.filter(g => typeof g === 'string' && g.trim()))];
+            updateData.staffOverrideGroups = sanitized;
+        }
+
+        return await prisma.userBotSettings.update({
+            where: { userId },
+            data: updateData
+        });
+    }
+
+    /**
+     * Add a group to staff override groups
+     * @param {string} userId - User ID
+     * @param {string} groupJid - Group JID to add
+     */
+    async addStaffOverrideGroup(userId, groupJid) {
+        const config = await this.getStaffOverrideConfig(userId);
+        if (!config.groups.includes(groupJid)) {
+            config.groups.push(groupJid);
+            await this.updateStaffOverrideConfig(userId, { groups: config.groups });
+        }
+        return config.groups;
+    }
+
+    /**
+     * Remove a group from staff override groups
+     * @param {string} userId - User ID
+     * @param {string} groupJid - Group JID to remove
+     */
+    async removeStaffOverrideGroup(userId, groupJid) {
+        const config = await this.getStaffOverrideConfig(userId);
+        config.groups = config.groups.filter(g => g !== groupJid);
+        await this.updateStaffOverrideConfig(userId, { groups: config.groups });
+        return config.groups;
+    }
 
     // ==================== ERROR MESSAGE SANITIZATION ====================
 

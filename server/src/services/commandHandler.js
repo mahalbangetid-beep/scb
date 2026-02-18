@@ -41,7 +41,12 @@ class CommandHandlerService {
      * @returns {Object} - { success, responses[], summary }
      */
     async processCommand(params) {
-        const { userId, panelId, panelIds, message, senderNumber, platform = 'WHATSAPP', isGroup = false } = params;
+        const { userId, panelId, panelIds, deviceId, message, senderNumber, platform = 'WHATSAPP', isGroup = false, isStaffOverride = false } = params;
+
+        // Build scope for per-device/per-panel settings
+        const scope = {};
+        if (deviceId) scope.deviceId = deviceId;
+        if (panelId) scope.panelId = panelId;
 
         // Parse the command
         const parsed = commandParser.parse(message);
@@ -65,6 +70,7 @@ class CommandHandlerService {
                 needsArgument,
                 senderNumber,
                 platform,
+                scope,  // Pass scope for per-device/panel checks
                 // Pass ticket-specific params if present
                 ticketNumber: parsed.ticketNumber,
                 showList: parsed.showList
@@ -82,13 +88,16 @@ class CommandHandlerService {
 
         // ==================== CHECK COMMAND PERMISSION ====================
         // Check if this command type is enabled in user's bot feature toggles
-        const isCommandAllowed = await botFeatureService.isCommandAllowed(userId, command);
-        if (!isCommandAllowed) {
-            return {
-                success: false,
-                error: `❌ The "${command}" command is currently disabled. Please enable it in Bot Settings.`,
-                responses: []
-            };
+        // Staff override groups bypass command permission checks (Section 5)
+        if (!isStaffOverride) {
+            const isCommandAllowed = await botFeatureService.isCommandAllowed(userId, command, scope);
+            if (!isCommandAllowed) {
+                return {
+                    success: false,
+                    error: `❌ The "${command}" command is currently disabled. Please enable it in Bot Settings.`,
+                    responses: []
+                };
+            }
         }
 
         // ==================== COLLECT FOR BATCH FORWARDING ====================
@@ -102,11 +111,13 @@ class CommandHandlerService {
                     userId,
                     panelId,
                     panelIds,   // Pass panelIds for multi-panel order lookup
+                    deviceId,   // Pass deviceId for per-device settings
                     orderId,
                     command,
                     senderNumber,
                     platform,
                     isGroup,
+                    isStaffOverride,  // Staff Override Group bypass (Section 5)
                     skipIndividualForward: orderIds.length > 1
                 });
 
@@ -180,7 +191,7 @@ class CommandHandlerService {
      * Process a single order command
      */
     async processOrderCommand(params) {
-        const { userId, panelId, panelIds, orderId, command, senderNumber, platform = 'WHATSAPP', isGroup = false } = params;
+        const { userId, panelId, panelIds, deviceId, orderId, command, senderNumber, platform = 'WHATSAPP', isGroup = false } = params;
 
         // Build order query - filter by panelId(s) if provided
         const whereClause = {
@@ -435,7 +446,8 @@ class CommandHandlerService {
             senderNumber,
             isGroup,
             userId,
-            command
+            command,
+            isStaffOverride: params.isStaffOverride || false  // Staff Override Group bypass (Section 5)
         });
 
         if (!securityCheck.allowed) {
@@ -548,7 +560,7 @@ class CommandHandlerService {
                 result = await this.handleSpeedUp(order, orderId, senderNumber, userSettings);
                 break;
             case 'status':
-                result = await this.handleStatus(order, orderId, userSettings);
+                result = await this.handleStatus(order, orderId, userSettings, { deviceId });
                 break;
             default:
                 return {
@@ -1066,7 +1078,7 @@ class CommandHandlerService {
     /**
      * Handle status command
      */
-    async handleStatus(order, orderId, userSettings = {}) {
+    async handleStatus(order, orderId, userSettings = {}, scope = {}) {
         try {
             // Get fresh status from panel Admin API
             const status = await adminApiService.getOrderStatus(order.panel, order.externalOrderId);
@@ -1123,7 +1135,8 @@ class CommandHandlerService {
             const message = await commandTemplateService.getFormattedResponse(
                 order.userId,
                 templateName,
-                templateVars
+                templateVars,
+                { deviceId: scope.deviceId, panelId: order.panelId }
             );
 
             // Build response details
@@ -1151,7 +1164,8 @@ class CommandHandlerService {
             const errorMessage = await commandTemplateService.getFormattedResponse(
                 order.userId,
                 'ERROR_GENERIC',
-                { orderId, errorMessage: 'Failed to fetch order status' }
+                { orderId, errorMessage: 'Failed to fetch order status' },
+                { deviceId: scope.deviceId, panelId: order.panelId }
             );
 
             return {
@@ -1263,10 +1277,10 @@ class CommandHandlerService {
      * @param {Object} params - { userId, command, argument, needsArgument, senderNumber, platform }
      */
     async processUserCommand(params) {
-        const { userId, command, argument, needsArgument, senderNumber, platform } = params;
+        const { userId, command, argument, needsArgument, senderNumber, platform, scope = {} } = params;
 
         // Check if command is allowed
-        const isAllowed = await botFeatureService.isUserCommandAllowed(userId, command);
+        const isAllowed = await botFeatureService.isUserCommandAllowed(userId, command, scope);
         if (!isAllowed) {
             const commandName = command === 'verify' ? 'Payment Verification' : 'Account Details';
             return {

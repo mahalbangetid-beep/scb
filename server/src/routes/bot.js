@@ -16,7 +16,7 @@ router.use(authenticate);
 // POST /api/bot/process - Process a command manually (for testing)
 router.post('/process', async (req, res, next) => {
     try {
-        const { message } = req.body;
+        const { message, deviceId, panelId } = req.body;
 
         if (!message) {
             throw new AppError('Message is required', 400);
@@ -25,6 +25,8 @@ router.post('/process', async (req, res, next) => {
         // Process the command
         const result = await commandHandler.processCommand({
             userId: req.user.id,
+            deviceId,    // Optional: scope to specific device
+            panelId,     // Optional: scope to specific panel
             message,
             senderNumber: 'manual-test',
             platform: 'WHATSAPP'

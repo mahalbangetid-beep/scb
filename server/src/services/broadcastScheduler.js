@@ -13,7 +13,7 @@ let whatsappInstance = null;
 
 /**
  * Process a single broadcast campaign
- * Reused logic from broadcast route
+ * Section 6 enhanced — supports auto ID, watermark, group targets, charge categories
  */
 async function processBroadcast(broadcastId) {
     const broadcast = await prisma.broadcast.findUnique({
@@ -26,9 +26,33 @@ async function processBroadcast(broadcastId) {
         return;
     }
 
-    // Note: status is already set to 'processing' by checkScheduledBroadcasts()
-    // to prevent duplicate triggers. No need to set it again here.
+    const { watermarkService } = require('./watermarkService');
+    const marketingService = require('./marketingService');
+    const broadcastUserId = broadcast.device?.userId || null;
 
+    // Note: status is already set to 'processing' by checkScheduledBroadcasts()
+
+    // Auto ID counter for this campaign (Section 6.1)
+    let autoIdCounter = broadcast.autoIdStart || 1;
+    const autoIdEnabled = broadcast.autoIdEnabled;
+    const visibleWatermark = broadcast.watermarkText;
+
+    // BUG #12 fix: use prefix from broadcast record (snapshot at create time)
+    const autoIdPrefix = broadcast.autoIdPrefix || '';
+
+    function composeFinalText(baseMessage) {
+        let text = baseMessage;
+        if (visibleWatermark) {
+            text = `${text}\n\n${visibleWatermark}`;
+        }
+        if (autoIdEnabled) {
+            text = `${text}\nID: ${autoIdPrefix}${autoIdCounter}`;
+            autoIdCounter++;
+        }
+        return text;
+    }
+
+    // Phase 1: number recipients
     const recipients = await prisma.broadcastRecipient.findMany({
         where: { broadcastId, status: 'pending' }
     });
@@ -37,15 +61,14 @@ async function processBroadcast(broadcastId) {
 
     for (const recipient of recipients) {
         try {
+            const finalText = composeFinalText(broadcast.message);
+
             if (broadcast.mediaUrl) {
-                // Embed watermark in caption for image broadcasts
-                let finalCaption = broadcast.message;
-                const broadcastUserId = broadcast.device?.userId || null;
+                let finalCaption = finalText;
                 if (broadcastUserId) {
                     try {
-                        const { watermarkService } = require('./watermarkService');
                         const result = await watermarkService.createAndEmbed({
-                            text: broadcast.message, userId: broadcastUserId,
+                            text: finalText, userId: broadcastUserId,
                             deviceId: broadcast.deviceId, recipientId: recipient.phone, broadcastId
                         });
                         finalCaption = result.watermarkedText;
@@ -53,10 +76,9 @@ async function processBroadcast(broadcastId) {
                 }
                 await whatsappInstance.sendImage(broadcast.deviceId, recipient.phone, broadcast.mediaUrl, finalCaption);
             } else {
-                await whatsappInstance.sendMessage(broadcast.deviceId, recipient.phone, broadcast.message, {
-                    userId: broadcast.device?.userId || null,
-                    broadcastId
-                });
+                await whatsappInstance.sendMessage(broadcast.deviceId, recipient.phone, finalText,
+                    broadcastUserId ? { userId: broadcastUserId, broadcastId } : null
+                );
             }
 
             await prisma.broadcastRecipient.update({
@@ -75,7 +97,7 @@ async function processBroadcast(broadcastId) {
         // Delay between messages
         await new Promise(r => setTimeout(r, 1500));
 
-        // Check if campaign was cancelled mid-processing (every 3 messages ≈ 4.5s max delay)
+        // Check cancellation
         if ((sent + failed) % 3 === 0 && (sent + failed) > 0) {
             const current = await prisma.broadcast.findUnique({ where: { id: broadcastId }, select: { status: true } });
             if (current?.status === 'cancelled') {
@@ -85,11 +107,72 @@ async function processBroadcast(broadcastId) {
         }
     }
 
-    // Update campaign status (respect cancellation)
+    // Phase 2: group targets (Section 6.4)
+    let targetGroups = broadcast.targetGroups;
+    if (targetGroups && typeof targetGroups === 'string') {
+        try { targetGroups = JSON.parse(targetGroups); } catch { targetGroups = []; }
+    }
+
+    if (Array.isArray(targetGroups) && targetGroups.length > 0) {
+        for (const groupJid of targetGroups) {
+            const current = await prisma.broadcast.findUnique({ where: { id: broadcastId }, select: { status: true } });
+            if (current?.status === 'cancelled') break;
+
+            try {
+                const finalText = composeFinalText(broadcast.message);
+                if (broadcast.mediaUrl) {
+                    await whatsappInstance.sendImage(broadcast.deviceId, groupJid, broadcast.mediaUrl, finalText);
+                } else {
+                    await whatsappInstance.sendMessage(broadcast.deviceId, groupJid, finalText,
+                        broadcastUserId ? { userId: broadcastUserId, broadcastId } : null
+                    );
+                }
+                sent++;
+            } catch (error) {
+                console.error(`[Scheduler] Failed to send to group ${groupJid}:`, error.message);
+                failed++;
+            }
+
+            await new Promise(r => setTimeout(r, 2000));
+        }
+    }
+
+    // Phase 3 (REMOVED): Auto ID counter update no longer needed here.
+    // IDs are reserved upfront at broadcast creation time.
+
+    // Phase 4: Charge credits (Section 6.5)
+    if (broadcastUserId && sent > 0) {
+        try {
+            const messageCreditService = require('./messageCreditService');
+            const chargeCategory = broadcast.chargeCategory || 'own_device';
+            const rate = await marketingService.getChargeRate(broadcastUserId, chargeCategory);
+            const totalCharge = sent * rate;
+
+            if (totalCharge > 0) {
+                await messageCreditService.deductCredits(
+                    broadcastUserId, totalCharge,
+                    `Broadcast: ${broadcast.name} (${chargeCategory})`,
+                    broadcastId
+                );
+            }
+        } catch (e) {
+            console.warn('[Scheduler] Failed to charge credits:', e.message);
+        }
+    }
+
+    // Phase 5: Update campaign status
     const current = await prisma.broadcast.findUnique({ where: { id: broadcastId }, select: { status: true } });
-    const finalStatus = current?.status === 'cancelled'
-        ? 'cancelled'
-        : (failed === recipients.length ? 'failed' : 'completed');
+    const totalTargets = recipients.length + (Array.isArray(targetGroups) ? targetGroups.length : 0);
+    let finalStatus;
+    if (current?.status === 'cancelled') {
+        finalStatus = 'cancelled';
+    } else if (failed === totalTargets) {
+        finalStatus = 'failed';
+    } else if (failed > 0 && sent > 0) {
+        finalStatus = 'partial'; // BUG #10 fix: was missing partial status
+    } else {
+        finalStatus = 'completed';
+    }
 
     await prisma.broadcast.update({
         where: { id: broadcastId },

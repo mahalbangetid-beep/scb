@@ -154,10 +154,13 @@ class ResponseTemplateService {
      * Checks user's custom templates first, falls back to default
      */
     async getTemplate(userId, command) {
-        // Try to find user's custom template
-        const customTemplate = await prisma.commandTemplate.findUnique({
+        // Try to find user's custom template (default scope: no device/panel)
+        const customTemplate = await prisma.commandTemplate.findFirst({
             where: {
-                userId_command: { userId, command }
+                userId,
+                command,
+                deviceId: null,
+                panelId: null
             }
         });
 
@@ -206,9 +209,9 @@ class ResponseTemplateService {
      * Get all templates for a user (custom + defaults)
      */
     async getAllTemplates(userId) {
-        // Get user's custom templates
+        // Get user's custom templates (default scope only)
         const customTemplates = await prisma.commandTemplate.findMany({
-            where: { userId },
+            where: { userId, deviceId: null, panelId: null },
             orderBy: { command: 'asc' }
         });
 
@@ -239,24 +242,37 @@ class ResponseTemplateService {
      * Update or create a custom template
      */
     async updateTemplate(userId, command, template, isActive = true) {
-        const updated = await prisma.commandTemplate.upsert({
+        // Find existing record (can't use upsert with nullable composite keys)
+        const existing = await prisma.commandTemplate.findFirst({
             where: {
-                userId_command: { userId, command }
-            },
-            update: {
-                template,
-                isActive,
-                updatedAt: new Date()
-            },
-            create: {
                 userId,
                 command,
-                template,
-                isActive
+                deviceId: null,
+                panelId: null
             }
         });
 
-        return updated;
+        if (existing) {
+            return prisma.commandTemplate.update({
+                where: { id: existing.id },
+                data: {
+                    template,
+                    isActive,
+                    updatedAt: new Date()
+                }
+            });
+        } else {
+            return prisma.commandTemplate.create({
+                data: {
+                    userId,
+                    command,
+                    template,
+                    isActive,
+                    deviceId: null,
+                    panelId: null
+                }
+            });
+        }
     }
 
     /**
@@ -264,7 +280,7 @@ class ResponseTemplateService {
      */
     async resetTemplate(userId, command) {
         await prisma.commandTemplate.deleteMany({
-            where: { userId, command }
+            where: { userId, command, deviceId: null, panelId: null }
         });
 
         return this.defaultTemplates[command] || null;
@@ -275,7 +291,7 @@ class ResponseTemplateService {
      */
     async resetAllTemplates(userId) {
         await prisma.commandTemplate.deleteMany({
-            where: { userId }
+            where: { userId, deviceId: null, panelId: null }
         });
 
         return Object.keys(this.defaultTemplates);

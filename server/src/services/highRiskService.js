@@ -60,18 +60,18 @@ class HighRiskService {
     async isFeatureEnabled(userId, featureKey) {
         // Check bot feature settings
         const botFeatureService = require('./botFeatureService');
-        const settings = await botFeatureService.getResolvedSettings(userId);
+        const settings = await botFeatureService.getToggles(userId);
 
-        // Map feature keys to bot settings
+        // Map feature keys to bot settings field names
         const settingMap = {
-            FORCE_COMPLETE: 'allowForceComplete',
-            UPDATE_ORDER_LINK: 'allowLinkUpdate',
-            VERIFY_PAYMENT: 'allowPaymentVerify',
-            VIEW_USER_DETAILS: 'allowUserDetails'
+            FORCE_COMPLETE: 'allowForceCompleted',
+            UPDATE_ORDER_LINK: 'allowLinkUpdateViaBot',
+            VERIFY_PAYMENT: 'allowPaymentVerification',
+            VIEW_USER_DETAILS: 'allowAccountDetailsViaBot'
         };
 
         const settingKey = settingMap[featureKey];
-        return settings?.highRiskFeatures?.[settingKey] === true;
+        return settings?.[settingKey] === true;
     }
 
     /**

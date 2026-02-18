@@ -2,6 +2,11 @@
  * Command Templates Routes
  * 
  * API routes for managing custom bot command response templates
+ * 
+ * Supports per-device and per-panel scoping via query parameters:
+ *   ?deviceId=xxx&panelId=yyy
+ * 
+ * Fallback chain: device+panel → panel → device → user default → system default
  */
 
 const express = require('express');
@@ -14,22 +19,35 @@ const commandTemplateService = require('../services/commandTemplateService');
 // All routes require authentication
 router.use(authenticate);
 
+/**
+ * Helper: extract scope from query params
+ */
+function getScope(query) {
+    const scope = {};
+    if (query.deviceId) scope.deviceId = query.deviceId;
+    if (query.panelId) scope.panelId = query.panelId;
+    return scope;
+}
+
 // ==================== GET TEMPLATES ====================
 
 /**
  * GET /api/command-templates
  * Get all templates for the current user
+ * Query: ?deviceId=xxx&panelId=yyy (optional scope)
  */
 router.get('/', async (req, res, next) => {
     try {
-        const templates = await commandTemplateService.getTemplates(req.user.id);
+        const scope = getScope(req.query);
+        const templates = await commandTemplateService.getTemplates(req.user.id, scope);
         const variables = commandTemplateService.getAvailableVariables();
         const commandList = commandTemplateService.getCommandList();
 
         successResponse(res, {
             templates,
             variables,
-            commandList
+            commandList,
+            scope: Object.keys(scope).length > 0 ? scope : 'default'
         });
     } catch (error) {
         next(error);
@@ -64,12 +82,14 @@ router.get('/variables', async (req, res, next) => {
 
 /**
  * GET /api/command-templates/:command
- * Get a specific template
+ * Get a specific template (with scope fallback)
+ * Query: ?deviceId=xxx&panelId=yyy (optional scope)
  */
 router.get('/:command', async (req, res, next) => {
     try {
+        const scope = getScope(req.query);
         const { command } = req.params;
-        const template = await commandTemplateService.getTemplate(req.user.id, command);
+        const template = await commandTemplateService.getTemplate(req.user.id, command, scope);
         const defaults = commandTemplateService.getDefaultTemplates();
 
         if (!defaults[command]) {
@@ -81,7 +101,8 @@ router.get('/:command', async (req, res, next) => {
             template: template || defaults[command].template,
             description: defaults[command].description,
             variables: defaults[command].variables,
-            isCustom: !!template && template !== defaults[command].template
+            isCustom: !!template && template !== defaults[command].template,
+            scope: Object.keys(scope).length > 0 ? scope : 'default'
         });
     } catch (error) {
         next(error);
@@ -93,9 +114,11 @@ router.get('/:command', async (req, res, next) => {
 /**
  * PUT /api/command-templates/:command
  * Save/update a template for a specific command
+ * Query: ?deviceId=xxx&panelId=yyy (optional scope)
  */
 router.put('/:command', async (req, res, next) => {
     try {
+        const scope = getScope(req.query);
         const { command } = req.params;
         const { template, isActive } = req.body;
 
@@ -112,7 +135,8 @@ router.put('/:command', async (req, res, next) => {
             req.user.id,
             command,
             template,
-            isActive !== false
+            isActive !== false,
+            scope
         );
 
         successResponse(res, {
@@ -152,9 +176,11 @@ router.post('/preview', async (req, res, next) => {
 /**
  * DELETE /api/command-templates/:command
  * Reset a specific template to default
+ * Query: ?deviceId=xxx&panelId=yyy (optional scope)
  */
 router.delete('/:command', async (req, res, next) => {
     try {
+        const scope = getScope(req.query);
         const { command } = req.params;
 
         const defaults = commandTemplateService.getDefaultTemplates();
@@ -162,7 +188,7 @@ router.delete('/:command', async (req, res, next) => {
             throw new AppError(`Unknown command: ${command}`, 400);
         }
 
-        const result = await commandTemplateService.resetTemplate(req.user.id, command);
+        const result = await commandTemplateService.resetTemplate(req.user.id, command, scope);
 
         successResponse(res, {
             ...result,
@@ -176,10 +202,12 @@ router.delete('/:command', async (req, res, next) => {
 /**
  * DELETE /api/command-templates
  * Reset all templates to defaults
+ * Query: ?deviceId=xxx&panelId=yyy (optional scope)
  */
 router.delete('/', async (req, res, next) => {
     try {
-        const templates = await commandTemplateService.resetAllTemplates(req.user.id);
+        const scope = getScope(req.query);
+        const templates = await commandTemplateService.resetAllTemplates(req.user.id, scope);
 
         successResponse(res, {
             templates,
@@ -195,9 +223,11 @@ router.delete('/', async (req, res, next) => {
 /**
  * POST /api/command-templates/bulk
  * Update multiple templates at once
+ * Query: ?deviceId=xxx&panelId=yyy (optional scope)
  */
 router.post('/bulk', async (req, res, next) => {
     try {
+        const scope = getScope(req.query);
         const { templates } = req.body;
 
         if (!templates || !Array.isArray(templates)) {
@@ -215,7 +245,8 @@ router.post('/bulk', async (req, res, next) => {
                 req.user.id,
                 item.command,
                 item.template,
-                item.isActive !== false
+                item.isActive !== false,
+                scope
             );
             results.push(result);
         }

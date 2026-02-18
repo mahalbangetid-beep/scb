@@ -181,6 +181,10 @@ function validateApiKey(options = {}) {
                 });
             }
 
+            // Attach user and API key to request for downstream handlers
+            req.user = apiKeyRecord.user;
+            req.apiKey = apiKeyRecord;
+
             // Update last used timestamp (non-blocking)
             prisma.apiKey.update({
                 where: { id: apiKeyRecord.id },

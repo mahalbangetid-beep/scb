@@ -391,6 +391,7 @@ class TelegramService {
             const result = await commandHandler.processCommand({
                 userId: botRecord.userId,
                 panelId: botRecord.panelId,  // Pass panelId for panel-specific lookup
+                deviceId: botRecord.id,      // Pass bot ID as device scope for per-device settings
                 message: text,
                 senderNumber: senderNumber,
                 platform: 'TELEGRAM',

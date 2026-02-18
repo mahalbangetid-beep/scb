@@ -621,7 +621,7 @@ router.post('/staff', async (req, res, next) => {
 });
 
 // PUT /api/admin/staff/:id/permissions - Update staff permissions
-router.put('/staff/:id/permissions', async (req, res, next) => {
+router.put('/staff/:id/permissions', requireMasterAdmin, async (req, res, next) => {
     try {
         const { permissions } = req.body;
 
@@ -1089,6 +1089,71 @@ router.put('/config/bulk', requireMasterAdmin, async (req, res, next) => {
         );
 
         successResponse(res, { updated: results.length }, `Updated ${results.length} configuration items`);
+    } catch (error) {
+        next(error);
+    }
+});
+
+// ==================== SYSTEM BOT DEFAULT AUTO-REPLY (1.1) ====================
+
+// GET /api/admin/system-bot/auto-reply - Get System Bot default auto-reply settings
+router.get('/system-bot/auto-reply', requireMasterAdmin, async (req, res, next) => {
+    try {
+        const config = await prisma.systemConfig.findUnique({
+            where: { key: 'system_bot_auto_reply' }
+        });
+
+        const defaults = {
+            enabled: true,
+            message: 'This is only a bot. We cannot reply manually. This WhatsApp is used for bot replies only. For SMM Bot queries, please contact our official support.',
+            triggerType: 'all', // personal, group, all
+            callEnabled: true,
+            callMessage: '📵 This is an automated bot. We cannot answer calls. Please send a text message instead.'
+        };
+
+        const settings = config ? { ...defaults, ...JSON.parse(config.value) } : defaults;
+        successResponse(res, settings, 'System Bot auto-reply settings retrieved');
+    } catch (error) {
+        next(error);
+    }
+});
+
+// PUT /api/admin/system-bot/auto-reply - Update System Bot default auto-reply settings
+router.put('/system-bot/auto-reply', requireMasterAdmin, async (req, res, next) => {
+    try {
+        const { enabled, message, triggerType, callEnabled, callMessage } = req.body;
+
+        // Read existing config first to merge (avoid losing fields on partial update)
+        const existing = await prisma.systemConfig.findUnique({
+            where: { key: 'system_bot_auto_reply' }
+        });
+        const currentSettings = existing ? JSON.parse(existing.value) : {
+            enabled: true,
+            message: 'This is only a bot. We cannot reply manually. This WhatsApp is used for bot replies only.',
+            triggerType: 'all',
+            callEnabled: true,
+            callMessage: '📵 This is an automated bot. We cannot answer calls. Please send a text message instead.'
+        };
+
+        // Merge updates into existing settings
+        if (enabled !== undefined) currentSettings.enabled = Boolean(enabled);
+        if (message !== undefined) currentSettings.message = String(message);
+        if (triggerType !== undefined) {
+            if (!['personal', 'group', 'all'].includes(triggerType)) {
+                throw new AppError('triggerType must be personal, group, or all', 400);
+            }
+            currentSettings.triggerType = triggerType;
+        }
+        if (callEnabled !== undefined) currentSettings.callEnabled = Boolean(callEnabled);
+        if (callMessage !== undefined) currentSettings.callMessage = String(callMessage);
+
+        const config = await prisma.systemConfig.upsert({
+            where: { key: 'system_bot_auto_reply' },
+            update: { value: JSON.stringify(currentSettings), category: 'system_bot' },
+            create: { key: 'system_bot_auto_reply', value: JSON.stringify(currentSettings), category: 'system_bot' }
+        });
+
+        successResponse(res, JSON.parse(config.value), 'System Bot auto-reply settings updated');
     } catch (error) {
         next(error);
     }

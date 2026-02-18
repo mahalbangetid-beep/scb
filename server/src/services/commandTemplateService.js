@@ -252,31 +252,125 @@ const TEMPLATE_VARIABLES = {
 
 class CommandTemplateService {
     /**
-     * Get all templates for a user (with defaults for missing ones)
+     * Build a findFirst-compatible where clause for scoped lookups.
+     * Prisma doesn't support null in composite unique findUnique,
+     * so we use findFirst with explicit null checks instead.
      */
-    async getTemplates(userId) {
-        // Get user-specific templates
-        const userTemplates = await prisma.commandTemplate.findMany({
-            where: { userId }
+    _buildWhere(userId, command, deviceId = null, panelId = null) {
+        const where = { userId, command };
+
+        if (deviceId) {
+            where.deviceId = deviceId;
+        } else {
+            where.deviceId = null;  // IS NULL
+        }
+
+        if (panelId) {
+            where.panelId = panelId;
+        } else {
+            where.panelId = null;  // IS NULL
+        }
+
+        return where;
+    }
+
+    /**
+     * Find a scoped template record
+     */
+    async _findScoped(userId, command, deviceId = null, panelId = null) {
+        return prisma.commandTemplate.findFirst({
+            where: this._buildWhere(userId, command, deviceId, panelId)
+        });
+    }
+
+    /**
+     * Get all templates for a user (with defaults for missing ones)
+     * @param {string} userId
+     * @param {Object} scope - Optional { deviceId, panelId }
+     */
+    async getTemplates(userId, scope = {}) {
+        const { deviceId = null, panelId = null } = scope;
+
+        // Get user default templates (no device/panel scope)
+        const userDefaults = await prisma.commandTemplate.findMany({
+            where: { userId, deviceId: null, panelId: null }
         });
 
-        // Create a map of user templates
-        const userTemplateMap = {};
-        userTemplates.forEach(t => {
-            userTemplateMap[t.command] = {
+        // Build map from user defaults
+        const templateMap = {};
+        userDefaults.forEach(t => {
+            templateMap[t.command] = {
                 id: t.id,
                 command: t.command,
                 template: t.template,
                 isActive: t.isActive,
-                isCustom: true
+                isCustom: true,
+                scope: 'user_default'
             };
         });
 
-        // Merge with defaults
+        // Overlay scoped templates if scope is specified
+        if (deviceId || panelId) {
+            // Get all scoped templates for this user+scope
+            const scopedTemplates = [];
+
+            // Device-only templates
+            if (deviceId) {
+                const deviceTemplates = await prisma.commandTemplate.findMany({
+                    where: { userId, deviceId, panelId: null }
+                });
+                deviceTemplates.forEach(t => {
+                    templateMap[t.command] = {
+                        id: t.id,
+                        command: t.command,
+                        template: t.template,
+                        isActive: t.isActive,
+                        isCustom: true,
+                        scope: 'device'
+                    };
+                });
+            }
+
+            // Panel-only templates
+            if (panelId) {
+                const panelTemplates = await prisma.commandTemplate.findMany({
+                    where: { userId, deviceId: null, panelId }
+                });
+                panelTemplates.forEach(t => {
+                    templateMap[t.command] = {
+                        id: t.id,
+                        command: t.command,
+                        template: t.template,
+                        isActive: t.isActive,
+                        isCustom: true,
+                        scope: 'panel'
+                    };
+                });
+            }
+
+            // Device+panel specific templates (highest priority)
+            if (deviceId && panelId) {
+                const specificTemplates = await prisma.commandTemplate.findMany({
+                    where: { userId, deviceId, panelId }
+                });
+                specificTemplates.forEach(t => {
+                    templateMap[t.command] = {
+                        id: t.id,
+                        command: t.command,
+                        template: t.template,
+                        isActive: t.isActive,
+                        isCustom: true,
+                        scope: 'device_panel'
+                    };
+                });
+            }
+        }
+
+        // Merge with defaults for any missing commands
         const result = {};
         Object.keys(DEFAULT_TEMPLATES).forEach(command => {
-            if (userTemplateMap[command]) {
-                result[command] = userTemplateMap[command];
+            if (templateMap[command]) {
+                result[command] = templateMap[command];
             } else {
                 result[command] = {
                     command,
@@ -284,7 +378,8 @@ class CommandTemplateService {
                     description: DEFAULT_TEMPLATES[command].description,
                     variables: DEFAULT_TEMPLATES[command].variables,
                     isActive: true,
-                    isCustom: false
+                    isCustom: false,
+                    scope: 'system_default'
                 };
             }
         });
@@ -293,21 +388,43 @@ class CommandTemplateService {
     }
 
     /**
-     * Get a specific template for a command
+     * Get a specific template for a command with scope fallback
+     * Fallback: device+panel → panel → device → user default → system default
+     * @param {string} userId
+     * @param {string} command
+     * @param {Object} scope - Optional { deviceId, panelId }
      */
-    async getTemplate(userId, command) {
-        // Try user-specific first
-        const userTemplate = await prisma.commandTemplate.findUnique({
-            where: {
-                userId_command: { userId, command }
-            }
-        });
+    async getTemplate(userId, command, scope = {}) {
+        const { deviceId = null, panelId = null } = scope;
 
-        if (userTemplate && userTemplate.isActive) {
-            return userTemplate.template;
+        // Build candidates in priority order (most specific first)
+        const candidates = [];
+
+        // 1. Device+panel specific
+        if (deviceId && panelId) {
+            candidates.push({ deviceId, panelId });
+        }
+        // 2. Panel only
+        if (panelId) {
+            candidates.push({ deviceId: null, panelId });
+        }
+        // 3. Device only
+        if (deviceId) {
+            candidates.push({ deviceId, panelId: null });
+        }
+        // 4. User default (always last)
+        candidates.push({ deviceId: null, panelId: null });
+
+        // Try each candidate in order
+        for (const candidate of candidates) {
+            const template = await this._findScoped(userId, command, candidate.deviceId, candidate.panelId);
+
+            if (template && template.isActive) {
+                return template.template;
+            }
         }
 
-        // Fall back to default
+        // Fall back to system default
         if (DEFAULT_TEMPLATES[command]) {
             return DEFAULT_TEMPLATES[command].template;
         }
@@ -316,35 +433,53 @@ class CommandTemplateService {
     }
 
     /**
-     * Save/update a template
+     * Save/update a template for a specific scope
+     * @param {string} userId
+     * @param {string} command
+     * @param {string} template
+     * @param {boolean} isActive
+     * @param {Object} scope - Optional { deviceId, panelId }
      */
-    async saveTemplate(userId, command, template, isActive = true) {
-        const result = await prisma.commandTemplate.upsert({
-            where: {
-                userId_command: { userId, command }
-            },
-            update: {
-                template,
-                isActive,
-                updatedAt: new Date()
-            },
-            create: {
-                userId,
-                command,
-                template,
-                isActive
-            }
-        });
+    async saveTemplate(userId, command, template, isActive = true, scope = {}) {
+        const { deviceId = null, panelId = null } = scope;
 
-        return result;
+        // Find existing record (can't use upsert with nullable composite keys)
+        const existing = await this._findScoped(userId, command, deviceId, panelId);
+
+        if (existing) {
+            return prisma.commandTemplate.update({
+                where: { id: existing.id },
+                data: {
+                    template,
+                    isActive,
+                    updatedAt: new Date()
+                }
+            });
+        } else {
+            return prisma.commandTemplate.create({
+                data: {
+                    userId,
+                    command,
+                    template,
+                    isActive,
+                    deviceId: deviceId || null,
+                    panelId: panelId || null
+                }
+            });
+        }
     }
 
     /**
-     * Reset a template to default
+     * Reset a template to default for a specific scope
+     * @param {string} userId
+     * @param {string} command
+     * @param {Object} scope - Optional { deviceId, panelId }
      */
-    async resetTemplate(userId, command) {
+    async resetTemplate(userId, command, scope = {}) {
+        const { deviceId = null, panelId = null } = scope;
+
         await prisma.commandTemplate.deleteMany({
-            where: { userId, command }
+            where: { userId, command, deviceId: deviceId || null, panelId: panelId || null }
         });
 
         return {
@@ -355,14 +490,18 @@ class CommandTemplateService {
     }
 
     /**
-     * Reset all templates for a user
+     * Reset all templates for a user for a specific scope
+     * @param {string} userId
+     * @param {Object} scope - Optional { deviceId, panelId }
      */
-    async resetAllTemplates(userId) {
+    async resetAllTemplates(userId, scope = {}) {
+        const { deviceId = null, panelId = null } = scope;
+
         await prisma.commandTemplate.deleteMany({
-            where: { userId }
+            where: { userId, deviceId: deviceId || null, panelId: panelId || null }
         });
 
-        return this.getTemplates(userId);
+        return this.getTemplates(userId, scope);
     }
 
     /**
@@ -413,10 +552,14 @@ class CommandTemplateService {
     }
 
     /**
-     * Get formatted response for a command
+     * Get formatted response for a command (with scope fallback)
+     * @param {string} userId
+     * @param {string} command
+     * @param {Object} variables
+     * @param {Object} scope - Optional { deviceId, panelId }
      */
-    async getFormattedResponse(userId, command, variables = {}) {
-        const template = await this.getTemplate(userId, command);
+    async getFormattedResponse(userId, command, variables = {}, scope = {}) {
+        const template = await this.getTemplate(userId, command, scope);
         if (!template) {
             return `Command ${command} processed for Order #${variables.orderId || 'unknown'}`;
         }

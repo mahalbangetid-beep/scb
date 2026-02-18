@@ -89,6 +89,8 @@ model User {
   fonepayTransactions       FonepayTransaction[]  @relation("FonepayTransactions")
   fonepayAuditLogs          FonepayAuditLog[]     @relation("FonepayAuditLogs")
   marketingIntervals        MarketingInterval[]
+  marketingConfig           MarketingConfig?          // Section 6: Marketing configuration
+  supportGroups             SupportGroup[]            // Section 7: Support groups
 }
 
 model ApiKey {
@@ -210,6 +212,8 @@ model SmmPanel {
   devicePanelBindings DevicePanelBinding[] // Multi-panel binding support
   fonepayTransactions FonepayTransaction[] // FonePay transactions for this panel
   fonepayAuditLogs    FonepayAuditLog[]    // FonePay audit logs for this panel
+  botFeatureToggles   BotFeatureToggles[]  // Per-panel bot settings
+  commandTemplates    CommandTemplate[]    // Per-panel command templates
 
   @@unique([url, userId])
 }
@@ -415,6 +419,9 @@ model Device {
   systemBotSubscriptions SystemBotSubscription[]
   panelBindings  DevicePanelBinding[]
   marketingIntervals MarketingInterval[]
+  botFeatureToggles  BotFeatureToggles[]   // Per-device bot settings
+  commandTemplates   CommandTemplate[]     // Per-device command templates
+  supportGroups      SupportGroup[]        // Section 7: Support groups
 }
 
 // ==================== SYSTEM BOT SUBSCRIPTIONS ====================
@@ -674,7 +681,7 @@ model Broadcast {
   deviceId        String
   message         String
   mediaUrl        String?
-  status          String    @default("draft") // draft, scheduled, running, completed, cancelled
+  status          String    @default("draft") // draft, scheduled, processing, completed, cancelled, failed
   totalRecipients Int       @default(0)
   sent            Int       @default(0)
   delivered       Int       @default(0)
@@ -686,9 +693,88 @@ model Broadcast {
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
+  // Section 6.1: Auto ID Numbering
+  autoIdEnabled   Boolean   @default(false)  // Whether auto ID is appended
+  autoIdStart     Int?                       // Starting ID for this campaign
+  autoIdPrefix    String    @default("")     // Prefix snapshot at create time (BUG #12 fix)
+
+  // Section 6.2: Watermark (visible text watermark, not ZWC)
+  watermarkText   String?                    // Visible watermark text to append
+
+  // Section 6.4: Group Messaging Support
+  broadcastType   String    @default("number") // number, group, both
+  targetGroups    Json?                        // Array of group JIDs for group broadcast
+
+  // Section 6.5: Charge category tracking
+  chargeCategory  String    @default("own_device") // own_device, system_bot, telegram
+
   device     Device               @relation(fields: [deviceId], references: [id], onDelete: Cascade)
   recipients BroadcastRecipient[]
   messages   Message[]
+}
+
+// Section 6: Per-user Marketing Configuration
+model MarketingConfig {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+
+  // 6.1 Auto ID Numbering
+  autoIdEnabled     Boolean @default(true)   // Enabled by default per bug4.md
+  autoIdPrefix      String  @default("")     // Custom prefix e.g. "MSG-"
+  autoIdCounter     Int     @default(1)      // Current counter value (auto-increments)
+
+  // 6.2 Watermark Templates
+  watermarkEnabled  Boolean @default(false)
+  watermarkTemplates Json?                  // Array of saved watermark templates [{name, text}]
+  defaultWatermark  String?                 // Default watermark text
+
+  // 6.3 Campaign Settings
+  removeDuplicates  Boolean @default(true)  // Auto-remove duplicate numbers
+  countryCode       String?                 // Default country code for normalization
+
+  // 6.5 Charge rates (override per category)
+  ownDeviceRate     Float   @default(1)     // Credits per message for own device
+  systemBotRate     Float   @default(1)     // Credits per message for system bot
+  telegramRate      Float   @default(1)     // Credits per message for telegram
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// ==================== SECTION 7: SUPPORT GROUPS ====================
+// Dedicated page for managing reusable groups.
+// Users can add Group ID + Group Name, then select groups for:
+//   - Marketing broadcasts (Section 6.4)
+//   - Support forwarding (provider groups)
+
+model SupportGroup {
+  id        String   @id @default(cuid())
+  userId    String   // Owner
+  deviceId  String?  // Optional: which WhatsApp device this group belongs to
+
+  groupJid  String   // WhatsApp group JID (e.g., 1234567890@g.us)
+  groupName String   // Display name
+
+  // Purpose: what this group can be used for
+  // marketing = available for broadcast campaigns
+  // support = available for provider/support forwarding
+  // both = available for all purposes
+  purpose   String   @default("both") // marketing, support, both
+
+  notes     String?  // Optional notes / description
+  isActive  Boolean  @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  device Device? @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+
+  @@unique([userId, groupJid]) // One entry per group JID per user
+  @@index([userId, purpose])
+  @@index([userId, deviceId])
 }
 
 model BroadcastRecipient {
@@ -928,6 +1014,16 @@ model UserBotSettings {
   // - "minimal" = Minimal status only
   statusResponseMode String @default("standard") // standard, detailed, minimal
 
+  // ==================== STAFF OVERRIDE GROUP (Section 5) ====================
+  // Allow creation of WhatsApp/Telegram groups where staff can send any command
+  // without user mapping validation. Staff in these groups can:
+  // - Send any order ID
+  // - Send any command (refill, cancel, speedup, status)
+  // - No user mapping / claim / username validation required
+  // Format: ["group1@g.us", "group2@g.us", "-100123456"] (WA JIDs or TG chat IDs)
+  staffOverrideEnabled Boolean @default(false) // Master toggle
+  staffOverrideGroups  Json?    // Array of group JIDs/chat IDs
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -969,6 +1065,14 @@ model CommandTemplate {
   id     String @id @default(cuid())
   userId String
 
+  // ==================== SCOPE (per device/panel) ====================
+  // If both null → user-wide default template
+  // If deviceId set → device-specific template
+  // If panelId set → panel-specific template
+  // If both set → device+panel specific template
+  deviceId String? // Optional: scope to specific WhatsApp device
+  panelId  String? // Optional: scope to specific SMM panel
+
   // Command type: STATUS, REFILL, CANCEL, SPEEDUP
   // Sub-types: SUCCESS, PENDING, ERROR, NOT_FOUND, ALREADY_REQUESTED, etc.
   command String // e.g., "STATUS", "REFILL_SUCCESS", "REFILL_PENDING"
@@ -982,8 +1086,14 @@ model CommandTemplate {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@unique([userId, command])
+  device   Device?   @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  panel    SmmPanel? @relation(fields: [panelId], references: [id], onDelete: Cascade)
+
+  // Unique per user+command+scope combination
+  @@unique([userId, command, deviceId, panelId])
   @@index([userId])
+  @@index([userId, deviceId])
+  @@index([userId, panelId])
 }
 
 // Default system templates (for reference, populated on first use)
@@ -1003,7 +1113,16 @@ model SystemCommandTemplate {
 
 model BotFeatureToggles {
   id     String @id @default(cuid())
-  userId String @unique
+  userId String
+
+  // ==================== SCOPE (per device/panel) ====================
+  // If both null → user-wide default settings
+  // If deviceId set → device-specific settings
+  // If panelId set → panel-specific settings
+  // If both set → device+panel specific settings
+  // Fallback chain: device+panel → panel → device → user default
+  deviceId String? // Optional: scope to specific WhatsApp device
+  panelId  String? // Optional: scope to specific SMM panel
 
   // ==================== HIGH-RISK RULES (Opt-in only) ====================
   // These features can affect orders, funds, or account data
@@ -1069,8 +1188,34 @@ model BotFeatureToggles {
   replyToAllMessages Boolean @default(false) // Toggle for replying to all messages
   fallbackMessage    String? @db.Text // Message sent when no handler matches
 
+  // ==================== CALL RESPONSE (1.2 / 1.3) ====================
+  // Auto-reply when someone calls the bot number
+  callAutoReplyEnabled       Boolean @default(true)   // Enable auto-reply on incoming calls
+  callReplyMessage           String? @db.Text          // Reply message for personal calls
+  groupCallReplyMessage      String? @db.Text          // Reply message for group calls
+  repeatedCallReplyMessage   String? @db.Text          // Reply message for repeated/spam calls
+  repeatedCallThreshold      Int     @default(3)       // How many calls in window = "repeated"
+  repeatedCallWindowMinutes  Int     @default(5)       // Time window for counting repeated calls
+
+  // ==================== SPAM PROTECTION (1.4) ====================
+  // Detect repeated same text and temporarily disable bot for that user
+  spamProtectionEnabled  Boolean @default(true)   // Enable same-text spam detection
+  spamWarningMessage     String? @db.Text          // Warning message before disabling
+  spamRepeatThreshold    Int     @default(3)       // Same text count to trigger action
+  spamTimeWindowMinutes  Int     @default(5)       // Time window for counting repeats
+  spamDisableDurationMin Int     @default(60)      // Disable bot for user (minutes)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  device   Device?   @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  panel    SmmPanel? @relation(fields: [panelId], references: [id], onDelete: Cascade)
+
+  // Unique per user+scope combination
+  @@unique([userId, deviceId, panelId])
+  @@index([userId])
+  @@index([userId, deviceId])
+  @@index([userId, panelId])
 }
 
 // ==================== GUARANTEE CONFIG ====================

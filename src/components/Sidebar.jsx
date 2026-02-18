@@ -31,7 +31,8 @@ import {
     Activity,
     Fingerprint,
     Megaphone,
-    Hash
+    Hash,
+    UsersRound
 } from 'lucide-react'
 import api from '../services/api'
 import { useTheme } from '../contexts/ThemeContext'
@@ -54,6 +55,7 @@ const smmNavigation = [
     { name: 'Panel Connections', icon: Plug, path: '/panel-connections' },
     { name: 'Orders', icon: Package, path: '/orders' },
     { name: 'Provider Groups', icon: Radio, path: '/provider-groups' },
+    { name: 'Support Groups', icon: UsersRound, path: '/support-groups' },
     { name: 'Tickets', icon: Ticket, path: '/tickets' },
 ]
 
