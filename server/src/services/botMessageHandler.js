@@ -47,6 +47,20 @@ class BotMessageHandler {
 
         console.log(`[BotHandler] Processing message from ${senderNumber}${panelId ? ` (Panel: ${panel?.alias || panel?.name || panelId})` : ''}: ${message.substring(0, 50)}...`);
 
+        // ==================== AUTO-CAPTURE WHATSAPP NAME (Section 10) ====================
+        // Fire-and-forget: capture sender's WhatsApp display name for User Mapping
+        if (senderName && senderNumber && platform === 'WHATSAPP') {
+            try {
+                const userMappingService = require('./userMappingService');
+                const mapping = await userMappingService.findByPhone(userId, senderNumber);
+                if (mapping && mapping.whatsappName !== senderName) {
+                    userMappingService.updateWhatsAppName(mapping.id, senderName); // fire-and-forget
+                }
+            } catch (e) {
+                // Silently fail — best-effort capture
+            }
+        }
+
         // ==================== DEVICE ACTIVE CHECK ====================
         // If device is deactivated (ON/OFF toggle), skip all message processing
         const device = await prisma.device.findUnique({

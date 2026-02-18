@@ -690,6 +690,18 @@ class SecurityService {
             // Case 1: Username in mapping AND WA matches - ALLOWED!
             console.log(`[Security] CASE 1: Order ownership VERIFIED - Username: ${orderUsername}, WA: ${normalizedSender}`);
 
+            // Auto-verify mapping on first successful WhatsApp validation (Section 10)
+            // This triggers the auto-note "Validated via WhatsApp"
+            if (!mapping.isVerified) {
+                try {
+                    await userMappingService.verifyMapping(mapping.id, userId, 'WHATSAPP');
+                    console.log(`[Security] Auto-verified mapping ${mapping.id} via WhatsApp`);
+                } catch (verifyErr) {
+                    console.error(`[Security] Auto-verify failed:`, verifyErr.message);
+                    // Non-blocking — continue even if auto-verify fails
+                }
+            }
+
             // Record activity
             await userMappingService.recordActivity(mapping.id);
 

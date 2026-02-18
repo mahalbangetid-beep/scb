@@ -32,7 +32,8 @@ import {
     Fingerprint,
     Megaphone,
     Hash,
-    UsersRound
+    UsersRound,
+    Layers
 } from 'lucide-react'
 import api from '../services/api'
 import { useTheme } from '../contexts/ThemeContext'
@@ -65,6 +66,7 @@ const automationNavigation = [
     { name: 'Response Templates', icon: FileText, path: '/response-templates' },
     { name: 'Command Templates', icon: MessageCircle, path: '/command-templates' },
     { name: 'Provider Forwarding', icon: Send, path: '/provider-forwarding' },
+    { name: 'Provider Aliases', icon: Layers, path: '/provider-aliases' },
     { name: 'Keyword Responses', icon: MessageCircle, path: '/keyword-responses' },
     { name: 'User Mappings', icon: Users, path: '/user-mappings' },
     { name: 'Bot Settings', icon: Zap, path: '/bot-settings' },

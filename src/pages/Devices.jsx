@@ -37,10 +37,15 @@ export default function Devices() {
     const [connectionMessage, setConnectionMessage] = useState('')
     const qrPollRef = useRef(null)
 
+    // Action loading states (double-click protection)
+    const [deletingDevice, setDeletingDevice] = useState(null)
+    const [restartingDevice, setRestartingDevice] = useState(null)
+    const [togglingDevice, setTogglingDevice] = useState(null)
+
     // Edit Panel Modal State
     const [showEditModal, setShowEditModal] = useState(false)
     const [editDevice, setEditDevice] = useState(null)
-    const [editPanelId, setEditPanelId] = useState('')
+    const [editPanelIds, setEditPanelIds] = useState([])
     const [editLoading, setEditLoading] = useState(false)
 
     const fetchDevices = async () => {
@@ -185,25 +190,35 @@ export default function Devices() {
     }
 
     const handleDeleteDevice = async (id) => {
+        if (deletingDevice === id) return
         if (!confirm('Are you sure you want to delete this device?')) return
+        setDeletingDevice(id)
         try {
             await api.delete(`/devices/${id}`)
             fetchDevices()
         } catch (error) {
             console.error('Failed to delete device:', error)
+        } finally {
+            setDeletingDevice(null)
         }
     }
 
     const handleRestartDevice = async (id) => {
+        if (restartingDevice === id) return
+        setRestartingDevice(id)
         try {
             await api.post(`/devices/${id}/restart`)
             fetchDevices()
         } catch (error) {
             console.error('Failed to restart device:', error)
+        } finally {
+            setRestartingDevice(null)
         }
     }
 
     const handleToggleDevice = async (id) => {
+        if (togglingDevice === id) return
+        setTogglingDevice(id)
         try {
             const res = await api.patch(`/devices/${id}/toggle`)
             // Optimistic update
@@ -213,6 +228,8 @@ export default function Devices() {
         } catch (error) {
             console.error('Failed to toggle device:', error)
             alert(error?.error?.message || 'Failed to toggle device')
+        } finally {
+            setTogglingDevice(null)
         }
     }
 
@@ -242,29 +259,50 @@ export default function Devices() {
     // Edit Panel Handlers
     const handleOpenEditModal = (device) => {
         setEditDevice(device)
-        setEditPanelId(device.panelId || '')
+        // Populate from multi-panel bindings, fallback to primary panelId
+        const boundIds = (device.panels || []).map(p => p.id)
+        if (boundIds.length > 0) {
+            setEditPanelIds(boundIds)
+        } else if (device.panelId) {
+            setEditPanelIds([device.panelId])
+        } else {
+            setEditPanelIds([])
+        }
         setShowEditModal(true)
     }
 
     const handleCloseEditModal = () => {
         setShowEditModal(false)
         setEditDevice(null)
-        setEditPanelId('')
+        setEditPanelIds([])
+    }
+
+    const handleTogglePanelId = (panelId) => {
+        setEditPanelIds(prev =>
+            prev.includes(panelId)
+                ? prev.filter(id => id !== panelId)
+                : [...prev, panelId]
+        )
     }
 
     const handleUpdatePanel = async () => {
         if (!editDevice) return
 
-        // Show warning if panel is changing
-        const currentPanel = panels.find(p => p.id === editDevice.panelId)
-        const newPanel = panels.find(p => p.id === editPanelId)
+        // Derive current bound panel IDs
+        const currentIds = (editDevice.panels || []).map(p => p.id)
+        const hasChanged = editPanelIds.length !== currentIds.length ||
+            editPanelIds.some(id => !currentIds.includes(id))
 
-        if (editDevice.panelId && editDevice.panelId !== editPanelId) {
+        if (currentIds.length > 0 && hasChanged) {
+            const currentNames = currentIds.map(id => panels.find(p => p.id === id)?.alias || panels.find(p => p.id === id)?.name || id).join(', ')
+            const newNames = editPanelIds.length > 0
+                ? editPanelIds.map(id => panels.find(p => p.id === id)?.alias || panels.find(p => p.id === id)?.name || id).join(', ')
+                : 'None (Search All)'
             const confirmed = confirm(
-                `⚠️ Changing panel will affect order lookups.\n\n` +
-                `Current: ${currentPanel?.alias || 'None'}\n` +
-                `New: ${newPanel?.alias || 'None'}\n\n` +
-                `Commands sent to this device will search orders in the new panel.\n\nContinue?`
+                `⚠️ Changing panels will affect order lookups.\n\n` +
+                `Current: ${currentNames}\n` +
+                `New: ${newNames}\n\n` +
+                `Commands sent to this device will search orders in the selected panels.\n\nContinue?`
             )
             if (!confirmed) return
         }
@@ -272,13 +310,14 @@ export default function Devices() {
         setEditLoading(true)
         try {
             await api.put(`/devices/${editDevice.id}`, {
-                panelId: editPanelId || null
+                panelId: editPanelIds.length === 1 ? editPanelIds[0] : null,
+                panelIds: editPanelIds
             })
             fetchDevices()
             handleCloseEditModal()
         } catch (error) {
             console.error('Failed to update device:', error)
-            alert('Failed to update device panel')
+            alert('Failed to update device panels')
         } finally {
             setEditLoading(false)
         }
@@ -382,37 +421,53 @@ export default function Devices() {
                                     <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
                                         {device.phone || 'Not connected'}
                                     </div>
-                                    {/* Panel Badge */}
-                                    {device.panel ? (
-                                        <div style={{
-                                            display: 'inline-flex',
-                                            alignItems: 'center',
-                                            gap: '4px',
-                                            marginTop: '4px',
-                                            padding: '2px 8px',
-                                            borderRadius: '12px',
-                                            fontSize: '0.7rem',
-                                            background: 'rgba(59, 130, 246, 0.1)',
-                                            color: '#3b82f6'
-                                        }}>
-                                            <Link2 size={10} />
-                                            {device.panel.alias || device.panel.name}
-                                        </div>
-                                    ) : (
-                                        <div style={{
-                                            display: 'inline-flex',
-                                            alignItems: 'center',
-                                            gap: '4px',
-                                            marginTop: '4px',
-                                            padding: '2px 8px',
-                                            borderRadius: '12px',
-                                            fontSize: '0.7rem',
-                                            background: 'rgba(156, 163, 175, 0.1)',
-                                            color: '#9ca3af'
-                                        }}>
-                                            All Panels
-                                        </div>
-                                    )}
+                                    {/* Panel Badges (multi-panel support) */}
+                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginTop: '4px' }}>
+                                        {(device.panels && device.panels.length > 0) ? (
+                                            device.panels.map(p => (
+                                                <div key={p.id} style={{
+                                                    display: 'inline-flex',
+                                                    alignItems: 'center',
+                                                    gap: '4px',
+                                                    padding: '2px 8px',
+                                                    borderRadius: '12px',
+                                                    fontSize: '0.7rem',
+                                                    background: 'rgba(59, 130, 246, 0.1)',
+                                                    color: '#3b82f6'
+                                                }}>
+                                                    <Link2 size={10} />
+                                                    {p.alias || p.name}
+                                                </div>
+                                            ))
+                                        ) : device.panel ? (
+                                            <div style={{
+                                                display: 'inline-flex',
+                                                alignItems: 'center',
+                                                gap: '4px',
+                                                padding: '2px 8px',
+                                                borderRadius: '12px',
+                                                fontSize: '0.7rem',
+                                                background: 'rgba(59, 130, 246, 0.1)',
+                                                color: '#3b82f6'
+                                            }}>
+                                                <Link2 size={10} />
+                                                {device.panel.alias || device.panel.name}
+                                            </div>
+                                        ) : (
+                                            <div style={{
+                                                display: 'inline-flex',
+                                                alignItems: 'center',
+                                                gap: '4px',
+                                                padding: '2px 8px',
+                                                borderRadius: '12px',
+                                                fontSize: '0.7rem',
+                                                background: 'rgba(156, 163, 175, 0.1)',
+                                                color: '#9ca3af'
+                                            }}>
+                                                All Panels
+                                            </div>
+                                        )}
+                                    </div>
                                 </div>
                             </div>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -420,6 +475,7 @@ export default function Devices() {
                                 {device.status === 'connected' && (
                                     <button
                                         onClick={() => handleToggleDevice(device.id)}
+                                        disabled={togglingDevice === device.id}
                                         title={device.isActive !== false ? 'Turn Bot OFF' : 'Turn Bot ON'}
                                         style={{
                                             display: 'flex',
@@ -429,7 +485,8 @@ export default function Devices() {
                                             height: '32px',
                                             borderRadius: '8px',
                                             border: 'none',
-                                            cursor: 'pointer',
+                                            cursor: togglingDevice === device.id ? 'not-allowed' : 'pointer',
+                                            opacity: togglingDevice === device.id ? 0.5 : 1,
                                             background: device.isActive !== false
                                                 ? 'rgba(37, 211, 102, 0.15)'
                                                 : 'rgba(239, 68, 68, 0.1)',
@@ -437,7 +494,7 @@ export default function Devices() {
                                             transition: 'all 0.2s ease'
                                         }}
                                     >
-                                        <Power size={14} />
+                                        {togglingDevice === device.id ? <Loader2 className="animate-spin" size={14} /> : <Power size={14} />}
                                     </button>
                                 )}
                                 {/* Status Badge */}
@@ -513,16 +570,18 @@ export default function Devices() {
                                         className="btn btn-ghost btn-sm"
                                         style={{ padding: '8px' }}
                                         onClick={() => handleRestartDevice(device.id)}
+                                        disabled={restartingDevice === device.id}
                                         title="Restart Device"
                                     >
-                                        <RefreshCw size={14} />
+                                        {restartingDevice === device.id ? <Loader2 className="animate-spin" size={14} /> : <RefreshCw size={14} />}
                                     </button>
                                     <button
                                         className="btn btn-ghost btn-sm"
                                         style={{ padding: '8px' }}
                                         onClick={() => handleDeleteDevice(device.id)}
+                                        disabled={deletingDevice === device.id}
                                     >
-                                        <Trash2 size={14} />
+                                        {deletingDevice === device.id ? <Loader2 className="animate-spin" size={14} /> : <Trash2 size={14} />}
                                     </button>
                                 </>
                             ) : (
@@ -536,11 +595,20 @@ export default function Devices() {
                                         Connect
                                     </button>
                                     <button
+                                        className="btn btn-secondary btn-sm"
+                                        style={{ padding: '8px' }}
+                                        onClick={() => handleOpenEditModal(device)}
+                                        title="Edit Panel Binding"
+                                    >
+                                        <Settings size={14} />
+                                    </button>
+                                    <button
                                         className="btn btn-ghost btn-sm"
                                         style={{ padding: '8px' }}
                                         onClick={() => handleDeleteDevice(device.id)}
+                                        disabled={deletingDevice === device.id}
                                     >
-                                        <Trash2 size={14} />
+                                        {deletingDevice === device.id ? <Loader2 className="animate-spin" size={14} /> : <Trash2 size={14} />}
                                     </button>
                                 </>
                             )}
@@ -773,21 +841,66 @@ export default function Devices() {
                                 </div>
 
                                 <div className="form-group">
-                                    <label className="form-label">Assigned Panel</label>
-                                    <select
-                                        className="form-input"
-                                        value={editPanelId}
-                                        onChange={(e) => setEditPanelId(e.target.value)}
-                                    >
-                                        <option value="">-- No Panel (Search All) --</option>
-                                        {panels.map(panel => (
-                                            <option key={panel.id} value={panel.id}>
-                                                {panel.alias || panel.name}
-                                            </option>
-                                        ))}
-                                    </select>
+                                    <label className="form-label">Assigned Panels</label>
+                                    <div style={{
+                                        border: '1px solid var(--border-color)',
+                                        borderRadius: '8px',
+                                        padding: '8px',
+                                        maxHeight: '200px',
+                                        overflowY: 'auto',
+                                        background: 'var(--bg-secondary)'
+                                    }}>
+                                        {panels.length === 0 ? (
+                                            <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', padding: '8px', textAlign: 'center' }}>
+                                                No panels available
+                                            </p>
+                                        ) : (
+                                            panels.map(panel => (
+                                                <label
+                                                    key={panel.id}
+                                                    style={{
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        gap: '10px',
+                                                        padding: '8px 10px',
+                                                        borderRadius: '6px',
+                                                        cursor: 'pointer',
+                                                        transition: 'background 0.15s',
+                                                        background: editPanelIds.includes(panel.id)
+                                                            ? 'rgba(59, 130, 246, 0.08)'
+                                                            : 'transparent'
+                                                    }}
+                                                >
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={editPanelIds.includes(panel.id)}
+                                                        onChange={() => handleTogglePanelId(panel.id)}
+                                                        style={{
+                                                            width: '18px',
+                                                            height: '18px',
+                                                            accentColor: 'var(--primary-color)',
+                                                            flexShrink: 0
+                                                        }}
+                                                    />
+                                                    <div style={{ flex: 1, minWidth: 0 }}>
+                                                        <div style={{ fontSize: '0.9rem', fontWeight: 500, color: 'var(--text-primary)' }}>
+                                                            {panel.alias || panel.name}
+                                                        </div>
+                                                        {panel.url && (
+                                                            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                                                {panel.url}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </label>
+                                            ))
+                                        )}
+                                    </div>
                                     <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '8px' }}>
-                                        Commands sent to this device will search orders in the selected panel.
+                                        {editPanelIds.length === 0
+                                            ? '⚠️ No panel selected — device will search orders across ALL panels.'
+                                            : `✅ ${editPanelIds.length} panel${editPanelIds.length > 1 ? 's' : ''} selected.`
+                                        }
                                     </p>
                                 </div>
                             </>

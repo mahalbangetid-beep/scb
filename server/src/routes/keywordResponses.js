@@ -216,6 +216,96 @@ router.post('/bulk-action', async (req, res, next) => {
 });
 
 /**
+ * POST /api/keyword-responses/copy-to-device
+ * Copy or move keyword responses to another device
+ * NOTE: Must be before /:id route
+ */
+router.post('/copy-to-device', async (req, res, next) => {
+    try {
+        const { ids, targetDeviceId, mode = 'copy' } = req.body;
+        // mode: 'copy' = duplicate keywords to target device
+        // mode: 'move' = reassign deviceId of existing keywords
+
+        if (!Array.isArray(ids) || ids.length === 0) {
+            throw new AppError('IDs array is required', 400);
+        }
+
+        if (ids.length > 100) {
+            throw new AppError('Maximum 100 items per operation', 400);
+        }
+
+        if (!['copy', 'move'].includes(mode)) {
+            throw new AppError('Mode must be copy or move', 400);
+        }
+
+        // targetDeviceId can be null (= make global)
+        const prisma = require('../utils/prisma');
+
+        // Verify target device belongs to user (if specified)
+        if (targetDeviceId) {
+            const targetDevice = await prisma.device.findFirst({
+                where: { id: targetDeviceId, userId: req.user.id }
+            });
+            if (!targetDevice) {
+                throw new AppError('Target device not found', 404);
+            }
+        }
+
+        // Fetch the owned keyword responses
+        const originals = await prisma.keywordResponse.findMany({
+            where: { id: { in: ids }, userId: req.user.id }
+        });
+
+        if (originals.length === 0) {
+            throw new AppError('No valid keyword responses found', 404);
+        }
+
+        let affected = 0;
+
+        if (mode === 'move') {
+            // Move: just update deviceId
+            const result = await prisma.keywordResponse.updateMany({
+                where: { id: { in: originals.map(o => o.id) } },
+                data: { deviceId: targetDeviceId || null }
+            });
+            affected = result.count;
+        } else {
+            // Copy: create new keyword responses on target device
+            for (const orig of originals) {
+                await prisma.keywordResponse.create({
+                    data: {
+                        userId: req.user.id,
+                        keyword: orig.keyword,
+                        matchType: orig.matchType,
+                        caseSensitive: orig.caseSensitive,
+                        responseText: orig.responseText,
+                        responseMedia: orig.responseMedia,
+                        triggerAction: orig.triggerAction,
+                        actionConfig: orig.actionConfig,
+                        deviceId: targetDeviceId || null,
+                        platform: orig.platform,
+                        applyToGroups: orig.applyToGroups,
+                        applyToDMs: orig.applyToDMs,
+                        priority: orig.priority,
+                        isActive: orig.isActive
+                    }
+                });
+                affected++;
+            }
+        }
+
+        const modeLabel = mode === 'copy' ? 'copied' : 'moved';
+        successResponse(res, {
+            mode,
+            affected,
+            targetDeviceId: targetDeviceId || null
+        }, `${affected} keyword(s) ${modeLabel} successfully`);
+    } catch (error) {
+        next(error);
+    }
+});
+
+/**
  * GET /api/keyword-responses/:id
  * Get a single keyword response
  * NOTE: This must be AFTER all named routes like /stats, /test, /bulk, /bulk-action

@@ -1,39 +1,87 @@
-import { useState, useEffect } from 'react';
-import { Users, Plus, Edit2, Trash2, UserCheck, UserX, Phone, Shield, AlertTriangle, Zap, X, RefreshCw, Search, ToggleRight, ToggleLeft, MessageSquare } from 'lucide-react';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { Users, Plus, Edit2, Trash2, UserCheck, Phone, AlertTriangle, Zap, X, RefreshCw, Search, ToggleRight, ToggleLeft, MessageSquare, StickyNote, Ban, CheckCircle, Hash, Send } from 'lucide-react';
 import api from '../services/api';
 
 const UserMappings = () => {
     const [mappings, setMappings] = useState([]);
+    const [panels, setPanels] = useState([]);
     const [stats, setStats] = useState(null);
     const [loading, setLoading] = useState(true);
     const [showModal, setShowModal] = useState(false);
     const [editingItem, setEditingItem] = useState(null);
     const [searchQuery, setSearchQuery] = useState('');
+    const [selectedPanel, setSelectedPanel] = useState('all');
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
+
+    // Notes modal
+    const [showNotesModal, setShowNotesModal] = useState(false);
+    const [notesItem, setNotesItem] = useState(null);
+    const [notesText, setNotesText] = useState('');
+    const [notesLoading, setNotesLoading] = useState(false);
 
     const [formData, setFormData] = useState({
         panelUsername: '',
         panelEmail: '',
         panelUserId: '',
+        panelId: '',
         whatsappNumbers: '',
+        telegramId: '',
         groupIds: '',
         isBotEnabled: true,
         adminNotes: ''
     });
 
+    // Auto-dismiss toasts
+    useEffect(() => {
+        if (error) {
+            const t = setTimeout(() => setError(''), 5000);
+            return () => clearTimeout(t);
+        }
+    }, [error]);
+    useEffect(() => {
+        if (success) {
+            const t = setTimeout(() => setSuccess(''), 3000);
+            return () => clearTimeout(t);
+        }
+    }, [success]);
+
+    const isFirstMount = useRef(true);
+
     useEffect(() => {
         fetchData();
+        fetchPanels();
     }, []);
+
+    // Refetch when panel filter changes (skip first mount to avoid double-fetch)
+    useEffect(() => {
+        if (isFirstMount.current) {
+            isFirstMount.current = false;
+            return;
+        }
+        fetchData();
+    }, [selectedPanel]);
+
+    const fetchPanels = async () => {
+        try {
+            const res = await api.get('/panels');
+            setPanels(res.data || []);
+        } catch (err) {
+            console.error('Failed to fetch panels:', err);
+        }
+    };
 
     const fetchData = async () => {
         try {
             setLoading(true);
+            const params = {};
+            if (selectedPanel && selectedPanel !== 'all') {
+                params.panelId = selectedPanel;
+            }
             const [mappingsRes, statsRes] = await Promise.all([
-                api.get('/user-mappings'),
+                api.get('/user-mappings', { params }),
                 api.get('/user-mappings/stats')
             ]);
-            // API interceptor already unwraps response.data
             const mappingsData = mappingsRes.data || [];
             const statsData = statsRes.data;
             setMappings(Array.isArray(mappingsData) ? mappingsData : []);
@@ -51,7 +99,9 @@ const UserMappings = () => {
             const payload = {
                 ...formData,
                 whatsappNumbers: formData.whatsappNumbers.split(',').map(n => n.trim()).filter(n => n),
-                groupIds: formData.groupIds.split(',').map(g => g.trim()).filter(g => g)
+                groupIds: formData.groupIds.split(',').map(g => g.trim()).filter(g => g),
+                panelId: formData.panelId || null,
+                telegramId: formData.telegramId || null
             };
 
             if (editingItem) {
@@ -65,7 +115,6 @@ const UserMappings = () => {
             setEditingItem(null);
             resetForm();
             fetchData();
-            setTimeout(() => setSuccess(''), 3000);
         } catch (err) {
             setError(err.error?.message || err.message || 'Failed to save');
         }
@@ -77,7 +126,9 @@ const UserMappings = () => {
             panelUsername: item.panelUsername,
             panelEmail: item.panelEmail || '',
             panelUserId: item.panelUserId || '',
+            panelId: item.panelId || '',
             whatsappNumbers: (item.whatsappNumbers || []).join(', '),
+            telegramId: item.telegramId || '',
             groupIds: (item.groupIds || []).join(', '),
             isBotEnabled: item.isBotEnabled,
             adminNotes: item.adminNotes || ''
@@ -105,24 +156,45 @@ const UserMappings = () => {
         }
     };
 
-    const handleSuspend = async (id) => {
-        if (!window.confirm('Suspend this user? Bot will stop responding to them.')) return;
+    const handleBlock = async (id) => {
+        if (!window.confirm('Block this user? Bot will stop responding to them.')) return;
         try {
-            await api.post(`/user-mappings/${id}/suspend`);
-            setSuccess('User suspended');
+            await api.post(`/user-mappings/${id}/suspend`, { reason: 'Manually blocked by admin' });
+            setSuccess('User blocked');
             fetchData();
         } catch (err) {
-            setError('Failed to suspend');
+            setError('Failed to block user');
         }
     };
 
-    const handleUnsuspend = async (id) => {
+    const handleUnblock = async (id) => {
         try {
             await api.post(`/user-mappings/${id}/unsuspend`);
-            setSuccess('User unsuspended');
+            setSuccess('User unblocked');
             fetchData();
         } catch (err) {
-            setError('Failed to unsuspend');
+            setError('Failed to unblock');
+        }
+    };
+
+    const openNotesModal = (item) => {
+        setNotesItem(item);
+        setNotesText(item.adminNotes || '');
+        setShowNotesModal(true);
+    };
+
+    const handleSaveNotes = async () => {
+        if (!notesItem) return;
+        setNotesLoading(true);
+        try {
+            await api.put(`/user-mappings/${notesItem.id}`, { adminNotes: notesText });
+            setSuccess('Notes saved');
+            setShowNotesModal(false);
+            fetchData();
+        } catch (err) {
+            setError('Failed to save notes');
+        } finally {
+            setNotesLoading(false);
         }
     };
 
@@ -131,7 +203,9 @@ const UserMappings = () => {
             panelUsername: '',
             panelEmail: '',
             panelUserId: '',
+            panelId: '',
             whatsappNumbers: '',
+            telegramId: '',
             groupIds: '',
             isBotEnabled: true,
             adminNotes: ''
@@ -143,10 +217,19 @@ const UserMappings = () => {
         const query = searchQuery.toLowerCase();
         return m.panelUsername?.toLowerCase().includes(query) ||
             m.panelEmail?.toLowerCase().includes(query) ||
-            m.whatsappNumbers?.some(n => n.includes(query));
+            m.whatsappName?.toLowerCase().includes(query) ||
+            m.telegramId?.toLowerCase().includes(query) ||
+            m.whatsappNumbers?.some(n => n.includes(query)) ||
+            m.groupIds?.some(g => g.toLowerCase().includes(query));
     });
 
-    if (loading) {
+    const getPanelName = (panelId) => {
+        if (!panelId) return null;
+        const panel = panels.find(p => p.id === panelId);
+        return panel ? (panel.alias || panel.name) : null;
+    };
+
+    if (loading && mappings.length === 0) {
         return (
             <div className="page-container">
                 <div className="loading-state">
@@ -159,13 +242,30 @@ const UserMappings = () => {
 
     return (
         <div className="user-mappings-page">
+            {/* Toast Notifications */}
+            <div className="toast-container">
+                {error && (
+                    <div className="toast toast-error" onClick={() => setError('')}>
+                        <AlertTriangle size={16} />
+                        <span>{error}</span>
+                        <button onClick={(e) => { e.stopPropagation(); setError(''); }}><X size={14} /></button>
+                    </div>
+                )}
+                {success && (
+                    <div className="toast toast-success" onClick={() => setSuccess('')}>
+                        <Zap size={16} />
+                        <span>{success}</span>
+                    </div>
+                )}
+            </div>
+
             <div className="page-header">
                 <div className="header-content">
                     <h1><Users className="header-icon" /> User Mappings</h1>
                     <p className="header-subtitle">Map panel usernames to WhatsApp numbers for bot validation</p>
                 </div>
                 <div className="header-actions">
-                    <button className="btn btn-secondary" onClick={fetchData}>
+                    <button className="btn btn-secondary" onClick={() => { fetchData(); fetchPanels(); }}>
                         <RefreshCw size={16} /> Refresh
                     </button>
                     <button className="btn btn-primary" onClick={() => { resetForm(); setEditingItem(null); setShowModal(true); }}>
@@ -173,20 +273,6 @@ const UserMappings = () => {
                     </button>
                 </div>
             </div>
-
-            {error && (
-                <div className="alert alert-error">
-                    <AlertTriangle size={18} />
-                    <span>{error}</span>
-                    <button onClick={() => setError('')}><X size={16} /></button>
-                </div>
-            )}
-            {success && (
-                <div className="alert alert-success">
-                    <Zap size={18} />
-                    <span>{success}</span>
-                </div>
-            )}
 
             {/* Stats */}
             {stats && (
@@ -213,123 +299,190 @@ const UserMappings = () => {
                         </div>
                     </div>
                     <div className="stat-card danger">
-                        <div className="stat-icon"><UserX size={24} /></div>
+                        <div className="stat-icon"><Ban size={24} /></div>
                         <div className="stat-info">
                             <span className="stat-value">{stats.suspended}</span>
-                            <span className="stat-label">Suspended</span>
+                            <span className="stat-label">Blocked</span>
                         </div>
                     </div>
                 </div>
             )}
 
-            {/* Search */}
-            <div className="search-bar">
-                <Search size={18} />
-                <input
-                    type="text"
-                    placeholder="Search by username, email, or phone..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                />
+            {/* Filters Row: Panel Selector + Search */}
+            <div className="filters-row">
+                <div className="panel-filter">
+                    <label>Panel:</label>
+                    <select
+                        className="form-select"
+                        value={selectedPanel}
+                        onChange={(e) => setSelectedPanel(e.target.value)}
+                    >
+                        <option value="all">All Panels</option>
+                        {panels.map(panel => (
+                            <option key={panel.id} value={panel.id}>
+                                {panel.alias || panel.name}
+                            </option>
+                        ))}
+                    </select>
+                </div>
+                <div className="search-bar">
+                    <Search size={18} />
+                    <input
+                        type="text"
+                        placeholder="Search username, phone, telegram, group..."
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                    />
+                    {searchQuery && (
+                        <button className="search-clear" onClick={() => setSearchQuery('')}><X size={14} /></button>
+                    )}
+                </div>
             </div>
 
-            {/* Users Grid */}
-            <div className="users-grid">
+            {/* User List (Table Format) */}
+            <div className="mapping-table-wrap">
                 {filteredMappings.length === 0 ? (
                     <div className="empty-state">
                         <Users size={48} />
                         <h3>No User Mappings</h3>
-                        <p>Add user mappings to validate WhatsApp users</p>
-                        <button className="btn btn-primary" onClick={() => { resetForm(); setShowModal(true); }}>
-                            <Plus size={16} /> Add Mapping
-                        </button>
+                        <p>{searchQuery ? 'No results match your search' : 'Add user mappings to validate WhatsApp users'}</p>
+                        {!searchQuery && (
+                            <button className="btn btn-primary" onClick={() => { resetForm(); setShowModal(true); }}>
+                                <Plus size={16} /> Add Mapping
+                            </button>
+                        )}
                     </div>
                 ) : (
-                    filteredMappings.map(user => (
-                        <div key={user.id} className={`user-card ${user.isAutoSuspended ? 'suspended' : ''} ${!user.isBotEnabled ? 'bot-disabled' : ''}`}>
-                            <div className="user-header">
-                                <div className="user-avatar">
-                                    {(user.panelUsername || 'U').charAt(0).toUpperCase()}
-                                </div>
-                                <div className="user-info">
-                                    <h4>{user.panelUsername}</h4>
-                                    {user.panelEmail && <span className="user-email">{user.panelEmail}</span>}
-                                </div>
-                                <div className="user-status">
-                                    {user.isVerified && (
-                                        <span className="status-badge verified">
-                                            <UserCheck size={12} /> Verified
-                                        </span>
-                                    )}
-                                    {user.isAutoSuspended && (
-                                        <span className="status-badge suspended">
-                                            <UserX size={12} /> Suspended
-                                        </span>
-                                    )}
-                                </div>
-                            </div>
+                    <table className="mapping-table">
+                        <thead>
+                            <tr>
+                                <th>Username</th>
+                                <th>WhatsApp</th>
+                                <th>Telegram ID</th>
+                                <th>Group ID</th>
+                                <th>Status</th>
+                                <th>Notes</th>
+                                <th style={{ textAlign: 'right' }}>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {filteredMappings.map(user => (
+                                <tr key={user.id} className={`${user.isAutoSuspended ? 'row-blocked' : ''} ${!user.isBotEnabled ? 'row-disabled' : ''}`}>
+                                    {/* Username */}
+                                    <td>
+                                        <div className="user-cell">
+                                            <div className="user-avatar-sm">
+                                                {(user.panelUsername || 'U').charAt(0).toUpperCase()}
+                                            </div>
+                                            <div>
+                                                <div className="username-text">{user.panelUsername}</div>
+                                                {user.whatsappName && (
+                                                    <div className="wa-name-text">{user.whatsappName}</div>
+                                                )}
+                                                {user.panelEmail && (
+                                                    <div className="email-text">{user.panelEmail}</div>
+                                                )}
+                                                {user.panelId && (
+                                                    <div className="panel-badge-sm">{getPanelName(user.panelId) || 'Panel'}</div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </td>
 
-                            <div className="user-phones">
-                                <div className="section-label"><Phone size={14} /> WhatsApp Numbers</div>
-                                <div className="phone-list">
-                                    {(user.whatsappNumbers || []).length === 0 ? (
-                                        <span className="no-data">No numbers added</span>
-                                    ) : (
-                                        (user.whatsappNumbers || []).map((num, i) => (
-                                            <span key={i} className="phone-tag">{num}</span>
-                                        ))
-                                    )}
-                                </div>
-                            </div>
+                                    {/* WhatsApp Numbers */}
+                                    <td>
+                                        <div className="phone-list">
+                                            {(user.whatsappNumbers || []).length === 0 ? (
+                                                <span className="no-data">—</span>
+                                            ) : (
+                                                (user.whatsappNumbers || []).map((num, i) => (
+                                                    <span key={i} className="phone-tag">{num}</span>
+                                                ))
+                                            )}
+                                        </div>
+                                    </td>
 
-                            <div className="user-meta">
-                                <div className="meta-row">
-                                    <span className="meta-label">Bot Status:</span>
-                                    <button
-                                        className={`toggle-btn ${user.isBotEnabled ? 'on' : 'off'}`}
-                                        onClick={() => handleToggleBot(user.id)}
-                                    >
-                                        {user.isBotEnabled ? <><ToggleRight size={18} /> Enabled</> : <><ToggleLeft size={18} /> Disabled</>}
-                                    </button>
-                                </div>
-                                {user.spamCount > 0 && (
-                                    <div className="meta-row warn">
-                                        <span className="meta-label">Spam Count:</span>
-                                        <span className="spam-count">{user.spamCount}</span>
-                                    </div>
-                                )}
-                            </div>
+                                    {/* Telegram ID */}
+                                    <td>
+                                        {user.telegramId ? (
+                                            <span className="telegram-tag">{user.telegramId}</span>
+                                        ) : (
+                                            <span className="no-data">—</span>
+                                        )}
+                                    </td>
 
-                            {user.adminNotes && (
-                                <div className="user-notes">
-                                    <div className="section-label"><Shield size={14} /> Admin Notes</div>
-                                    <p>{user.adminNotes}</p>
-                                </div>
-                            )}
+                                    {/* Group ID */}
+                                    <td>
+                                        <div className="group-list">
+                                            {(user.groupIds || []).length === 0 ? (
+                                                <span className="no-data">—</span>
+                                            ) : (
+                                                (user.groupIds || []).map((gid, i) => (
+                                                    <span key={i} className="group-tag">{gid}</span>
+                                                ))
+                                            )}
+                                        </div>
+                                    </td>
 
-                            <div className="user-actions">
-                                <button className="btn btn-ghost" onClick={() => handleEdit(user)}>
-                                    <Edit2 size={16} /> Edit
-                                </button>
-                                {user.isAutoSuspended ? (
-                                    <button className="btn btn-ghost text-success" onClick={() => handleUnsuspend(user.id)}>
-                                        <UserCheck size={16} /> Unsuspend
-                                    </button>
-                                ) : (
-                                    <button className="btn btn-ghost text-warning" onClick={() => handleSuspend(user.id)}>
-                                        <UserX size={16} /> Suspend
-                                    </button>
-                                )}
-                                <button className="btn btn-ghost text-danger" onClick={() => handleDelete(user.id)}>
-                                    <Trash2 size={16} />
-                                </button>
-                            </div>
-                        </div>
-                    ))
+                                    {/* Status */}
+                                    <td>
+                                        <div className="status-badges">
+                                            {user.isVerified && (
+                                                <span className="badge badge-verified"><CheckCircle size={12} /> Verified</span>
+                                            )}
+                                            {user.isAutoSuspended && (
+                                                <span className="badge badge-blocked"><Ban size={12} /> Blocked</span>
+                                            )}
+                                            <button
+                                                className={`toggle-btn-sm ${user.isBotEnabled ? 'on' : 'off'}`}
+                                                onClick={() => handleToggleBot(user.id)}
+                                                title={user.isBotEnabled ? 'Bot: ON' : 'Bot: OFF'}
+                                            >
+                                                {user.isBotEnabled ? <ToggleRight size={16} /> : <ToggleLeft size={16} />}
+                                            </button>
+                                        </div>
+                                    </td>
+
+                                    {/* Notes */}
+                                    <td>
+                                        <button
+                                            className={`btn btn-ghost btn-xs ${user.adminNotes ? 'has-notes' : ''}`}
+                                            onClick={() => openNotesModal(user)}
+                                            title={user.adminNotes || 'Add notes'}
+                                        >
+                                            <StickyNote size={14} />
+                                            {user.adminNotes ? '📝' : ''}
+                                        </button>
+                                    </td>
+
+                                    {/* Actions */}
+                                    <td>
+                                        <div className="action-btns">
+                                            <button className="btn btn-ghost btn-xs" onClick={() => handleEdit(user)} title="Edit">
+                                                <Edit2 size={14} />
+                                            </button>
+                                            {user.isAutoSuspended ? (
+                                                <button className="btn btn-ghost btn-xs text-success" onClick={() => handleUnblock(user.id)} title="Unblock">
+                                                    <UserCheck size={14} />
+                                                </button>
+                                            ) : (
+                                                <button className="btn btn-ghost btn-xs text-warning" onClick={() => handleBlock(user.id)} title="Block">
+                                                    <Ban size={14} />
+                                                </button>
+                                            )}
+                                            <button className="btn btn-ghost btn-xs text-danger" onClick={() => handleDelete(user.id)} title="Delete">
+                                                <Trash2 size={14} />
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
                 )}
             </div>
 
-            {/* Modal */}
+            {/* Add/Edit Modal */}
             {showModal && (
                 <div className="modal-overlay open" onClick={() => setShowModal(false)}>
                     <div className="modal" onClick={e => e.stopPropagation()}>
@@ -341,16 +494,33 @@ const UserMappings = () => {
                         </div>
                         <form onSubmit={handleSubmit}>
                             <div className="modal-body">
-                                <div className="form-group">
-                                    <label className="form-label">Panel Username *</label>
-                                    <input
-                                        type="text"
-                                        className="form-input"
-                                        value={formData.panelUsername}
-                                        onChange={(e) => setFormData({ ...formData, panelUsername: e.target.value })}
-                                        placeholder="e.g. johndoe"
-                                        required
-                                    />
+                                <div className="form-row">
+                                    <div className="form-group">
+                                        <label className="form-label">Panel Username *</label>
+                                        <input
+                                            type="text"
+                                            className="form-input"
+                                            value={formData.panelUsername}
+                                            onChange={(e) => setFormData({ ...formData, panelUsername: e.target.value })}
+                                            placeholder="e.g. johndoe"
+                                            required
+                                        />
+                                    </div>
+                                    <div className="form-group">
+                                        <label className="form-label">Panel</label>
+                                        <select
+                                            className="form-select"
+                                            value={formData.panelId}
+                                            onChange={(e) => setFormData({ ...formData, panelId: e.target.value })}
+                                        >
+                                            <option value="">No specific panel</option>
+                                            {panels.map(panel => (
+                                                <option key={panel.id} value={panel.id}>
+                                                    {panel.alias || panel.name}
+                                                </option>
+                                            ))}
+                                        </select>
+                                    </div>
                                 </div>
 
                                 <div className="form-row">
@@ -377,7 +547,7 @@ const UserMappings = () => {
                                 </div>
 
                                 <div className="form-group">
-                                    <label className="form-label">WhatsApp Numbers</label>
+                                    <label className="form-label"><Phone size={14} /> WhatsApp Numbers</label>
                                     <input
                                         type="text"
                                         className="form-input"
@@ -388,15 +558,27 @@ const UserMappings = () => {
                                     <span className="form-hint">Multiple numbers separated by comma</span>
                                 </div>
 
-                                <div className="form-group">
-                                    <label className="form-label">Group IDs</label>
-                                    <input
-                                        type="text"
-                                        className="form-input"
-                                        value={formData.groupIds}
-                                        onChange={(e) => setFormData({ ...formData, groupIds: e.target.value })}
-                                        placeholder="group-id-1, group-id-2"
-                                    />
+                                <div className="form-row">
+                                    <div className="form-group">
+                                        <label className="form-label"><Send size={14} /> Telegram ID</label>
+                                        <input
+                                            type="text"
+                                            className="form-input"
+                                            value={formData.telegramId}
+                                            onChange={(e) => setFormData({ ...formData, telegramId: e.target.value })}
+                                            placeholder="e.g. @username or 123456789"
+                                        />
+                                    </div>
+                                    <div className="form-group">
+                                        <label className="form-label"><Hash size={14} /> Group IDs</label>
+                                        <input
+                                            type="text"
+                                            className="form-input"
+                                            value={formData.groupIds}
+                                            onChange={(e) => setFormData({ ...formData, groupIds: e.target.value })}
+                                            placeholder="group-id-1, group-id-2"
+                                        />
+                                    </div>
                                 </div>
 
                                 <div className="form-group">
@@ -424,6 +606,39 @@ const UserMappings = () => {
                                 <button type="submit" className="btn btn-primary">{editingItem ? 'Update' : 'Create'}</button>
                             </div>
                         </form>
+                    </div>
+                </div>
+            )}
+
+            {/* Notes Modal */}
+            {showNotesModal && notesItem && (
+                <div className="modal-overlay open" onClick={() => setShowNotesModal(false)}>
+                    <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '480px' }}>
+                        <div className="modal-header">
+                            <h2><StickyNote size={20} /> Notes — {notesItem.panelUsername}</h2>
+                            <button className="modal-close" onClick={() => setShowNotesModal(false)}>
+                                <X size={20} />
+                            </button>
+                        </div>
+                        <div className="modal-body">
+                            <textarea
+                                className="form-textarea"
+                                rows="6"
+                                value={notesText}
+                                onChange={(e) => setNotesText(e.target.value)}
+                                placeholder="Add admin notes about this user..."
+                                style={{ width: '100%', resize: 'vertical' }}
+                            />
+                            <p className="form-hint" style={{ marginTop: '8px' }}>
+                                Notes are only visible to admins. Auto-notes (e.g. WhatsApp validation) are appended automatically.
+                            </p>
+                        </div>
+                        <div className="modal-footer">
+                            <button className="btn btn-secondary" onClick={() => setShowNotesModal(false)}>Cancel</button>
+                            <button className="btn btn-primary" onClick={handleSaveNotes} disabled={notesLoading}>
+                                {notesLoading ? 'Saving...' : 'Save Notes'}
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}
@@ -456,6 +671,53 @@ const UserMappings = () => {
                     display: flex;
                     gap: 0.75rem;
                 }
+
+                /* Toast Notifications */
+                .toast-container {
+                    position: fixed;
+                    top: 1.5rem;
+                    right: 1.5rem;
+                    z-index: 9999;
+                    display: flex;
+                    flex-direction: column;
+                    gap: 0.5rem;
+                    max-width: min(400px, calc(100vw - 3rem));
+                }
+                .toast {
+                    display: flex;
+                    align-items: center;
+                    gap: 0.75rem;
+                    padding: 0.75rem 1rem;
+                    border-radius: 10px;
+                    cursor: pointer;
+                    animation: toastSlideIn 0.3s ease-out;
+                    backdrop-filter: blur(8px);
+                    font-size: 0.9rem;
+                    box-shadow: 0 8px 24px rgba(0,0,0,0.15);
+                }
+                .toast button {
+                    background: none;
+                    border: none;
+                    color: inherit;
+                    cursor: pointer;
+                    opacity: 0.7;
+                    margin-left: auto;
+                    flex-shrink: 0;
+                }
+                .toast-error {
+                    background: linear-gradient(135deg, rgba(220, 38, 38, 0.95), rgba(185, 28, 28, 0.95));
+                    color: white;
+                }
+                .toast-success {
+                    background: linear-gradient(135deg, rgba(22, 163, 74, 0.95), rgba(21, 128, 61, 0.95));
+                    color: white;
+                }
+                @keyframes toastSlideIn {
+                    from { transform: translateX(100%); opacity: 0; }
+                    to { transform: translateX(0); opacity: 1; }
+                }
+
+                /* Stats */
                 .stats-row {
                     display: grid;
                     grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
@@ -502,6 +764,35 @@ const UserMappings = () => {
                     font-size: 0.85rem;
                     color: var(--text-secondary);
                 }
+
+                /* Filters Row */
+                .filters-row {
+                    display: flex;
+                    gap: 1rem;
+                    margin-bottom: 1.5rem;
+                    align-items: center;
+                    flex-wrap: wrap;
+                }
+                .panel-filter {
+                    display: flex;
+                    align-items: center;
+                    gap: 0.5rem;
+                    flex-shrink: 0;
+                }
+                .panel-filter label {
+                    font-size: 0.9rem;
+                    color: var(--text-secondary);
+                    font-weight: 500;
+                }
+                .panel-filter .form-select {
+                    min-width: 180px;
+                    padding: 0.5rem 0.75rem;
+                    background: var(--bg-card);
+                    border: 1px solid var(--border-color);
+                    border-radius: 8px;
+                    color: var(--text-primary);
+                    font-size: 0.9rem;
+                }
                 .search-bar {
                     display: flex;
                     align-items: center;
@@ -509,181 +800,207 @@ const UserMappings = () => {
                     background: var(--bg-card);
                     border: 1px solid var(--border-color);
                     border-radius: 12px;
-                    padding: 0.75rem 1rem;
-                    margin-bottom: 1.5rem;
+                    padding: 0.5rem 1rem;
+                    flex: 1;
+                    min-width: 200px;
                 }
                 .search-bar input {
                     flex: 1;
                     border: none;
                     background: transparent;
                     color: var(--text-primary);
-                    font-size: 0.95rem;
+                    font-size: 0.9rem;
                 }
-                .search-bar input:focus {
-                    outline: none;
+                .search-bar input:focus { outline: none; }
+                .search-clear {
+                    background: none;
+                    border: none;
+                    color: var(--text-muted);
+                    cursor: pointer;
+                    padding: 2px;
                 }
-                .users-grid {
-                    display: grid;
-                    grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
-                    gap: 1rem;
-                }
-                .user-card {
+
+                /* Table */
+                .mapping-table-wrap {
                     background: var(--bg-card);
                     border: 1px solid var(--border-color);
                     border-radius: 12px;
-                    padding: 1.25rem;
-                    transition: all 0.2s;
+                    overflow: hidden;
                 }
-                .user-card:hover {
-                    border-color: var(--primary-color);
-                    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+                .mapping-table {
+                    width: 100%;
+                    border-collapse: collapse;
                 }
-                .user-card.suspended {
-                    border-color: rgba(239, 68, 68, 0.3);
-                    background: rgba(239, 68, 68, 0.02);
+                .mapping-table thead th {
+                    background: var(--bg-tertiary);
+                    padding: 0.75rem 1rem;
+                    text-align: left;
+                    font-size: 0.8rem;
+                    font-weight: 600;
+                    color: var(--text-secondary);
+                    text-transform: uppercase;
+                    letter-spacing: 0.5px;
+                    border-bottom: 1px solid var(--border-color);
+                    white-space: nowrap;
                 }
-                .user-card.bot-disabled {
-                    opacity: 0.7;
+                .mapping-table tbody tr {
+                    border-bottom: 1px solid var(--border-color);
+                    transition: background 0.15s;
                 }
-                .user-header {
+                .mapping-table tbody tr:last-child {
+                    border-bottom: none;
+                }
+                .mapping-table tbody tr:hover {
+                    background: rgba(59, 130, 246, 0.03);
+                }
+                .mapping-table tbody tr.row-blocked {
+                    background: rgba(239, 68, 68, 0.03);
+                }
+                .mapping-table tbody tr.row-disabled {
+                    opacity: 0.6;
+                }
+                .mapping-table td {
+                    padding: 0.75rem 1rem;
+                    font-size: 0.9rem;
+                    vertical-align: middle;
+                }
+
+                /* User Cell */
+                .user-cell {
                     display: flex;
                     align-items: center;
-                    gap: 1rem;
-                    margin-bottom: 1rem;
+                    gap: 0.75rem;
                 }
-                .user-avatar {
-                    width: 48px;
-                    height: 48px;
-                    border-radius: 12px;
+                .user-avatar-sm {
+                    width: 36px;
+                    height: 36px;
+                    border-radius: 8px;
                     background: linear-gradient(135deg, var(--primary-color), #1eb854);
                     color: white;
                     display: flex;
                     align-items: center;
                     justify-content: center;
                     font-weight: 700;
-                    font-size: 1.25rem;
+                    font-size: 0.9rem;
+                    flex-shrink: 0;
                 }
-                .user-info {
-                    flex: 1;
+                .username-text {
+                    font-weight: 600;
+                    color: var(--text-primary);
                 }
-                .user-info h4 {
-                    margin: 0;
-                    font-size: 1.1rem;
+                .wa-name-text {
+                    font-size: 0.8rem;
+                    color: var(--primary-color);
                 }
-                .user-email {
-                    font-size: 0.85rem;
-                    color: var(--text-secondary);
+                .email-text {
+                    font-size: 0.75rem;
+                    color: var(--text-muted);
                 }
-                .user-status {
-                    display: flex;
-                    gap: 0.5rem;
-                }
-                .status-badge {
-                    display: flex;
-                    align-items: center;
-                    gap: 0.25rem;
-                    padding: 0.25rem 0.5rem;
+                .panel-badge-sm {
+                    display: inline-block;
+                    margin-top: 2px;
+                    padding: 1px 6px;
                     border-radius: 4px;
-                    font-size: 0.7rem;
+                    font-size: 0.65rem;
+                    background: rgba(59, 130, 246, 0.1);
+                    color: #3b82f6;
                     font-weight: 500;
                 }
-                .status-badge.verified {
-                    background: rgba(34, 197, 94, 0.1);
-                    color: #22c55e;
-                }
-                .status-badge.suspended {
-                    background: rgba(239, 68, 68, 0.1);
-                    color: #ef4444;
-                }
-                .section-label {
-                    display: flex;
-                    align-items: center;
-                    gap: 0.5rem;
-                    font-size: 0.8rem;
-                    color: var(--text-secondary);
-                    margin-bottom: 0.5rem;
-                }
-                .user-phones {
-                    margin-bottom: 1rem;
-                }
-                .phone-list {
+
+                /* Tags */
+                .phone-list, .group-list {
                     display: flex;
                     flex-wrap: wrap;
-                    gap: 0.5rem;
+                    gap: 4px;
                 }
                 .phone-tag {
                     background: var(--bg-tertiary);
-                    padding: 0.35rem 0.75rem;
-                    border-radius: 6px;
-                    font-size: 0.85rem;
+                    padding: 3px 8px;
+                    border-radius: 4px;
+                    font-size: 0.8rem;
+                    font-family: 'SF Mono', 'Consolas', monospace;
+                    white-space: nowrap;
+                }
+                .telegram-tag {
+                    background: rgba(0, 136, 204, 0.1);
+                    color: #0088cc;
+                    padding: 3px 8px;
+                    border-radius: 4px;
+                    font-size: 0.8rem;
                     font-family: monospace;
+                }
+                .group-tag {
+                    background: rgba(139, 92, 246, 0.1);
+                    color: #8b5cf6;
+                    padding: 3px 8px;
+                    border-radius: 4px;
+                    font-size: 0.75rem;
+                    font-family: monospace;
+                    max-width: 120px;
+                    overflow: hidden;
+                    text-overflow: ellipsis;
+                    white-space: nowrap;
                 }
                 .no-data {
                     color: var(--text-muted);
-                    font-style: italic;
                     font-size: 0.85rem;
                 }
-                .user-meta {
-                    margin-bottom: 1rem;
-                }
-                .meta-row {
+
+                /* Status Badges */
+                .status-badges {
                     display: flex;
                     align-items: center;
-                    justify-content: space-between;
-                    margin-bottom: 0.5rem;
+                    gap: 4px;
+                    flex-wrap: wrap;
                 }
-                .meta-row.warn {
-                    color: #f59e0b;
-                }
-                .meta-label {
-                    color: var(--text-secondary);
-                    font-size: 0.85rem;
-                }
-                .toggle-btn {
-                    display: flex;
+                .badge {
+                    display: inline-flex;
                     align-items: center;
-                    gap: 0.35rem;
+                    gap: 3px;
+                    padding: 2px 8px;
+                    border-radius: 4px;
+                    font-size: 0.7rem;
+                    font-weight: 500;
+                    white-space: nowrap;
+                }
+                .badge-verified {
+                    background: rgba(34, 197, 94, 0.1);
+                    color: #22c55e;
+                }
+                .badge-blocked {
+                    background: rgba(239, 68, 68, 0.1);
+                    color: #ef4444;
+                }
+                .toggle-btn-sm {
                     background: none;
                     border: none;
                     cursor: pointer;
-                    font-size: 0.85rem;
-                    padding: 0.25rem 0.5rem;
+                    padding: 2px;
                     border-radius: 4px;
-                }
-                .toggle-btn.on {
-                    color: #22c55e;
-                    background: rgba(34, 197, 94, 0.1);
-                }
-                .toggle-btn.off {
-                    color: var(--text-muted);
-                    background: var(--bg-tertiary);
-                }
-                .spam-count {
-                    background: rgba(239, 68, 68, 0.1);
-                    color: #ef4444;
-                    padding: 0.125rem 0.5rem;
-                    border-radius: 4px;
-                    font-weight: 600;
-                }
-                .user-notes {
-                    background: var(--bg-tertiary);
-                    padding: 0.75rem;
-                    border-radius: 8px;
-                    margin-bottom: 1rem;
-                }
-                .user-notes p {
-                    margin: 0;
-                    font-size: 0.85rem;
-                    color: var(--text-secondary);
-                }
-                .user-actions {
                     display: flex;
-                    gap: 0.5rem;
-                    border-top: 1px solid var(--border-color);
-                    padding-top: 0.75rem;
+                    align-items: center;
                 }
+                .toggle-btn-sm.on { color: #22c55e; }
+                .toggle-btn-sm.off { color: var(--text-muted); }
+
+                /* Notes Button */
+                .btn-xs {
+                    padding: 4px 6px !important;
+                    font-size: 0.8rem !important;
+                }
+                .has-notes {
+                    color: var(--primary-color) !important;
+                }
+
+                /* Actions */
+                .action-btns {
+                    display: flex;
+                    gap: 2px;
+                    justify-content: flex-end;
+                }
+
+                /* Empty State */
                 .empty-state {
-                    grid-column: 1 / -1;
                     text-align: center;
                     padding: 4rem 2rem;
                     color: var(--text-secondary);
@@ -692,6 +1009,8 @@ const UserMappings = () => {
                     margin: 1rem 0 0.5rem 0;
                     color: var(--text-primary);
                 }
+
+                /* Form */
                 .form-row {
                     display: grid;
                     grid-template-columns: 1fr 1fr;
@@ -708,6 +1027,34 @@ const UserMappings = () => {
                     width: 18px;
                     height: 18px;
                     accent-color: var(--primary-color);
+                }
+                .text-success { color: #22c55e !important; }
+                .text-warning { color: #f59e0b !important; }
+                .text-danger { color: #ef4444 !important; }
+
+                /* Responsive */
+                @media (max-width: 900px) {
+                    .mapping-table-wrap {
+                        overflow-x: auto;
+                    }
+                    .mapping-table {
+                        min-width: 800px;
+                    }
+                    .filters-row {
+                        flex-direction: column;
+                    }
+                    .panel-filter {
+                        width: 100%;
+                    }
+                    .panel-filter .form-select {
+                        flex: 1;
+                    }
+                    .search-bar {
+                        width: 100%;
+                    }
+                    .form-row {
+                        grid-template-columns: 1fr;
+                    }
                 }
             `}</style>
         </div>

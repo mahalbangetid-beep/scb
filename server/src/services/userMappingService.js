@@ -61,10 +61,13 @@ class UserMappingService {
         return prisma.userPanelMapping.create({
             data: {
                 userId,
+                panelId: data.panelId || null,
                 panelUsername: data.panelUsername,
                 panelEmail: data.panelEmail || null,
                 panelUserId: data.panelUserId || null,
                 whatsappNumbers: JSON.stringify(whatsappNumbers),
+                whatsappName: data.whatsappName || null,
+                telegramId: data.telegramId || null,
                 groupIds: JSON.stringify(groupIds),
                 isBotEnabled: data.isBotEnabled !== false,
                 adminNotes: data.adminNotes || null,
@@ -81,11 +84,18 @@ class UserMappingService {
     async getMappings(userId, options = {}) {
         const where = { userId };
 
+        // Panel filter
+        if (options.panelId) {
+            where.panelId = options.panelId;
+        }
+
         if (options.search) {
             where.OR = [
                 { panelUsername: { contains: options.search, mode: 'insensitive' } },
                 { panelEmail: { contains: options.search, mode: 'insensitive' } },
-                { whatsappNumbers: { contains: options.search } }
+                { whatsappNumbers: { contains: options.search } },
+                { telegramId: { contains: options.search, mode: 'insensitive' } },
+                { whatsappName: { contains: options.search, mode: 'insensitive' } }
             ];
         }
 
@@ -197,7 +207,7 @@ class UserMappingService {
         const updateData = {};
 
         // Handle simple fields
-        const simpleFields = ['panelUsername', 'panelEmail', 'panelUserId', 'adminNotes', 'isBotEnabled'];
+        const simpleFields = ['panelUsername', 'panelEmail', 'panelUserId', 'adminNotes', 'isBotEnabled', 'panelId', 'telegramId', 'whatsappName'];
         for (const field of simpleFields) {
             if (data[field] !== undefined) {
                 updateData[field] = data[field];
@@ -298,22 +308,56 @@ class UserMappingService {
 
     /**
      * Verify a user mapping
+     * If verified via WhatsApp, auto-adds a note
      */
     async verifyMapping(id, userId, verifiedBy = 'ADMIN') {
+        const updateData = {
+            isVerified: true,
+            verifiedAt: new Date(),
+            verifiedBy
+        };
+
+        // Auto-add note when validated via WhatsApp (Section 10 requirement)
+        if (verifiedBy === 'WHATSAPP') {
+            const existing = await this.getById(id, userId);
+            const timestamp = new Date().toISOString().split('T')[0];
+            const autoNote = `[${timestamp}] Validated via WhatsApp`;
+            if (existing && existing.adminNotes) {
+                updateData.adminNotes = existing.adminNotes + '\n' + autoNote;
+            } else {
+                updateData.adminNotes = autoNote;
+            }
+        }
+
         return prisma.userPanelMapping.update({
             where: { id },
-            data: {
-                isVerified: true,
-                verifiedAt: new Date(),
-                verifiedBy
-            }
+            data: updateData
         });
+    }
+
+    /**
+     * Update WhatsApp display name (auto-capture from pushName)
+     */
+    async updateWhatsAppName(id, whatsappName) {
+        if (!id || !whatsappName) return null;
+        try {
+            return await prisma.userPanelMapping.update({
+                where: { id },
+                data: { whatsappName }
+            });
+        } catch (e) {
+            // Silently fail — this is a best-effort update
+            return null;
+        }
     }
 
     /**
      * Unverify a user mapping
      */
     async unverifyMapping(id, userId) {
+        const existing = await this.getById(id, userId);
+        if (!existing) throw new Error('Mapping not found');
+
         return prisma.userPanelMapping.update({
             where: { id },
             data: {
@@ -379,6 +423,9 @@ class UserMappingService {
      * Suspend a user mapping
      */
     async suspendMapping(id, userId, reason = null) {
+        const existing = await this.getById(id, userId);
+        if (!existing) throw new Error('Mapping not found');
+
         return prisma.userPanelMapping.update({
             where: { id },
             data: {
@@ -393,6 +440,9 @@ class UserMappingService {
      * Unsuspend a user mapping
      */
     async unsuspendMapping(id, userId) {
+        const existing = await this.getById(id, userId);
+        if (!existing) throw new Error('Mapping not found');
+
         return prisma.userPanelMapping.update({
             where: { id },
             data: {
@@ -408,7 +458,7 @@ class UserMappingService {
      * Check if sender is allowed to use bot
      * @returns {Object} { allowed, mapping, reason }
      */
-    async checkSenderAllowed(userId, senderPhone, isGroup = false, groupId = null) {
+    async checkSenderAllowed(userId, senderPhone, isGroup = false, groupId = null, senderName = null) {
         let mapping = null;
 
         // Try to find by phone number
@@ -429,6 +479,11 @@ class UserMappingService {
                 reason: 'NO_MAPPING',
                 isUnregistered: true
             };
+        }
+
+        // Auto-capture WhatsApp name (Section 10: auto-add WhatsApp names)
+        if (senderName && mapping.whatsappName !== senderName) {
+            this.updateWhatsAppName(mapping.id, senderName); // fire-and-forget
         }
 
         // Check if bot is enabled
@@ -523,7 +578,10 @@ class UserMappingService {
         return {
             ...mapping,
             whatsappNumbers: this.safeJSONParse(mapping.whatsappNumbers, []),
-            groupIds: this.safeJSONParse(mapping.groupIds, [])
+            groupIds: this.safeJSONParse(mapping.groupIds, []),
+            telegramId: mapping.telegramId || null,
+            whatsappName: mapping.whatsappName || null,
+            panelId: mapping.panelId || null
         };
     }
 

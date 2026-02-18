@@ -38,6 +38,7 @@ import ActivityLogs from './pages/ActivityLogs'
 import Watermarks from './pages/Watermarks'
 import MarketingIntervals from './pages/MarketingIntervals'
 import SupportGroups from './pages/SupportGroups'
+import ProviderAliases from './pages/ProviderAliases'
 import './styles/landing.css'
 // Admin Pages
 import UserManagement from './pages/admin/UserManagement'
@@ -148,6 +149,7 @@ function AppContent() {
           <Route path="/watermarks" element={<ProtectedRoute><Watermarks /></ProtectedRoute>} />
           <Route path="/marketing-intervals" element={<ProtectedRoute><MarketingIntervals /></ProtectedRoute>} />
           <Route path="/support-groups" element={<ProtectedRoute><SupportGroups /></ProtectedRoute>} />
+          <Route path="/provider-aliases" element={<ProtectedRoute><ProviderAliases /></ProtectedRoute>} />
 
           {/* Admin Routes */}
           <Route path="/admin/dashboard" element={<AdminRoute><AdminDashboard /></AdminRoute>} />

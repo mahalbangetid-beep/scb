@@ -56,12 +56,13 @@ Please contact the admin if you believe this is an error, or enter a different u
      * Check if a sender is unregistered
      * @returns {Object} { isUnregistered, mapping, reason }
      */
-    async checkIfUnregistered(userId, senderPhone, isGroup = false, groupId = null) {
+    async checkIfUnregistered(userId, senderPhone, isGroup = false, groupId = null, senderName = null) {
         const checkResult = await userMappingService.checkSenderAllowed(
             userId,
             senderPhone,
             isGroup,
-            groupId
+            groupId,
+            senderName
         );
 
         return {

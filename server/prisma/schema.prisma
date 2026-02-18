@@ -459,11 +459,37 @@ model SystemBotSubscription {
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
   device Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
 
+  // Assigned groups
+  assignedGroups SystemBotGroup[]
+
   @@unique([userId, deviceId]) // One subscription per user per bot
   @@index([userId])
   @@index([deviceId])
   @@index([status])
   @@index([nextBillingDate])
+}
+
+// ==================== SYSTEM BOT GROUP ASSIGNMENTS ====================
+// Section 11: Track which support groups a user has assigned to a system bot
+
+model SystemBotGroup {
+  id             String   @id @default(cuid())
+  subscriptionId String?  // Link to SystemBotSubscription (nullable — groups persist if subscription deleted)
+  groupJid       String   // WhatsApp group JID (e.g., 1234567890@g.us)
+  groupName      String   // Display name of the group
+
+  // Test status
+  isTested  Boolean   @default(false) // Must be tested before activation
+  testedAt  DateTime? // When the test was last performed
+  isActive  Boolean   @default(false) // Only active after successful test
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  subscription SystemBotSubscription? @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
+
+  @@unique([subscriptionId, groupJid]) // One entry per group per subscription
+  @@index([subscriptionId])
 }
 
 // ==================== CONTACT BACKUP ====================
@@ -1542,13 +1568,20 @@ model UserPanelMapping {
   id     String @id @default(cuid())
   userId String
 
+  // Panel binding (which panel this mapping belongs to)
+  panelId String?
+
   // Panel user info
   panelUsername String
   panelEmail    String?
   panelUserId   String?
 
-  // WhatsApp numbers (stored as JSON array)
-  whatsappNumbers String @default("[]") @db.Text
+  // WhatsApp info
+  whatsappNumbers String  @default("[]") @db.Text
+  whatsappName    String? // Auto-captured WhatsApp display name
+
+  // Telegram
+  telegramId String?
 
   // Group IDs (stored as JSON array)
   groupIds String @default("[]") @db.Text
@@ -1556,7 +1589,7 @@ model UserPanelMapping {
   // Status
   isVerified Boolean   @default(false)
   verifiedAt DateTime?
-  verifiedBy String? // SELF, ADMIN, API, ORDER
+  verifiedBy String? // SELF, ADMIN, API, ORDER, WHATSAPP
 
   isBotEnabled    Boolean   @default(true)
   isAutoSuspended Boolean   @default(false)
@@ -1580,6 +1613,7 @@ model UserPanelMapping {
   @@unique([userId, panelUsername])
   @@index([userId])
   @@index([panelUsername])
+  @@index([panelId])
 }
 
 // ==================== PROVIDER FORWARDING CONFIG ====================
@@ -1623,6 +1657,9 @@ model ProviderConfig {
   speedupTemplate String? @db.Text // Template for speedup messages
   errorTemplate   String? @db.Text // Template for error messages
 
+  // Device for forwarding (Section 8.2)
+  deviceId String? // Selected WhatsApp device for sending forwarded messages
+
   // Priority (lower = higher priority)
   priority Int @default(0)
 
@@ -1635,6 +1672,7 @@ model ProviderConfig {
   @@unique([userId, providerName])
   @@index([userId])
   @@index([providerDomain])
+  @@index([deviceId])
 }
 
 // Provider forwarding logs

@@ -21,10 +21,11 @@ router.use(authenticate);
  */
 router.get('/', async (req, res, next) => {
     try {
-        const { search, verified, botEnabled, suspended, limit, offset } = req.query;
+        const { search, verified, botEnabled, suspended, limit, offset, panelId } = req.query;
 
         const options = {};
         if (search) options.search = search;
+        if (panelId) options.panelId = panelId;
         if (verified !== undefined) options.isVerified = verified === 'true';
         if (botEnabled !== undefined) options.isBotEnabled = botEnabled === 'true';
         if (suspended !== undefined) options.isAutoSuspended = suspended === 'true';
@@ -291,7 +292,9 @@ router.post('/:id/toggle-bot', async (req, res, next) => {
  */
 router.post('/:id/verify', async (req, res, next) => {
     try {
-        const mapping = await userMappingService.verifyMapping(req.params.id, req.user.id, 'ADMIN');
+        const validSources = ['ADMIN', 'WHATSAPP', 'API', 'SELF', 'ORDER'];
+        const verifiedBy = validSources.includes(req.body.verifiedBy) ? req.body.verifiedBy : 'ADMIN';
+        const mapping = await userMappingService.verifyMapping(req.params.id, req.user.id, verifiedBy);
         successResponse(res, userMappingService.parseMapping(mapping), 'Mapping verified');
     } catch (error) {
         next(error);

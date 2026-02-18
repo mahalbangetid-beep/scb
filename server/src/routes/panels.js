@@ -1281,6 +1281,12 @@ router.post('/:id/sync-providers', async (req, res, next) => {
             throw new AppError(result.error || 'Failed to sync providers', 500);
         }
 
+        // Update last provider sync time
+        await prisma.smmPanel.update({
+            where: { id: req.params.id },
+            data: { lastProviderSyncAt: new Date() }
+        });
+
         successResponse(res, { providers: result.data }, `Synced ${result.data.length} providers`);
     } catch (error) {
         next(error);

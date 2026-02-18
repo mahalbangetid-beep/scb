@@ -2,7 +2,8 @@ import { useState, useEffect, useRef } from 'react';
 import {
     Plus, Edit2, Trash2, ToggleLeft, ToggleRight, Search, Zap,
     MessageSquare, AlertTriangle, X, RefreshCw, CheckSquare, Square,
-    Power, PowerOff, Filter, ChevronDown, Loader2
+    Power, PowerOff, Filter, ChevronDown, Loader2, Smartphone,
+    Copy, ArrowRightLeft
 } from 'lucide-react';
 import api from '../services/api';
 
@@ -16,21 +17,39 @@ const KeywordResponses = () => {
     const [testResult, setTestResult] = useState(null);
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
+    const [devices, setDevices] = useState([]);
+    const [devicesLoaded, setDevicesLoaded] = useState(false);
 
     // Bulk selection state
     const [selectedIds, setSelectedIds] = useState(new Set());
     const [bulkLoading, setBulkLoading] = useState(false);
 
+    // Copy/Move modal state
+    const [showCopyModal, setShowCopyModal] = useState(false);
+    const [copyTargetDevice, setCopyTargetDevice] = useState('');
+    const [copyMode, setCopyMode] = useState('copy'); // copy or move
+    const [copyLoading, setCopyLoading] = useState(false);
+    const [copyIds, setCopyIds] = useState([]);
+
     // Search & filter state
     const [searchQuery, setSearchQuery] = useState('');
     const [statusFilter, setStatusFilter] = useState('all'); // all, active, inactive
+    const [deviceFilter, setDeviceFilter] = useState('all'); // all, global, or device ID
     const [showFilterMenu, setShowFilterMenu] = useState(false);
     const filterRef = useRef(null);
 
     // Clear selection when search/filter changes to avoid stale selections
     useEffect(() => {
         setSelectedIds(new Set());
-    }, [searchQuery, statusFilter]);
+    }, [searchQuery, statusFilter, deviceFilter]);
+
+    // Auto-dismiss error after 5 seconds
+    useEffect(() => {
+        if (error) {
+            const timer = setTimeout(() => setError(''), 5000);
+            return () => clearTimeout(timer);
+        }
+    }, [error]);
 
     // Close filter dropdown on outside click
     useEffect(() => {
@@ -54,12 +73,25 @@ const KeywordResponses = () => {
         applyToGroups: true,
         applyToDMs: true,
         priority: 0,
-        isActive: true
+        isActive: true,
+        deviceId: ''
     });
 
     useEffect(() => {
         fetchData();
+        fetchDevices();
     }, []);
+
+    const fetchDevices = async () => {
+        try {
+            const res = await api.get('/devices');
+            setDevices(res.data || []);
+        } catch (err) {
+            console.error('[KeywordResponses] Failed to fetch devices:', err);
+        } finally {
+            setDevicesLoaded(true);
+        }
+    };
 
     const fetchData = async () => {
         try {
@@ -94,6 +126,9 @@ const KeywordResponses = () => {
         // Status filter
         if (statusFilter === 'active' && !item.isActive) return false;
         if (statusFilter === 'inactive' && item.isActive) return false;
+        // Device filter
+        if (deviceFilter === 'global' && item.deviceId) return false;
+        if (deviceFilter !== 'all' && deviceFilter !== 'global' && item.deviceId !== deviceFilter) return false;
         return true;
     });
 
@@ -147,11 +182,15 @@ const KeywordResponses = () => {
     const handleSubmit = async (e) => {
         e.preventDefault();
         try {
+            const payload = {
+                ...formData,
+                deviceId: formData.deviceId || null  // Send null instead of empty string
+            };
             if (editingItem) {
-                await api.put(`/keyword-responses/${editingItem.id}`, formData);
+                await api.put(`/keyword-responses/${editingItem.id}`, payload);
                 setSuccess('Keyword response updated');
             } else {
-                await api.post('/keyword-responses', formData);
+                await api.post('/keyword-responses', payload);
                 setSuccess('Keyword response created');
             }
             setShowModal(false);
@@ -176,7 +215,8 @@ const KeywordResponses = () => {
             applyToGroups: item.applyToGroups,
             applyToDMs: item.applyToDMs,
             priority: item.priority,
-            isActive: item.isActive
+            isActive: item.isActive,
+            deviceId: item.deviceId || ''
         });
         setShowModal(true);
     };
@@ -223,8 +263,42 @@ const KeywordResponses = () => {
             applyToGroups: true,
             applyToDMs: true,
             priority: 0,
-            isActive: true
+            isActive: true,
+            deviceId: ''
         });
+    };
+
+    const openCopyModal = (singleId = null) => {
+        // singleId = specific item, null = use selectedIds (bulk)
+        const idsToUse = singleId ? [singleId] : Array.from(selectedIds);
+        if (idsToUse.length === 0) return;
+        setCopyIds(idsToUse);
+        setCopyTargetDevice('');
+        setCopyMode('copy');
+        setShowCopyModal(true);
+    };
+
+    const handleCopyToDevice = async () => {
+        if (copyIds.length === 0) return;
+        try {
+            setCopyLoading(true);
+            await api.post('/keyword-responses/copy-to-device', {
+                ids: copyIds,
+                targetDeviceId: copyTargetDevice || null,
+                mode: copyMode
+            });
+            const modeLabel = copyMode === 'copy' ? 'copied' : 'moved';
+            setSuccess(`${copyIds.length} keyword(s) ${modeLabel} successfully`);
+            setShowCopyModal(false);
+            setCopyIds([]);
+            setSelectedIds(new Set());
+            fetchData();
+            setTimeout(() => setSuccess(''), 3000);
+        } catch (err) {
+            setError(err.error?.message || err.message || 'Failed to copy/move keywords');
+        } finally {
+            setCopyLoading(false);
+        }
     };
 
     const getMatchTypeLabel = (type) => {
@@ -269,19 +343,22 @@ const KeywordResponses = () => {
                 </div>
             </div>
 
-            {error && (
-                <div className="alert alert-error">
-                    <AlertTriangle size={18} />
-                    <span>{error}</span>
-                    <button onClick={() => setError('')}><X size={16} /></button>
-                </div>
-            )}
-            {success && (
-                <div className="alert alert-success">
-                    <Zap size={18} />
-                    <span>{success}</span>
-                </div>
-            )}
+            {/* Toast Notifications */}
+            <div className="toast-container">
+                {error && (
+                    <div className="toast toast-error" onClick={() => setError('')}>
+                        <AlertTriangle size={18} />
+                        <span>{error}</span>
+                        <button onClick={(e) => { e.stopPropagation(); setError(''); }}><X size={14} /></button>
+                    </div>
+                )}
+                {success && (
+                    <div className="toast toast-success" onClick={() => setSuccess('')}>
+                        <Zap size={18} />
+                        <span>{success}</span>
+                    </div>
+                )}
+            </div>
 
             {/* Stats Cards */}
             {stats && (
@@ -350,6 +427,21 @@ const KeywordResponses = () => {
                         </div>
                     )}
                 </div>
+                <div className="device-filter-wrapper">
+                    <select
+                        className={`form-select device-filter-select ${deviceFilter !== 'all' ? 'filter-active' : ''}`}
+                        value={deviceFilter}
+                        onChange={(e) => setDeviceFilter(e.target.value)}
+                    >
+                        <option value="all">All Devices</option>
+                        <option value="global">Global Only</option>
+                        {devices.map(d => (
+                            <option key={d.id} value={d.id}>
+                                📱 {d.name}{d.phone ? ` (${d.phone})` : ''}
+                            </option>
+                        ))}
+                    </select>
+                </div>
                 {filteredResponses.length > 0 && (
                     <button
                         className={`btn btn-ghost select-all-btn ${allFilteredSelected ? 'all-selected' : ''}`}
@@ -393,15 +485,16 @@ const KeywordResponses = () => {
             </div>
 
             {/* Results Count */}
-            {(searchQuery || statusFilter !== 'all') && (
+            {(searchQuery || statusFilter !== 'all' || deviceFilter !== 'all') && (
                 <div className="results-count">
                     Showing {filteredResponses.length} of {responses.length} keywords
                     {searchQuery && <span> matching "<strong>{searchQuery}</strong>"</span>}
+                    {deviceFilter !== 'all' && <span> • {deviceFilter === 'global' ? 'Global only' : `Device: ${devices.find(d => d.id === deviceFilter)?.name || deviceFilter}`}</span>}
                 </div>
             )}
 
-            {/* Keywords Grid */}
-            <div className="keywords-grid">
+            {/* Keywords List */}
+            <div className="keywords-list">
                 {filteredResponses.length === 0 ? (
                     <div className="empty-state">
                         <MessageSquare size={48} />
@@ -467,11 +560,36 @@ const KeywordResponses = () => {
                                     {item.applyToGroups && <span className="tag">Groups</span>}
                                     {item.applyToDMs && <span className="tag">DMs</span>}
                                     {item.caseSensitive && <span className="tag warn">Case Sensitive</span>}
+                                    {item.deviceId ? (() => {
+                                        const linkedDevice = devices.find(d => d.id === item.deviceId);
+                                        if (!linkedDevice) {
+                                            if (devicesLoaded) {
+                                                return <span className="tag danger" title="This device has been removed. Keyword won't trigger.">⚠️ Device Removed</span>;
+                                            }
+                                            return <span className="tag device">📱 ...</span>;
+                                        }
+                                        if (linkedDevice.status !== 'connected' || linkedDevice.isActive === false) {
+                                            return (
+                                                <>
+                                                    <span className="tag device">📱 {linkedDevice.name}</span>
+                                                    <span className="tag warning" title={`Device is ${linkedDevice.status}${!linkedDevice.isActive ? ' (disabled)' : ''}. Keyword may not trigger.`}>
+                                                        ⚠️ {!linkedDevice.isActive ? 'Disabled' : 'Disconnected'}
+                                                    </span>
+                                                </>
+                                            );
+                                        }
+                                        return <span className="tag device">📱 {linkedDevice.name}</span>;
+                                    })() : (
+                                        <span className="tag global">🌐 Global</span>
+                                    )}
                                 </div>
 
                                 <div className="keyword-actions">
                                     <button className="btn btn-ghost" onClick={() => handleEdit(item)}>
                                         <Edit2 size={16} /> Edit
+                                    </button>
+                                    <button className="btn btn-ghost" onClick={() => openCopyModal(item.id)}>
+                                        <Copy size={16} /> Copy
                                     </button>
                                     <button className="btn btn-ghost text-danger" onClick={() => handleDelete(item.id)}>
                                         <Trash2 size={16} /> Delete
@@ -514,6 +632,14 @@ const KeywordResponses = () => {
                         >
                             {bulkLoading ? <Loader2 size={16} className="spin" /> : <Trash2 size={16} />}
                             Delete
+                        </button>
+                        <div className="bulk-divider" />
+                        <button
+                            className="btn btn-bulk btn-copy"
+                            onClick={() => openCopyModal()}
+                            disabled={bulkLoading}
+                        >
+                            <Copy size={16} /> Copy/Move
                         </button>
                         <div className="bulk-divider" />
                         <button className="btn btn-ghost btn-cancel" onClick={clearSelection}>
@@ -614,6 +740,23 @@ const KeywordResponses = () => {
                                     </div>
                                 </div>
 
+                                <div className="form-group">
+                                    <label className="form-label"><Smartphone size={14} style={{ marginRight: '4px', verticalAlign: '-2px' }} />Assigned Device</label>
+                                    <select
+                                        className="form-select"
+                                        value={formData.deviceId}
+                                        onChange={(e) => setFormData({ ...formData, deviceId: e.target.value })}
+                                    >
+                                        <option value="">All Devices (Global)</option>
+                                        {devices.map(d => (
+                                            <option key={d.id} value={d.id}>
+                                                {d.name}{d.phone ? ` (${d.phone})` : ''} — {d.status}
+                                            </option>
+                                        ))}
+                                    </select>
+                                    <span className="form-hint">Assign to specific device or leave as global for all devices</span>
+                                </div>
+
                                 <div className="checkbox-group">
                                     <label className="checkbox-item">
                                         <input
@@ -650,11 +793,150 @@ const KeywordResponses = () => {
                 </div>
             )}
 
+            {/* Copy/Move Modal */}
+            {showCopyModal && (
+                <div className="modal-overlay open" onClick={() => setShowCopyModal(false)}>
+                    <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '420px' }}>
+                        <div className="modal-header">
+                            <h2><ArrowRightLeft size={20} /> Copy / Move Keywords</h2>
+                            <button className="modal-close" onClick={() => setShowCopyModal(false)}>
+                                <X size={20} />
+                            </button>
+                        </div>
+                        <div className="modal-body">
+                            <div className="copy-info">
+                                <strong>{copyIds.length}</strong> keyword{copyIds.length > 1 ? 's' : ''} selected
+                            </div>
+
+                            <div className="form-group">
+                                <label className="form-label">Mode</label>
+                                <div className="copy-mode-toggle">
+                                    <button
+                                        type="button"
+                                        className={`copy-mode-btn ${copyMode === 'copy' ? 'active' : ''}`}
+                                        onClick={() => setCopyMode('copy')}
+                                    >
+                                        <Copy size={16} /> Copy
+                                        <span className="copy-mode-desc">Duplicate to target</span>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        className={`copy-mode-btn ${copyMode === 'move' ? 'active' : ''}`}
+                                        onClick={() => setCopyMode('move')}
+                                    >
+                                        <ArrowRightLeft size={16} /> Move
+                                        <span className="copy-mode-desc">Transfer to target</span>
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div className="form-group">
+                                <label className="form-label">Target Device</label>
+                                <select
+                                    className="form-select"
+                                    value={copyTargetDevice}
+                                    onChange={(e) => setCopyTargetDevice(e.target.value)}
+                                >
+                                    <option value="">Global (No Device)</option>
+                                    {devices.map(d => (
+                                        <option key={d.id} value={d.id}>
+                                            {d.name}{d.phone ? ` (${d.phone})` : ''} — {d.status}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                        </div>
+                        <div className="modal-footer">
+                            <button type="button" className="btn btn-secondary" onClick={() => setShowCopyModal(false)}>Cancel</button>
+                            <button
+                                type="button"
+                                className="btn btn-primary"
+                                onClick={handleCopyToDevice}
+                                disabled={copyLoading}
+                            >
+                                {copyLoading ? <Loader2 size={16} className="spin" /> : (copyMode === 'copy' ? <Copy size={16} /> : <ArrowRightLeft size={16} />)}
+                                {copyMode === 'copy' ? 'Copy' : 'Move'} {copyIds.length} Keyword{copyIds.length > 1 ? 's' : ''}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             <style>{`
                 .keyword-responses-page {
                     padding: 1.5rem;
                     padding-bottom: 5rem;
                 }
+
+                /* Toast Notifications */
+                .toast-container {
+                    position: fixed;
+                    top: 1.5rem;
+                    right: 1.5rem;
+                    z-index: 9999;
+                    display: flex;
+                    flex-direction: column;
+                    gap: 0.5rem;
+                    width: 420px;
+                    max-width: calc(100vw - 3rem);
+                    pointer-events: none;
+                }
+                .toast {
+                    display: flex;
+                    align-items: center;
+                    gap: 0.6rem;
+                    padding: 0.85rem 1.1rem;
+                    border-radius: 12px;
+                    font-size: 0.88rem;
+                    font-weight: 500;
+                    pointer-events: all;
+                    cursor: pointer;
+                    animation: toastSlideIn 0.3s ease-out;
+                    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25), 0 2px 8px rgba(0, 0, 0, 0.1);
+                    backdrop-filter: blur(12px);
+                }
+                .toast span {
+                    flex: 1;
+                }
+                .toast button {
+                    width: 22px;
+                    height: 22px;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    background: rgba(255, 255, 255, 0.15);
+                    border: none;
+                    border-radius: 6px;
+                    color: inherit;
+                    cursor: pointer;
+                    opacity: 0.7;
+                    transition: opacity 0.15s;
+                }
+                .toast button:hover {
+                    opacity: 1;
+                    background: rgba(255, 255, 255, 0.25);
+                }
+                .toast-error {
+                    background: linear-gradient(135deg, rgba(239, 68, 68, 0.95), rgba(185, 28, 28, 0.95));
+                    color: #fff;
+                    border: 1px solid rgba(255, 255, 255, 0.15);
+                }
+                .toast-success {
+                    background: linear-gradient(135deg, rgba(34, 197, 94, 0.95), rgba(22, 163, 74, 0.95));
+                    color: #fff;
+                    border: 1px solid rgba(255, 255, 255, 0.15);
+                }
+                @keyframes toastSlideIn {
+                    from {
+                        opacity: 0;
+                        transform: translateX(100px);
+                    }
+                    to {
+                        opacity: 1;
+                        transform: translateX(0);
+                    }
+                }
+
                 .page-header {
                     display: flex;
                     justify-content: space-between;
@@ -872,16 +1154,16 @@ const KeywordResponses = () => {
                     color: var(--text-secondary);
                     font-size: 0.85rem;
                 }
-                .keywords-grid {
-                    display: grid;
-                    grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
-                    gap: 1rem;
+                .keywords-list {
+                    display: flex;
+                    flex-direction: column;
+                    gap: 0.75rem;
                 }
                 .keyword-card {
                     background: var(--bg-card);
                     border: 1px solid var(--border-color);
                     border-radius: 12px;
-                    padding: 1.25rem;
+                    padding: 1rem 1.25rem;
                     transition: all 0.2s;
                     display: flex;
                     gap: 0.75rem;
@@ -984,6 +1266,87 @@ const KeywordResponses = () => {
                     background: rgba(245, 158, 11, 0.1);
                     color: #f59e0b;
                 }
+                .tag.device {
+                    background: rgba(59, 130, 246, 0.1);
+                    color: #3b82f6;
+                }
+                .tag.global {
+                    background: rgba(156, 163, 175, 0.1);
+                    color: #9ca3af;
+                }
+                .tag.danger {
+                    background: rgba(239, 68, 68, 0.1);
+                    color: #ef4444;
+                    font-weight: 600;
+                }
+                .tag.warning {
+                    background: rgba(245, 158, 11, 0.1);
+                    color: #f59e0b;
+                    font-weight: 600;
+                }
+                .device-filter-wrapper {
+                    min-width: 160px;
+                }
+                .device-filter-select {
+                    font-size: 0.85rem;
+                    padding: 0.5rem 0.75rem;
+                    border-radius: 8px;
+                }
+                .device-filter-select.filter-active {
+                    border-color: var(--primary-color);
+                    color: var(--primary-color);
+                }
+
+                /* Copy/Move Modal */
+                .copy-info {
+                    background: var(--bg-tertiary);
+                    padding: 0.75rem 1rem;
+                    border-radius: 8px;
+                    margin-bottom: 1rem;
+                    font-size: 0.9rem;
+                    color: var(--text-secondary);
+                }
+                .copy-mode-toggle {
+                    display: grid;
+                    grid-template-columns: 1fr 1fr;
+                    gap: 0.5rem;
+                }
+                .copy-mode-btn {
+                    display: flex;
+                    flex-direction: column;
+                    align-items: center;
+                    gap: 0.25rem;
+                    padding: 0.75rem;
+                    border: 2px solid var(--border-color);
+                    border-radius: 10px;
+                    background: var(--bg-card);
+                    cursor: pointer;
+                    font-size: 0.9rem;
+                    font-weight: 600;
+                    color: var(--text-secondary);
+                    transition: all 0.15s;
+                }
+                .copy-mode-btn:hover {
+                    border-color: var(--primary-color);
+                }
+                .copy-mode-btn.active {
+                    border-color: var(--primary-color);
+                    background: rgba(37, 211, 102, 0.06);
+                    color: var(--primary-color);
+                }
+                .copy-mode-desc {
+                    font-size: 0.7rem;
+                    font-weight: 400;
+                    color: var(--text-muted);
+                }
+                .btn-copy {
+                    color: #3b82f6 !important;
+                    border-color: rgba(59, 130, 246, 0.3) !important;
+                }
+                .btn-copy:hover {
+                    background: rgba(59, 130, 246, 0.1) !important;
+                }
+
                 .keyword-actions {
                     display: flex;
                     gap: 0.5rem;
@@ -992,7 +1355,6 @@ const KeywordResponses = () => {
                     margin-top: 0.75rem;
                 }
                 .empty-state {
-                    grid-column: 1 / -1;
                     text-align: center;
                     padding: 4rem 2rem;
                     color: var(--text-secondary);

@@ -266,19 +266,21 @@ router.put('/:id', authenticate, async (req, res, next) => {
                 }
             }
 
-            // Delete existing bindings and create new ones
-            await prisma.devicePanelBinding.deleteMany({
-                where: { deviceId: device.id }
-            });
-
-            if (panelIds.length > 0) {
-                await prisma.devicePanelBinding.createMany({
-                    data: panelIds.map(pid => ({
-                        deviceId: device.id,
-                        panelId: pid
-                    }))
+            // Delete existing bindings and create new ones (atomic transaction)
+            await prisma.$transaction(async (tx) => {
+                await tx.devicePanelBinding.deleteMany({
+                    where: { deviceId: device.id }
                 });
-            }
+
+                if (panelIds.length > 0) {
+                    await tx.devicePanelBinding.createMany({
+                        data: panelIds.map(pid => ({
+                            deviceId: device.id,
+                            panelId: pid
+                        }))
+                    });
+                }
+            });
 
             // Re-fetch with updated bindings
             const refreshed = await prisma.device.findUnique({

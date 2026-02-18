@@ -109,7 +109,9 @@ router.post('/', authenticate, async (req, res, next) => {
             cancelTemplate,
             speedupTemplate,
             errorTemplate,
-            priority
+            priority,
+            deviceId,
+            isActive
         } = req.body;
 
         if (!providerName) {
@@ -154,7 +156,9 @@ router.post('/', authenticate, async (req, res, next) => {
                 cancelTemplate,
                 speedupTemplate,
                 errorTemplate,
-                priority: priority ?? 0
+                priority: priority ?? 0,
+                deviceId: deviceId || null,
+                isActive: isActive ?? true
             }
         });
 
@@ -192,7 +196,7 @@ router.put('/:id', authenticate, async (req, res, next) => {
             'telegramChatId', 'telegramBotToken',
             'errorGroupJid', 'errorChatId', 'errorNotifyEnabled',
             'refillTemplate', 'cancelTemplate', 'speedupTemplate', 'errorTemplate',
-            'priority', 'isActive'
+            'priority', 'isActive', 'deviceId'
         ];
 
         for (const field of allowedFields) {

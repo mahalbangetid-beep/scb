@@ -430,8 +430,9 @@ router.post('/:id/switch-number', authenticate, async (req, res, next) => {
             });
 
             // Create new subscription with remaining time
+            let newSubId;
             if (existingNew) {
-                await tx.systemBotSubscription.update({
+                const updated = await tx.systemBotSubscription.update({
                     where: { id: existingNew.id },
                     data: {
                         status: 'ACTIVE',
@@ -443,8 +444,9 @@ router.post('/:id/switch-number', authenticate, async (req, res, next) => {
                         failedAttempts: 0
                     }
                 });
+                newSubId = updated.id;
             } else {
-                await tx.systemBotSubscription.create({
+                const created = await tx.systemBotSubscription.create({
                     data: {
                         userId,
                         deviceId: newDeviceId,
@@ -458,7 +460,38 @@ router.post('/:id/switch-number', authenticate, async (req, res, next) => {
                         autoRenew: true
                     }
                 });
+                newSubId = created.id;
             }
+
+            // Transfer assigned groups from old subscription to new subscription
+            // Reset test status since the new bot needs to be tested in each group
+            const oldGroups = await tx.systemBotGroup.findMany({
+                where: { subscriptionId: currentSub.id }
+            });
+
+            for (const group of oldGroups) {
+                // Check if group already exists on new subscription (avoid unique constraint)
+                const existingGroup = await tx.systemBotGroup.findUnique({
+                    where: { subscriptionId_groupJid: { subscriptionId: newSubId, groupJid: group.groupJid } }
+                });
+
+                if (!existingGroup) {
+                    await tx.systemBotGroup.create({
+                        data: {
+                            subscriptionId: newSubId,
+                            groupJid: group.groupJid,
+                            groupName: group.groupName,
+                            isTested: false, // Must re-test with new bot
+                            isActive: false
+                        }
+                    });
+                }
+            }
+
+            // Delete old groups from cancelled subscription
+            await tx.systemBotGroup.deleteMany({
+                where: { subscriptionId: currentSub.id }
+            });
         });
 
         successResponse(res, { oldDeviceId: currentDeviceId, newDeviceId },
@@ -468,7 +501,184 @@ router.post('/:id/switch-number', authenticate, async (req, res, next) => {
     }
 });
 
+// ==================== GROUP ASSIGNMENT (Section 11) ====================
+
+// POST /api/system-bots/:id/assign-group - Assign a support group to subscription
+router.post('/:id/assign-group', authenticate, async (req, res, next) => {
+    try {
+        const userId = req.user.id;
+        const deviceId = req.params.id;
+        const { groupJid, groupName } = req.body;
+
+        if (!groupJid || !groupName) {
+            throw new AppError('Group JID and name are required', 400);
+        }
+
+        // Verify active subscription
+        const sub = await prisma.systemBotSubscription.findUnique({
+            where: { userId_deviceId: { userId, deviceId } }
+        });
+
+        if (!sub || sub.status !== 'ACTIVE') {
+            throw new AppError('No active subscription found for this bot', 404);
+        }
+
+        // Normalize group JID BEFORE duplicate check
+        const normalizedJid = groupJid.includes('@') ? groupJid : `${groupJid}@g.us`;
+
+        // Check if already assigned (using normalized JID)
+        const existing = await prisma.systemBotGroup.findUnique({
+            where: { subscriptionId_groupJid: { subscriptionId: sub.id, groupJid: normalizedJid } }
+        });
+
+        if (existing) {
+            throw new AppError('This group is already assigned to this bot', 400);
+        }
+
+        const assignment = await prisma.systemBotGroup.create({
+            data: {
+                subscriptionId: sub.id,
+                groupJid: normalizedJid,
+                groupName,
+                isTested: false,
+                isActive: false
+            }
+        });
+
+        successResponse(res, assignment, 'Group assigned. Please test the bot in this group before activation.', 201);
+    } catch (error) {
+        next(error);
+    }
+});
+
+// DELETE /api/system-bots/:id/remove-group/:groupId - Remove a group assignment
+router.delete('/:id/remove-group/:groupId', authenticate, async (req, res, next) => {
+    try {
+        const userId = req.user.id;
+        const deviceId = req.params.id;
+        const groupId = req.params.groupId;
+
+        // Verify subscription ownership
+        const sub = await prisma.systemBotSubscription.findUnique({
+            where: { userId_deviceId: { userId, deviceId } }
+        });
+
+        if (!sub) {
+            throw new AppError('Subscription not found', 404);
+        }
+
+        // Verify group belongs to this subscription
+        const group = await prisma.systemBotGroup.findFirst({
+            where: { id: groupId, subscriptionId: sub.id }
+        });
+
+        if (!group) {
+            throw new AppError('Group assignment not found', 404);
+        }
+
+        await prisma.systemBotGroup.delete({ where: { id: groupId } });
+
+        successResponse(res, { id: groupId }, 'Group removed from bot');
+    } catch (error) {
+        next(error);
+    }
+});
+
+// POST /api/system-bots/:id/test-group/:groupId - Test bot in assigned group
+router.post('/:id/test-group/:groupId', authenticate, async (req, res, next) => {
+    try {
+        const userId = req.user.id;
+        const deviceId = req.params.id;
+        const groupId = req.params.groupId;
+
+        // Verify subscription
+        const sub = await prisma.systemBotSubscription.findUnique({
+            where: { userId_deviceId: { userId, deviceId } }
+        });
+
+        if (!sub || sub.status !== 'ACTIVE') {
+            throw new AppError('No active subscription found', 404);
+        }
+
+        // Verify group assignment
+        const group = await prisma.systemBotGroup.findFirst({
+            where: { id: groupId, subscriptionId: sub.id }
+        });
+
+        if (!group) {
+            throw new AppError('Group assignment not found', 404);
+        }
+
+        // Get WhatsApp service
+        const whatsappService = req.app.get('whatsapp');
+        if (!whatsappService) {
+            throw new AppError('WhatsApp service not available', 500);
+        }
+
+        // Check bot is connected
+        const bot = await prisma.device.findFirst({
+            where: { id: deviceId, isSystemBot: true }
+        });
+
+        if (!bot || bot.status !== 'connected') {
+            throw new AppError('System bot is not connected', 400);
+        }
+
+        // Check if bot is in the group by trying to fetch group info
+        const socket = whatsappService.getSession(deviceId);
+        if (!socket) {
+            throw new AppError('Bot session not available', 400);
+        }
+
+        // Try to verify bot is in the group
+        let botInGroup = false;
+        try {
+            if (typeof socket.groupFetchAllParticipating === 'function') {
+                const groups = await socket.groupFetchAllParticipating();
+                botInGroup = !!groups[group.groupJid];
+            } else {
+                // Fallback: try sending and see if it fails
+                botInGroup = true; // Assume yes, test message will confirm
+            }
+        } catch (e) {
+            throw new AppError(`Bot is NOT in this group. Please add the bot (${bot.phone || 'unknown'}) to the group first.`, 400);
+        }
+
+        if (!botInGroup) {
+            throw new AppError(`Bot is NOT in this group "${group.groupName}". Please add the bot number (${bot.phone || 'unknown'}) to the group first.`, 400);
+        }
+
+        // Send test message
+        try {
+            await whatsappService.sendMessage(deviceId, group.groupJid,
+                `✅ *System Bot Test Successful*\n\n` +
+                `Bot: ${bot.name}\n` +
+                `Group: ${group.groupName}\n` +
+                `Time: ${new Date().toLocaleString()}\n\n` +
+                `_This bot is now active in this group. It will respond to commands like /status, /refill, /cancel._`
+            );
+        } catch (sendErr) {
+            throw new AppError(`Failed to send test message. Bot may not be in this group. Please add ${bot.phone || 'the bot number'} to the group first.`, 400);
+        }
+
+        // Mark as tested and active
+        const updated = await prisma.systemBotGroup.update({
+            where: { id: groupId },
+            data: {
+                isTested: true,
+                testedAt: new Date(),
+                isActive: true
+            }
+        });
+
+        successResponse(res, updated, `Test successful! Bot is active in "${group.groupName}".`);
+    } catch (error) {
+        next(error);
+    }
+});
+
 // GET /api/system-bots/my-subscriptions - List user's active subscriptions
+// NOTE: This MUST be BEFORE /:id/* routes to prevent Express treating "my-subscriptions" as an :id param
 router.get('/my-subscriptions', authenticate, async (req, res, next) => {
     try {
         const subs = await prisma.systemBotSubscription.findMany({
@@ -476,12 +686,40 @@ router.get('/my-subscriptions', authenticate, async (req, res, next) => {
             include: {
                 device: {
                     select: { id: true, name: true, phone: true, status: true, usageLimit: true }
+                },
+                assignedGroups: {
+                    orderBy: { createdAt: 'desc' }
                 }
             },
             orderBy: { createdAt: 'desc' }
         });
 
         successResponse(res, subs, 'Subscriptions retrieved');
+    } catch (error) {
+        next(error);
+    }
+});
+
+// GET /api/system-bots/:id/groups - Get groups assigned to a subscription
+router.get('/:id/groups', authenticate, async (req, res, next) => {
+    try {
+        const userId = req.user.id;
+        const deviceId = req.params.id;
+
+        const sub = await prisma.systemBotSubscription.findUnique({
+            where: { userId_deviceId: { userId, deviceId } }
+        });
+
+        if (!sub) {
+            throw new AppError('Subscription not found', 404);
+        }
+
+        const groups = await prisma.systemBotGroup.findMany({
+            where: { subscriptionId: sub.id },
+            orderBy: { createdAt: 'desc' }
+        });
+
+        successResponse(res, groups, 'Groups retrieved');
     } catch (error) {
         next(error);
     }
@@ -564,7 +802,7 @@ async function processSystemBotRenewals() {
             // After 3 failed attempts, suspend
             if (failedAttempts >= 3) {
                 const graceEnd = new Date(now);
-                graceEnd.setDate(graceEnd.getDate() + sub.gracePeriodDays);
+                graceEnd.setDate(graceEnd.getDate() + (sub.gracePeriodDays || 3));
                 updateData.status = 'SUSPENDED';
                 updateData.expiresAt = graceEnd;
             }
