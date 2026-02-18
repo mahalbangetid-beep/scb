@@ -3,7 +3,7 @@ import {
     Wallet, CreditCard, ArrowUpRight, ArrowDownLeft,
     Gift, Clock, CheckCircle2, XCircle, AlertCircle,
     Plus, Loader2, X, RefreshCw, DollarSign, TrendingUp, Package, Star, QrCode, Copy,
-    MessageSquare, ArrowRightLeft, Zap, Search
+    MessageSquare, Zap, Search
 } from 'lucide-react'
 import api from '../services/api'
 
@@ -36,9 +36,6 @@ export default function WalletPage() {
 
     // Message Credits state
     const [messageCreditInfo, setMessageCreditInfo] = useState(null)
-    const [showConvertModal, setShowConvertModal] = useState(false)
-    const [convertAmount, setConvertAmount] = useState('')
-    const [convertLoading, setConvertLoading] = useState(false)
 
     const [billingMode, setBillingMode] = useState('CREDITS') // CREDITS or DOLLARS
     const [txSearchQuery, setTxSearchQuery] = useState('')
@@ -276,6 +273,17 @@ export default function WalletPage() {
     }
 
     const handlePurchasePackage = async (packageId) => {
+        // Find the package info to show in confirmation
+        const pkg = creditPackages.find(p => p.id === packageId)
+        if (!pkg) return
+
+        const totalCredits = (pkg.credits || 0) + (pkg.bonusCredits || 0)
+        if (!window.confirm(
+            `Purchase "${pkg.name}" for $${pkg.price.toFixed(2)}?\n\n` +
+            `You'll receive ${totalCredits.toLocaleString()} message credits.\n` +
+            `Amount will be deducted from your wallet balance.`
+        )) return
+
         setPurchaseLoading(packageId)
         setError(null)
         try {
@@ -332,31 +340,7 @@ export default function WalletPage() {
         return `$${(amount || 0).toFixed(2)}`
     }
 
-    const handleConvertToCredits = async (e) => {
-        e.preventDefault()
-        if (!convertAmount || parseFloat(convertAmount) <= 0) {
-            setError('Please enter a valid amount')
-            return
-        }
 
-        setConvertLoading(true)
-        setError(null)
-
-        try {
-            const res = await api.post('/message-credits/convert', {
-                amount: parseFloat(convertAmount)
-            })
-            setSuccess(`Converted $${convertAmount} to ${res.data?.creditsReceived} message credits!`)
-            setShowConvertModal(false)
-            setConvertAmount('')
-            fetchData()
-            window.dispatchEvent(new CustomEvent('user-data-updated'))
-        } catch (err) {
-            setError(err.error?.message || err.message || 'Failed to convert')
-        } finally {
-            setConvertLoading(false)
-        }
-    }
 
     const getTransactionIcon = (type) => {
         return type === 'CREDIT' ? (
@@ -494,7 +478,7 @@ export default function WalletPage() {
                         <div className="credits-info">
                             <small>
                                 1 credit = 1 bot message •
-                                ${walletInfo?.balance?.toFixed(2) || '0.00'} available to convert
+                                Wallet: ${walletInfo?.balance?.toFixed(2) || '0.00'}
                             </small>
                         </div>
                         <div className="balance-actions">
@@ -569,17 +553,17 @@ export default function WalletPage() {
                             <Zap size={20} />
                         </div>
                         <div className="stat-content">
-                            <span className="stat-label">Conversion Rate</span>
-                            <span className="stat-value">$1 = {messageCreditInfo?.conversionRate || 100} credits</span>
+                            <span className="stat-label">Messages Remaining</span>
+                            <span className="stat-value">{(messageCreditInfo?.messageCredits || 0).toLocaleString()}</span>
                         </div>
                     </div>
                     <div className="stat-card">
                         <div className="stat-icon credits-icon-bg">
-                            <ArrowRightLeft size={20} />
+                            <DollarSign size={20} />
                         </div>
                         <div className="stat-content">
-                            <span className="stat-label">$ Balance</span>
-                            <span className="stat-value">{formatCurrency(walletInfo?.balance)} available</span>
+                            <span className="stat-label">Wallet Balance</span>
+                            <span className="stat-value">{formatCurrency(walletInfo?.balance)}</span>
                         </div>
                     </div>
                 </div>
@@ -609,19 +593,19 @@ export default function WalletPage() {
             {/* Credits Info - Only show for CREDITS mode */}
             {billingMode === 'CREDITS' && (
                 <div className="rates-card credits-info-card">
-                    <h3>Credits System</h3>
+                    <h3>Message Credits</h3>
                     <div className="rates-grid">
                         <div className="rate-item">
                             <span>Cost per Message</span>
                             <span className="rate-value">1 credit</span>
                         </div>
                         <div className="rate-item">
-                            <span>Your Custom Rate</span>
-                            <span className="rate-value">{messageCreditInfo?.customRate || 1} credit/msg</span>
+                            <span>Your Credits</span>
+                            <span className="rate-value">{(messageCreditInfo?.messageCredits || 0).toLocaleString()}</span>
                         </div>
                         <div className="rate-item">
-                            <span>Free Signup Credits</span>
-                            <span className="rate-value">100 credits</span>
+                            <span>Buy More</span>
+                            <span className="rate-value">Top Up → Buy Packages</span>
                         </div>
                     </div>
                 </div>
@@ -1068,79 +1052,6 @@ export default function WalletPage() {
                 )
             }
 
-            {/* Convert Dollar to Credits Modal */}
-            {showConvertModal && (
-                <div className="modal-overlay open" onClick={() => setShowConvertModal(false)}>
-                    <div className="modal" onClick={(e) => e.stopPropagation()}>
-                        <div className="modal-header">
-                            <h2>Convert to Message Credits</h2>
-                            <button className="modal-close" onClick={() => setShowConvertModal(false)}>
-                                <X size={20} />
-                            </button>
-                        </div>
-                        <form onSubmit={handleConvertToCredits}>
-                            <div className="modal-body">
-                                <div className="convert-info-box">
-                                    <div className="convert-rate">
-                                        <Zap size={20} />
-                                        <span>Conversion Rate: <strong>$1 = {messageCreditInfo?.conversionRate || 100} credits</strong></span>
-                                    </div>
-                                    <div className="convert-balance">
-                                        <span>Your Dollar Balance: <strong>{formatCurrency(walletInfo?.balance)}</strong></span>
-                                    </div>
-                                </div>
-                                <div className="form-group">
-                                    <label className="form-label">Amount to Convert ($)</label>
-                                    <input
-                                        type="number"
-                                        className="form-input"
-                                        placeholder="Enter dollar amount"
-                                        value={convertAmount}
-                                        onChange={(e) => setConvertAmount(e.target.value)}
-                                        min="0.01"
-                                        max={walletInfo?.balance || 0}
-                                        step="0.01"
-                                        required
-                                    />
-                                </div>
-                                {convertAmount && parseFloat(convertAmount) > 0 && (
-                                    <div className="convert-preview">
-                                        <ArrowRightLeft size={20} />
-                                        <span>
-                                            ${parseFloat(convertAmount).toFixed(2)} → <strong>{Math.floor(parseFloat(convertAmount) * (messageCreditInfo?.conversionRate || 100)).toLocaleString()} credits</strong>
-                                        </span>
-                                    </div>
-                                )}
-                                <div className="quick-amounts">
-                                    {[1, 5, 10, 25].filter(amt => amt <= (walletInfo?.balance || 0)).map(amt => (
-                                        <button
-                                            key={amt}
-                                            type="button"
-                                            className="quick-amount-btn"
-                                            onClick={() => setConvertAmount(amt.toString())}
-                                        >
-                                            ${amt} → {(amt * (messageCreditInfo?.conversionRate || 100)).toLocaleString()}
-                                        </button>
-                                    ))}
-                                </div>
-                            </div>
-                            <div className="modal-footer">
-                                <button type="button" className="btn btn-secondary" onClick={() => setShowConvertModal(false)}>
-                                    Cancel
-                                </button>
-                                <button
-                                    type="submit"
-                                    className="btn btn-primary"
-                                    disabled={convertLoading || !convertAmount || parseFloat(convertAmount) <= 0 || parseFloat(convertAmount) > (walletInfo?.balance || 0)}
-                                >
-                                    {convertLoading ? <Loader2 className="animate-spin" size={18} /> : 'Convert Now'}
-                                </button>
-                            </div>
-                        </form>
-                    </div>
-                </div>
-            )}
-
             <style>{`
                 .balance-section {
                     display: grid;
@@ -1280,43 +1191,6 @@ export default function WalletPage() {
                 }
 
                 .credits-info-card h3 {
-                    color: #10b981;
-                }
-
-                /* Convert Modal Styles */
-                .convert-info-box {
-                    background: var(--bg-tertiary);
-                    border-radius: var(--radius-md);
-                    padding: var(--spacing-lg);
-                    margin-bottom: var(--spacing-lg);
-                }
-
-                .convert-rate, .convert-balance {
-                    display: flex;
-                    align-items: center;
-                    gap: var(--spacing-sm);
-                    margin-bottom: var(--spacing-sm);
-                }
-
-                .convert-rate svg {
-                    color: #fbbf24;
-                }
-
-                .convert-preview {
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                    gap: var(--spacing-sm);
-                    padding: var(--spacing-md);
-                    background: linear-gradient(135deg, rgba(16, 185, 129, 0.1), rgba(5, 150, 105, 0.1));
-                    border: 1px solid rgba(16, 185, 129, 0.3);
-                    border-radius: var(--radius-md);
-                    margin: var(--spacing-md) 0;
-                    color: #10b981;
-                    font-size: 1.1rem;
-                }
-
-                .convert-preview svg {
                     color: #10b981;
                 }
 

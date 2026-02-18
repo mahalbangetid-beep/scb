@@ -148,7 +148,7 @@ class CreditPackageService {
             data: {
                 name: data.name,
                 description: data.description || null,
-                category: data.category || 'support',
+                category: ['support', 'whatsapp_marketing', 'telegram_marketing'].includes(data.category) ? data.category : 'support',
                 price: data.price,
                 credits: data.credits,
                 bonusCredits: data.bonusCredits || 0,

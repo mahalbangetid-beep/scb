@@ -25,7 +25,10 @@ router.use(authenticate);
 router.get('/', async (req, res, next) => {
     try {
         const { category } = req.query;
-        const packages = await creditPackageService.getPackagesWithValues(category || null);
+        // Validate category if provided
+        const validCategories = ['support', 'whatsapp_marketing', 'telegram_marketing'];
+        const validatedCategory = category && validCategories.includes(category) ? category : null;
+        const packages = await creditPackageService.getPackagesWithValues(validatedCategory);
         successResponse(res, packages);
     } catch (error) {
         next(error);
@@ -75,12 +78,13 @@ router.get('/:id', async (req, res, next) => {
 
 /**
  * POST /api/credit-packages/:id/purchase
- * Purchase a credit package (creates payment request)
+ * Purchase a credit package — deducts from wallet balance and grants message credits atomically
  */
 router.post('/:id/purchase', async (req, res, next) => {
     try {
-        const { quantity, paymentMethod } = req.body;
+        const { quantity } = req.body;
         const packageId = req.params.id;
+        const userId = req.user.id;
 
         const pkg = await creditPackageService.getById(packageId);
         if (!pkg) {
@@ -92,42 +96,134 @@ router.post('/:id/purchase', async (req, res, next) => {
         }
 
         const qty = quantity || 1;
-        const totalPrice = pkg.price * qty;
-        const totalCredits = (pkg.credits + (pkg.bonusCredits || 0)) * qty;
 
-        // Create payment record
+        // Validate quantity limits
+        if (qty < (pkg.minPurchase || 1)) {
+            throw new AppError(`Minimum purchase quantity is ${pkg.minPurchase}`, 400);
+        }
+        if (pkg.maxPurchase && qty > pkg.maxPurchase) {
+            throw new AppError(`Maximum purchase quantity is ${pkg.maxPurchase}`, 400);
+        }
+
+        const totalPrice = pkg.price * qty;
+        const baseCredits = pkg.credits * qty;
+        const bonusCredits = (pkg.bonusCredits || 0) * qty;
+        const totalCredits = baseCredits + bonusCredits;
+
         const prisma = require('../utils/prisma');
-        const payment = await prisma.payment.create({
-            data: {
-                userId: req.user.id,
-                amount: totalPrice,
-                method: paymentMethod || 'PENDING',
-                status: 'PENDING',
-                metadata: JSON.stringify({
-                    type: 'CREDIT_PACKAGE',
-                    packageId,
-                    packageName: pkg.name,
-                    quantity: qty,
-                    credits: totalCredits,
-                    baseCredits: pkg.credits * qty,
-                    bonusCredits: (pkg.bonusCredits || 0) * qty
-                })
+
+        // Atomic transaction: check balance → deduct → grant credits → log
+        const result = await prisma.$transaction(async (tx) => {
+            // 1. Read balance inside transaction for atomicity
+            const user = await tx.user.findUnique({
+                where: { id: userId },
+                select: { creditBalance: true, messageCredits: true }
+            });
+
+            if (!user) {
+                throw new AppError('User not found', 404);
             }
+
+            const walletBalance = user.creditBalance || 0;
+            if (walletBalance < totalPrice) {
+                throw new AppError(
+                    `Insufficient wallet balance. You need $${totalPrice.toFixed(2)} but have $${walletBalance.toFixed(2)}. Please top up first.`,
+                    400
+                );
+            }
+
+            const balanceBefore = walletBalance;
+            const balanceAfter = balanceBefore - totalPrice;
+            const creditsBefore = user.messageCredits || 0;
+            const creditsAfter = creditsBefore + totalCredits;
+
+            // 2. Deduct wallet balance
+            await tx.user.update({
+                where: { id: userId },
+                data: {
+                    creditBalance: { decrement: totalPrice },
+                    messageCredits: { increment: totalCredits }
+                }
+            });
+
+            // 3. Log the wallet deduction transaction
+            await tx.creditTransaction.create({
+                data: {
+                    userId,
+                    type: 'DEBIT',
+                    amount: totalPrice,
+                    description: `Purchased ${qty}x ${pkg.name} Package (${pkg.category || 'support'}) — ${totalCredits.toLocaleString()} credits`,
+                    balanceBefore,
+                    balanceAfter
+                }
+            });
+
+            // 4. Log the credit addition (if MessageCreditTransaction model exists)
+            try {
+                await tx.messageCreditTransaction.create({
+                    data: {
+                        userId,
+                        type: 'CREDIT',
+                        amount: totalCredits,
+                        description: `${qty}x ${pkg.name} Package — ${baseCredits.toLocaleString()} base + ${bonusCredits.toLocaleString()} bonus`,
+                        balanceBefore: creditsBefore,
+                        balanceAfter: creditsAfter,
+                        reference: `PKG_${packageId}_${Date.now()}`
+                    }
+                });
+            } catch (e) {
+                // MessageCreditTransaction model may not exist yet
+                console.log('[CreditPackage] MessageCreditTransaction logging skipped:', e.message);
+            }
+
+            // 5. Create completed payment record
+            const payment = await tx.payment.create({
+                data: {
+                    userId,
+                    amount: totalPrice,
+                    method: 'WALLET',
+                    status: 'COMPLETED',
+                    completedAt: new Date(),
+                    reference: `PKG-${packageId.slice(-6)}-${Date.now()}`,
+                    metadata: JSON.stringify({
+                        type: 'CREDIT_PACKAGE',
+                        packageId,
+                        packageName: pkg.name,
+                        category: pkg.category || 'support',
+                        quantity: qty,
+                        totalCredits,
+                        baseCredits,
+                        bonusCredits
+                    })
+                }
+            });
+
+            return {
+                paymentId: payment.id,
+                packageName: pkg.name,
+                quantity: qty,
+                totalPrice,
+                baseCredits,
+                bonusCredits,
+                totalCredits,
+                newWalletBalance: balanceAfter,
+                newCreditBalance: creditsAfter
+            };
+        }, {
+            isolationLevel: 'Serializable'
         });
 
+        console.log(`[CreditPackage] User ${userId} purchased ${qty}x ${pkg.name}: -$${totalPrice} → +${totalCredits} credits`);
+
         successResponse(res, {
-            paymentId: payment.id,
-            package: pkg.name,
-            quantity: qty,
-            totalPrice,
-            totalCredits,
-            status: 'PENDING',
-            message: 'Payment request created. Complete payment to receive credits.'
+            ...result,
+            message: `Successfully purchased ${pkg.name}! ${totalCredits.toLocaleString()} credits added to your account.`
         });
     } catch (error) {
         next(error);
     }
 });
+
 
 // ==================== ADMIN ROUTES ====================
 
