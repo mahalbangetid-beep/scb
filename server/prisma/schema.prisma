@@ -1289,6 +1289,9 @@ model CreditPackage {
   name        String // "Starter", "Pro", "Enterprise"
   description String?
 
+  // Category: what this package is for
+  category String @default("support") // support, whatsapp_marketing, telegram_marketing
+
   // Pricing
   price   Float // USD amount
   credits Int // Number of message credits
@@ -1316,6 +1319,7 @@ model CreditPackage {
 
   @@index([isActive])
   @@index([sortOrder])
+  @@index([category])
 }
 
 // ==================== MONTHLY SUBSCRIPTIONS ====================

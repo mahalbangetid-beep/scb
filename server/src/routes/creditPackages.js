@@ -20,10 +20,12 @@ router.use(authenticate);
 /**
  * GET /api/credit-packages
  * Get all active credit packages (for purchase)
+ * Query: ?category=support|whatsapp_marketing|telegram_marketing (optional filter)
  */
 router.get('/', async (req, res, next) => {
     try {
-        const packages = await creditPackageService.getPackagesWithValues();
+        const { category } = req.query;
+        const packages = await creditPackageService.getPackagesWithValues(category || null);
         successResponse(res, packages);
     } catch (error) {
         next(error);

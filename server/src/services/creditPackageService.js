@@ -21,6 +21,7 @@ class CreditPackageService {
             {
                 name: 'Starter',
                 description: 'Perfect for getting started',
+                category: 'support',
                 price: 10,
                 credits: 500,
                 bonusCredits: 0,
@@ -31,6 +32,7 @@ class CreditPackageService {
             {
                 name: 'Basic',
                 description: 'Most popular for small businesses',
+                category: 'support',
                 price: 25,
                 credits: 1500,
                 bonusCredits: 100,
@@ -41,6 +43,7 @@ class CreditPackageService {
             {
                 name: 'Pro',
                 description: 'Great value for growing businesses',
+                category: 'support',
                 price: 50,
                 credits: 5000,
                 bonusCredits: 500,
@@ -51,6 +54,7 @@ class CreditPackageService {
             {
                 name: 'Enterprise',
                 description: 'Best value for high-volume users',
+                category: 'support',
                 price: 100,
                 credits: 12000,
                 bonusCredits: 2000,
@@ -61,6 +65,7 @@ class CreditPackageService {
             {
                 name: 'Ultimate',
                 description: 'Maximum value with premium support',
+                category: 'support',
                 price: 200,
                 credits: 30000,
                 bonusCredits: 5000,
@@ -90,12 +95,18 @@ class CreditPackageService {
 
     /**
      * Get all active packages (for users)
+     * @param {string|null} category - Optional filter: 'support', 'whatsapp_marketing', 'telegram_marketing'
      */
-    async getActivePackages() {
+    async getActivePackages(category = null) {
         await this.initializeDefaults();
 
+        const where = { isActive: true };
+        if (category) {
+            where.category = category;
+        }
+
         return prisma.creditPackage.findMany({
-            where: { isActive: true },
+            where,
             orderBy: { sortOrder: 'asc' }
         });
     }
@@ -137,6 +148,7 @@ class CreditPackageService {
             data: {
                 name: data.name,
                 description: data.description || null,
+                category: data.category || 'support',
                 price: data.price,
                 credits: data.credits,
                 bonusCredits: data.bonusCredits || 0,
@@ -162,7 +174,7 @@ class CreditPackageService {
 
         const updateData = {};
         const allowedFields = [
-            'name', 'description', 'price', 'credits', 'bonusCredits',
+            'name', 'description', 'category', 'price', 'credits', 'bonusCredits',
             'discountPct', 'minPurchase', 'maxPurchase', 'isActive',
             'isFeatured', 'sortOrder'
         ];
@@ -296,9 +308,10 @@ class CreditPackageService {
 
     /**
      * Get packages with calculated values
+     * @param {string|null} category - Optional filter
      */
-    async getPackagesWithValues() {
-        const packages = await this.getActivePackages();
+    async getPackagesWithValues(category = null) {
+        const packages = await this.getActivePackages(category);
 
         return packages.map(pkg => ({
             ...pkg,

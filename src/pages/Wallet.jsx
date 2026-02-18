@@ -13,6 +13,7 @@ export default function WalletPage() {
     const [transactions, setTransactions] = useState([])
     const [payments, setPayments] = useState([])
     const [creditPackages, setCreditPackages] = useState([])
+    const [packageCategory, setPackageCategory] = useState('support')
     const [loading, setLoading] = useState(true)
     const [activeTab, setActiveTab] = useState('overview')
     const [showTopUpModal, setShowTopUpModal] = useState(false)
@@ -290,6 +291,43 @@ export default function WalletPage() {
         }
     }
 
+    const openPackagesModal = async (category = 'support') => {
+        setPackageCategory(category)
+        setShowPackagesModal(true)
+        try {
+            const res = await api.get(`/credit-packages?category=${category}`)
+            setCreditPackages(res.data || [])
+        } catch {
+            setCreditPackages([])
+        }
+    }
+
+    const handleCategoryChange = async (category) => {
+        setPackageCategory(category)
+        try {
+            const res = await api.get(`/credit-packages?category=${category}`)
+            setCreditPackages(res.data || [])
+        } catch {
+            setCreditPackages([])
+        }
+    }
+
+    const getTransactionCategory = (description) => {
+        if (!description) return null
+        const d = description.toLowerCase()
+        if (d.includes('system bot') || d.includes('systembot')) return { label: 'System Bot', color: '#8b5cf6' }
+        if (d.includes('whatsapp') && d.includes('market')) return { label: 'WA Marketing', color: '#22c55e' }
+        if (d.includes('telegram') && d.includes('market')) return { label: 'TG Marketing', color: '#0088cc' }
+        if (d.includes('support')) return { label: 'Support', color: '#3b82f6' }
+        if (d.includes('package') || d.includes('purchased')) return { label: 'Package', color: '#f59e0b' }
+        if (d.includes('voucher')) return { label: 'Voucher', color: '#ec4899' }
+        if (d.includes('payment') || d.includes('top-up') || d.includes('topup') || d.includes('deposit')) return { label: 'Top-Up', color: '#10b981' }
+        if (d.includes('renewal') || d.includes('subscription')) return { label: 'Renewal', color: '#6366f1' }
+        if (d.includes('device') || d.includes('number')) return { label: 'Device', color: '#f97316' }
+        if (d.includes('convert') || d.includes('conversion')) return { label: 'Conversion', color: '#14b8a6' }
+        return null
+    }
+
     const formatCurrency = (amount) => {
         return `$${(amount || 0).toFixed(2)}`
     }
@@ -435,7 +473,7 @@ export default function WalletPage() {
                                 <Gift size={18} />
                                 Voucher
                             </button>
-                            <button className="btn btn-secondary" onClick={() => setShowPackagesModal(true)}>
+                            <button className="btn btn-secondary" onClick={() => openPackagesModal('support')}>
                                 <Package size={18} />
                                 Packages
                             </button>
@@ -462,17 +500,13 @@ export default function WalletPage() {
                         <div className="balance-actions">
                             <button className="btn btn-primary" onClick={() => setShowTopUpModal(true)}>
                                 <Plus size={18} />
-                                Top Up $
+                                Top Up
                             </button>
-                            <button
-                                className="btn btn-secondary"
-                                onClick={() => setShowConvertModal(true)}
-                                disabled={!walletInfo?.balance || walletInfo.balance <= 0}
-                            >
-                                <ArrowRightLeft size={18} />
-                                Convert to Credits
+                            <button className="btn btn-secondary" onClick={() => setShowVoucherModal(true)}>
+                                <Gift size={18} />
+                                Voucher
                             </button>
-                            <button className="btn btn-secondary" onClick={() => setShowPackagesModal(true)}>
+                            <button className="btn btn-secondary" onClick={() => openPackagesModal('support')}>
                                 <Package size={18} />
                                 Packages
                             </button>
@@ -633,7 +667,18 @@ export default function WalletPage() {
                                                 {getTransactionIcon(tx.type)}
                                             </div>
                                             <div className="tx-info">
-                                                <span className="tx-description">{tx.description}</span>
+                                                <span className="tx-description">
+                                                    {tx.description}
+                                                    {(() => {
+                                                        const cat = getTransactionCategory(tx.description)
+                                                        if (!cat) return null
+                                                        return (
+                                                            <span className="tx-category-badge" style={{ background: `${cat.color}20`, color: cat.color, padding: '2px 8px', borderRadius: '10px', fontSize: '0.65rem', fontWeight: 600, marginLeft: '6px', verticalAlign: 'middle' }}>
+                                                                {cat.label}
+                                                            </span>
+                                                        )
+                                                    })()}
+                                                </span>
                                                 <span className="tx-date">
                                                     {new Date(tx.createdAt).toLocaleString()}
                                                 </span>
@@ -801,17 +846,58 @@ export default function WalletPage() {
                     <div className="modal-overlay open" onClick={() => setShowPackagesModal(false)}>
                         <div className="modal packages-modal" onClick={(e) => e.stopPropagation()}>
                             <div className="modal-header">
-                                <h2>Buy Credit Package</h2>
+                                <h2>Buy Message Packages</h2>
                                 <button className="modal-close" onClick={() => setShowPackagesModal(false)}>
                                     <X size={20} />
                                 </button>
                             </div>
                             <div className="modal-body">
-                                <p className="modal-subtitle">Select a package to purchase with your balance</p>
+                                {/* Category Tabs */}
+                                <div className="pkg-category-tabs">
+                                    <button
+                                        className={`pkg-cat-tab ${packageCategory === 'support' ? 'active' : ''}`}
+                                        onClick={() => handleCategoryChange('support')}
+                                    >
+                                        💬 Support Messages
+                                    </button>
+                                    <button
+                                        className={`pkg-cat-tab ${packageCategory === 'whatsapp_marketing' ? 'active' : ''}`}
+                                        onClick={() => handleCategoryChange('whatsapp_marketing')}
+                                    >
+                                        📱 WhatsApp Marketing
+                                    </button>
+                                    <button
+                                        className={`pkg-cat-tab ${packageCategory === 'telegram_marketing' ? 'active' : ''}`}
+                                        onClick={() => handleCategoryChange('telegram_marketing')}
+                                    >
+                                        ✈️ Telegram Marketing
+                                    </button>
+                                </div>
+
+                                {/* Notice Banner */}
+                                {packageCategory === 'support' && (
+                                    <div className="pkg-notice">
+                                        <AlertCircle size={16} />
+                                        <span>Support packages are for <strong>customer support messages only</strong>, not for marketing purposes.</span>
+                                    </div>
+                                )}
+                                {packageCategory === 'whatsapp_marketing' && (
+                                    <div className="pkg-notice pkg-notice-green">
+                                        <AlertCircle size={16} />
+                                        <span>These packages are for <strong>WhatsApp bulk marketing</strong> messages via bot broadcasting.</span>
+                                    </div>
+                                )}
+                                {packageCategory === 'telegram_marketing' && (
+                                    <div className="pkg-notice pkg-notice-blue">
+                                        <AlertCircle size={16} />
+                                        <span>These packages are for <strong>Telegram marketing</strong> messages via bot broadcasting.</span>
+                                    </div>
+                                )}
+
                                 <div className="packages-grid-modal">
                                     {creditPackages.length === 0 ? (
-                                        <div className="empty-state-sm">
-                                            <p>No packages available</p>
+                                        <div className="empty-state-sm" style={{ gridColumn: '1 / -1' }}>
+                                            <p>No packages available in this category</p>
                                         </div>
                                     ) : (
                                         creditPackages.map(pkg => (
@@ -1495,13 +1581,81 @@ export default function WalletPage() {
                 }
 
                 .packages-modal {
-                    max-width: 700px;
-                    width: 90%;
+                    max-width: 800px;
+                    width: 92%;
                 }
 
                 .modal-subtitle {
                     color: var(--text-secondary);
                     margin-bottom: var(--spacing-lg);
+                }
+
+                .pkg-category-tabs {
+                    display: flex;
+                    gap: var(--spacing-xs);
+                    margin-bottom: var(--spacing-md);
+                    border-bottom: 1px solid var(--border-color);
+                    padding-bottom: var(--spacing-sm);
+                }
+
+                .pkg-cat-tab {
+                    padding: var(--spacing-sm) var(--spacing-md);
+                    background: none;
+                    border: none;
+                    color: var(--text-secondary);
+                    cursor: pointer;
+                    border-bottom: 2px solid transparent;
+                    transition: all 0.2s;
+                    font-size: 0.85rem;
+                    white-space: nowrap;
+                    border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+                }
+
+                .pkg-cat-tab:hover {
+                    color: var(--text-primary);
+                    background: var(--bg-tertiary);
+                }
+
+                .pkg-cat-tab.active {
+                    color: var(--primary-500);
+                    border-bottom-color: var(--primary-500);
+                    font-weight: 600;
+                }
+
+                .pkg-notice {
+                    display: flex;
+                    align-items: center;
+                    gap: var(--spacing-sm);
+                    padding: var(--spacing-sm) var(--spacing-md);
+                    background: rgba(59, 130, 246, 0.08);
+                    border: 1px solid rgba(59, 130, 246, 0.2);
+                    border-radius: var(--radius-md);
+                    margin-bottom: var(--spacing-md);
+                    font-size: 0.825rem;
+                    color: #3b82f6;
+                    line-height: 1.4;
+                }
+
+                .pkg-notice-green {
+                    background: rgba(34, 197, 94, 0.08);
+                    border-color: rgba(34, 197, 94, 0.2);
+                    color: #22c55e;
+                }
+
+                .pkg-notice-blue {
+                    background: rgba(0, 136, 204, 0.08);
+                    border-color: rgba(0, 136, 204, 0.2);
+                    color: #0088cc;
+                }
+
+                @media (max-width: 600px) {
+                    .pkg-category-tabs {
+                        flex-wrap: wrap;
+                    }
+                    .pkg-cat-tab {
+                        font-size: 0.75rem;
+                        padding: var(--spacing-xs) var(--spacing-sm);
+                    }
                 }
 
                 .packages-grid-modal {

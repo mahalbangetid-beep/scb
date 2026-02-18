@@ -14,6 +14,7 @@ const CreditPackages = () => {
     const [formData, setFormData] = useState({
         name: '',
         description: '',
+        category: 'support',
         price: '',
         credits: '',
         bonusCredits: '0',
@@ -77,6 +78,7 @@ const CreditPackages = () => {
         setFormData({
             name: item.name,
             description: item.description || '',
+            category: item.category || 'support',
             price: item.price.toString(),
             credits: item.credits.toString(),
             bonusCredits: (item.bonusCredits || 0).toString(),
@@ -124,6 +126,7 @@ const CreditPackages = () => {
         setFormData({
             name: '',
             description: '',
+            category: 'support',
             price: '',
             credits: '',
             bonusCredits: '0',
@@ -134,6 +137,24 @@ const CreditPackages = () => {
             isActive: true,
             isFeatured: false
         });
+    };
+
+    const getCategoryLabel = (cat) => {
+        const labels = {
+            support: 'Support Messages',
+            whatsapp_marketing: 'WhatsApp Marketing',
+            telegram_marketing: 'Telegram Marketing'
+        };
+        return labels[cat] || cat;
+    };
+
+    const getCategoryColor = (cat) => {
+        const colors = {
+            support: { bg: 'rgba(59, 130, 246, 0.15)', color: '#3b82f6' },
+            whatsapp_marketing: { bg: 'rgba(34, 197, 94, 0.15)', color: '#22c55e' },
+            telegram_marketing: { bg: 'rgba(59, 130, 246, 0.15)', color: '#0088cc' }
+        };
+        return colors[cat] || colors.support;
     };
 
     if (loading) {
@@ -189,7 +210,12 @@ const CreditPackages = () => {
 
                             <div className="package-header">
                                 <h3>{pkg.name}</h3>
-                                {!pkg.isActive && <span className="badge badge-warning">Inactive</span>}
+                                <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                                    <span className="category-badge" style={{ background: getCategoryColor(pkg.category).bg, color: getCategoryColor(pkg.category).color, padding: '0.2rem 0.6rem', borderRadius: '12px', fontSize: '0.7rem', fontWeight: 600 }}>
+                                        {getCategoryLabel(pkg.category)}
+                                    </span>
+                                    {!pkg.isActive && <span className="badge badge-warning">Inactive</span>}
+                                </div>
                             </div>
 
                             <div className="package-price">
@@ -292,6 +318,19 @@ const CreditPackages = () => {
                                         onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                                         placeholder="Short description..."
                                     />
+                                </div>
+
+                                <div className="form-group">
+                                    <label>Category *</label>
+                                    <select
+                                        className="form-select"
+                                        value={formData.category}
+                                        onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+                                    >
+                                        <option value="support">Support Messages</option>
+                                        <option value="whatsapp_marketing">WhatsApp Marketing</option>
+                                        <option value="telegram_marketing">Telegram Marketing</option>
+                                    </select>
                                 </div>
 
                                 <div className="form-row">
