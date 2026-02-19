@@ -365,60 +365,68 @@ class BotMessageHandler {
         }
 
         // Priority 2: Check auto-reply rules
-        const autoReplyResult = await this.handleAutoReply({
-            userId,
-            message,
-            senderNumber,
-            senderName,
-            deviceId,
-            platform,
-            isGroup
-        });
+        // Note: AutoReplyRule schema has no applyToGroups field,
+        // so auto-reply rules only apply to DM (private) messages.
+        // Group messages are handled by KeywordResponse (which HAS applyToGroups).
+        if (!isGroup) {
+            const autoReplyResult = await this.handleAutoReply({
+                userId,
+                message,
+                senderNumber,
+                senderName,
+                deviceId,
+                platform,
+                isGroup
+            });
 
-        if (autoReplyResult.handled) {
-            // Increment system bot usage for auto-replies
-            if (params._systemBotSubscriptionId) {
-                await this.incrementSystemBotUsage(params._systemBotSubscriptionId);
+            if (autoReplyResult.handled) {
+                // Increment system bot usage for auto-replies
+                if (params._systemBotSubscriptionId) {
+                    await this.incrementSystemBotUsage(params._systemBotSubscriptionId);
+                }
+                return autoReplyResult;
             }
-            return autoReplyResult;
         }
 
         // Priority 3: Custom keyword workflows (future)
         // ... implementasi di Phase berikutnya
 
-        // Priority 4: Reply to all messages fallback
-        // If enabled, bot will reply to ANY message with a fallback response
-        try {
-            const botFeatureService = require('./botFeatureService');
-            const scope = {};
-            if (deviceId) scope.deviceId = deviceId;
-            if (panelId) scope.panelId = panelId;
-            const botToggles = await botFeatureService.getToggles(userId, scope);
+        // Priority 4: Reply to all messages fallback (DMs only)
+        // If enabled, bot will reply to unmatched DM messages with a fallback response.
+        // Groups are excluded to prevent the bot from responding to every single message.
+        if (!isGroup) {
+            try {
+                const botFeatureService = require('./botFeatureService');
+                const scope = {};
+                if (deviceId) scope.deviceId = deviceId;
+                if (panelId) scope.panelId = panelId;
+                const botToggles = await botFeatureService.getToggles(userId, scope);
 
-            if (botToggles?.replyToAllMessages) {
-                const fallbackMessage = botToggles.fallbackMessage ||
-                    `I didn't understand your message.\n\n` +
-                    `📋 *Available Commands:*\n` +
-                    `• \`[Order ID] status\` - Check order status\n` +
-                    `• \`[Order ID] refill\` - Request refill\n` +
-                    `• \`[Order ID] cancel\` - Cancel order\n` +
-                    `• \`ticket\` - View your tickets\n` +
-                    `• \`.help\` - Show all commands\n\n` +
-                    `Example: \`12345 status\``;
+                if (botToggles?.replyToAllMessages) {
+                    const fallbackMessage = botToggles.fallbackMessage ||
+                        `I didn't understand your message.\n\n` +
+                        `📋 *Available Commands:*\n` +
+                        `• \`[Order ID] status\` - Check order status\n` +
+                        `• \`[Order ID] refill\` - Request refill\n` +
+                        `• \`[Order ID] cancel\` - Cancel order\n` +
+                        `• \`ticket\` - View your tickets\n` +
+                        `• \`.help\` - Show all commands\n\n` +
+                        `Example: \`12345 status\``;
 
-                console.log(`[BotHandler] No handler matched, sending fallback response`);
-                // Increment system bot usage for fallback
-                if (params._systemBotSubscriptionId) {
-                    await this.incrementSystemBotUsage(params._systemBotSubscriptionId);
+                    console.log(`[BotHandler] No handler matched, sending fallback response (DM only)`);
+                    // Increment system bot usage for fallback
+                    if (params._systemBotSubscriptionId) {
+                        await this.incrementSystemBotUsage(params._systemBotSubscriptionId);
+                    }
+                    return {
+                        handled: true,
+                        type: 'fallback',
+                        response: fallbackMessage
+                    };
                 }
-                return {
-                    handled: true,
-                    type: 'fallback',
-                    response: fallbackMessage
-                };
+            } catch (fallbackError) {
+                console.log(`[BotHandler] Fallback check error:`, fallbackError.message);
             }
-        } catch (fallbackError) {
-            console.log(`[BotHandler] Fallback check error:`, fallbackError.message);
         }
 
         // No handler matched

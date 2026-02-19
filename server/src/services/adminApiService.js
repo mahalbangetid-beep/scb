@@ -1113,9 +1113,10 @@ class AdminApiService {
                 }
 
                 if (status === 404) {
+                    const requestedUrl = error.response?.config?.url || config?.url || 'unknown';
                     return {
                         success: false,
-                        error: 'Resource not found',
+                        error: `Admin API endpoint not found (404). URL: ${requestedUrl}. Please check: 1) Panel Type is set correctly (Perfect Panel vs Rental Panel), 2) Admin API Base URL is correct, 3) The panel supports Admin API.`,
                         notFound: true
                     };
                 }
