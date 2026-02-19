@@ -193,19 +193,8 @@ class SubscriptionService {
             return { success: false, reason: 'INSUFFICIENT_BALANCE', failedAttempts };
         }
 
-        // Deduct balance
-        try {
-            await creditService.deductCredit(
-                user.id,
-                fee,
-                `Monthly subscription: ${subscription.resourceType} - ${subscription.resourceName}`,
-                `SUBSCRIPTION_${subscription.id}`
-            );
-        } catch (error) {
-            return { success: false, reason: 'DEDUCTION_FAILED', error: error.message };
-        }
-
-        // Calculate next billing date
+        // Deduct balance AND update subscription atomically
+        // (prevents credits being lost if subscription update fails)
         const nextBillingDate = new Date();
         const targetRenewalMonth = nextBillingDate.getMonth() + 1;
         nextBillingDate.setMonth(targetRenewalMonth);
@@ -213,21 +202,66 @@ class SubscriptionService {
             nextBillingDate.setDate(0);
         }
 
-        // Update subscription
-        const updated = await prisma.monthlySubscription.update({
-            where: { id: subscription.id },
-            data: {
-                lastBilledAt: new Date(),
-                nextBillingDate,
-                failedAttempts: 0,
-                lastFailReason: null,
-                lastFailedAt: null
+        try {
+            const result = await prisma.$transaction(async (tx) => {
+                // Read fresh balance inside transaction
+                const freshUser = await tx.user.findUnique({
+                    where: { id: user.id },
+                    select: { creditBalance: true }
+                });
+
+                const balanceBefore = freshUser?.creditBalance || 0;
+
+                if (balanceBefore < fee) {
+                    throw new Error('INSUFFICIENT_BALANCE_IN_TX');
+                }
+
+                const balanceAfter = balanceBefore - fee;
+
+                // Deduct balance
+                await tx.user.update({
+                    where: { id: user.id },
+                    data: { creditBalance: balanceAfter }
+                });
+
+                // Create credit transaction record
+                await tx.creditTransaction.create({
+                    data: {
+                        userId: user.id,
+                        type: 'DEBIT',
+                        amount: fee,
+                        balanceBefore,
+                        balanceAfter,
+                        description: `Monthly subscription: ${subscription.resourceType} - ${subscription.resourceName}`,
+                        reference: `SUBSCRIPTION_${subscription.id}`
+                    }
+                });
+
+                // Update subscription dates
+                const updated = await tx.monthlySubscription.update({
+                    where: { id: subscription.id },
+                    data: {
+                        lastBilledAt: new Date(),
+                        nextBillingDate,
+                        failedAttempts: 0,
+                        lastFailReason: null,
+                        lastFailedAt: null
+                    }
+                });
+
+                return { updated, balanceBefore, balanceAfter };
+            }, {
+                isolationLevel: 'Serializable'
+            });
+
+            console.log(`[Subscription] Renewed: ${subscription.resourceType} for user ${subscription.userId} - $${fee}`);
+            return { success: true, subscription: result.updated };
+        } catch (error) {
+            if (error.message === 'INSUFFICIENT_BALANCE_IN_TX') {
+                return { success: false, reason: 'INSUFFICIENT_BALANCE' };
             }
-        });
-
-        console.log(`[Subscription] Renewed: ${subscription.resourceType} for user ${subscription.userId} - $${fee}`);
-
-        return { success: true, subscription: updated };
+            return { success: false, reason: 'DEDUCTION_FAILED', error: error.message };
+        }
     }
 
     /**

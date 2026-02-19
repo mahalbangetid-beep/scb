@@ -57,12 +57,27 @@ import DefaultCharges from './pages/admin/DefaultCharges'
 import './index.css'
 
 
+// Helper: check if JWT is expired (client-side only, no crypto verification)
+const isTokenExpired = (token) => {
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1]));
+    return !!(payload.exp && payload.exp * 1000 < Date.now());
+  } catch {
+    return true; // Malformed token = treat as expired
+  }
+};
+
 // Protected Route Component
 const ProtectedRoute = ({ children }) => {
   const token = localStorage.getItem('token');
   const location = useLocation();
 
-  if (!token) {
+  if (!token || isTokenExpired(token)) {
+    // Clear stale auth data
+    if (token) {
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
+    }
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
@@ -70,22 +85,60 @@ const ProtectedRoute = ({ children }) => {
 };
 
 // Admin Route Component (requires ADMIN or MASTER_ADMIN role)
+// Verifies role server-side to prevent localStorage manipulation
 const AdminRoute = ({ children }) => {
+  const [verified, setVerified] = useState(null); // null=loading, true=admin, false=not admin
   const token = localStorage.getItem('token');
   const userStr = localStorage.getItem('user');
   const location = useLocation();
+
+  useEffect(() => {
+    // Quick client-side pre-check
+    let user = null;
+    try {
+      user = userStr ? JSON.parse(userStr) : null;
+    } catch (e) { /* ignore */ }
+
+    if (!token || !user || !['ADMIN', 'MASTER_ADMIN'].includes(user.role)) {
+      setVerified(false);
+      return;
+    }
+
+    // Server-side verification
+    import('./services/api').then(({ default: api }) => {
+      api.get('/auth/me')
+        .then(res => {
+          const serverUser = res.data || res;
+          if (serverUser && ['ADMIN', 'MASTER_ADMIN'].includes(serverUser.role)) {
+            // Update localStorage with server-verified data
+            localStorage.setItem('user', JSON.stringify(serverUser));
+            setVerified(true);
+          } else {
+            // Server says not admin — fix localStorage
+            if (serverUser) localStorage.setItem('user', JSON.stringify(serverUser));
+            setVerified(false);
+          }
+        })
+        .catch(() => {
+          setVerified(false);
+        });
+    });
+  }, [token, userStr]);
 
   if (!token) {
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
-  let user = null;
-  try {
-    user = userStr ? JSON.parse(userStr) : null;
-  } catch (e) {
-    localStorage.removeItem('user');
+  if (verified === null) {
+    // Loading state while verifying
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh' }}>
+        <div className="animate-spin" style={{ width: 32, height: 32, border: '3px solid var(--border-color)', borderTopColor: 'var(--primary-500)', borderRadius: '50%' }} />
+      </div>
+    );
   }
-  if (!user || !['ADMIN', 'MASTER_ADMIN'].includes(user.role)) {
+
+  if (!verified) {
     return <Navigate to="/dashboard" replace />;
   }
 

@@ -13,6 +13,7 @@ const fs = require('fs');
 const pino = require('pino');
 const prisma = require('../utils/prisma');
 const botMessageHandler = require('./botMessageHandler');
+const { safeRegexTest } = require('../utils/safeRegex');
 
 // Create silent pino logger for baileys
 const silentLogger = pino({ level: 'silent' });
@@ -924,12 +925,7 @@ class WhatsAppService {
                 } else if (rule.triggerType === 'startswith') {
                     triggered = keywords.some(k => lowerContent.startsWith(k));
                 } else if (rule.triggerType === 'regex') {
-                    try {
-                        const regex = new RegExp(rule.keywords, 'i');
-                        triggered = regex.test(content);
-                    } catch (e) {
-                        console.error('Invalid regex in rule:', rule.id);
-                    }
+                    triggered = safeRegexTest(rule.keywords, content, 'i');
                 }
 
                 if (triggered) {

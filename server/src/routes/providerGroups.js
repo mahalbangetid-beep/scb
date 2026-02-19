@@ -99,9 +99,7 @@ router.get('/:id/service-id-rules', async (req, res, next) => {
         const group = await prisma.providerGroup.findFirst({
             where: {
                 id: req.params.id,
-                panel: {
-                    userId: req.user.id
-                }
+                userId: req.user.id
             },
             select: {
                 id: true,
@@ -124,7 +122,7 @@ router.get('/:id/service-id-rules', async (req, res, next) => {
 
         successResponse(res, {
             groupId: group.id,
-            groupName: group.name,
+            groupName: group.groupName,
             rules: rules,
             ruleCount: Object.keys(rules).length
         });
@@ -151,9 +149,7 @@ router.put('/:id/service-id-rules', async (req, res, next) => {
         const existing = await prisma.providerGroup.findFirst({
             where: {
                 id: req.params.id,
-                panel: {
-                    userId: req.user.id
-                }
+                userId: req.user.id
             }
         });
 
@@ -175,11 +171,11 @@ router.put('/:id/service-id-rules', async (req, res, next) => {
         });
 
         const ruleCount = rules ? Object.keys(rules).length : 0;
-        logger.info(`Updated service ID rules for "${group.name}": ${ruleCount} rules`);
+        logger.info(`Updated service ID rules for "${group.groupName}": ${ruleCount} rules`);
 
         successResponse(res, {
             groupId: group.id,
-            groupName: group.name,
+            groupName: group.groupName,
             rules: rules,
             ruleCount: ruleCount
         }, `Service ID rules updated (${ruleCount} rules)`);
@@ -200,9 +196,7 @@ router.post('/:id/service-id-rules/add', async (req, res, next) => {
         const existing = await prisma.providerGroup.findFirst({
             where: {
                 id: req.params.id,
-                panel: {
-                    userId: req.user.id
-                }
+                userId: req.user.id
             }
         });
 
@@ -259,9 +253,7 @@ router.delete('/:id/service-id-rules/:serviceId', async (req, res, next) => {
         const existing = await prisma.providerGroup.findFirst({
             where: {
                 id: req.params.id,
-                panel: {
-                    userId: req.user.id
-                }
+                userId: req.user.id
             }
         });
 
@@ -349,9 +341,7 @@ router.get('/:id', async (req, res, next) => {
         const group = await prisma.providerGroup.findFirst({
             where: {
                 id: req.params.id,
-                panel: {
-                    userId: req.user.id
-                }
+                userId: req.user.id
             },
             include: {
                 panel: {
@@ -495,9 +485,7 @@ router.put('/:id', async (req, res, next) => {
         const existing = await prisma.providerGroup.findFirst({
             where: {
                 id: req.params.id,
-                panel: {
-                    userId: req.user.id
-                }
+                userId: req.user.id
             }
         });
 
@@ -571,9 +559,7 @@ router.delete('/:id', async (req, res, next) => {
         const group = await prisma.providerGroup.findFirst({
             where: {
                 id: req.params.id,
-                panel: {
-                    userId: req.user.id
-                }
+                userId: req.user.id
             }
         });
 
@@ -599,9 +585,7 @@ router.patch('/:id/toggle', async (req, res, next) => {
         const group = await prisma.providerGroup.findFirst({
             where: {
                 id: req.params.id,
-                panel: {
-                    userId: req.user.id
-                }
+                userId: req.user.id
             }
         });
 

@@ -30,6 +30,7 @@ export default function Login() {
             }, 500)
         } catch (err) {
             setError(err.error?.message || err.message || 'Login failed. Please check your credentials.')
+        } finally {
             setLoading(false)
         }
     }
@@ -74,7 +75,6 @@ export default function Login() {
                     <div className="form-group">
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--spacing-xs)' }}>
                             <label className="form-label" style={{ marginBottom: 0 }}>Password</label>
-                            <a href="#" className="forgot-password">Forgot password?</a>
                         </div>
                         <div className="input-with-icon">
                             <Lock size={18} />

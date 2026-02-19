@@ -153,8 +153,9 @@ router.put('/:id', authenticate, async (req, res, next) => {
         }
 
         // Validate URL if being updated (async DNS check)
+        let safeUrl = url;
         if (url) {
-            await validateWebhookUrl(url);
+            safeUrl = await validateWebhookUrl(url);
         }
 
         // Validate events if being updated
@@ -172,7 +173,7 @@ router.put('/:id', authenticate, async (req, res, next) => {
             where: { id: req.params.id },
             data: {
                 name,
-                url,
+                url: safeUrl,
                 events: events ? JSON.stringify(events) : undefined,
                 isActive
             }

@@ -419,6 +419,17 @@ class BinancePayService {
     async getGatewayInfo() {
         const config = await this.getConfig();
 
+        // Read allowed countries from config
+        let countries = ['*']; // default: all countries
+        try {
+            const countriesConfig = await prisma.systemConfig.findFirst({
+                where: { key: 'binance_countries' }
+            });
+            if (countriesConfig && countriesConfig.value && countriesConfig.value.trim()) {
+                countries = countriesConfig.value.split(',').map(c => c.trim().toUpperCase()).filter(Boolean);
+            }
+        } catch (e) { /* use default */ }
+
         return {
             id: 'binance',
             name: config.binanceName || 'Binance',
@@ -429,7 +440,8 @@ class BinancePayService {
             maxAmount: 100000,
             isAvailable: config.enabled && config.isConfigured,
             requiresVerification: true,
-            supportedCrypto: ['USDT', 'USDC', 'BUSD']
+            supportedCrypto: ['USDT', 'USDC', 'BUSD'],
+            countries
         };
     }
 }

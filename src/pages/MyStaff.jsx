@@ -134,8 +134,8 @@ export default function MyStaff() {
                 if (!formData.username || !formData.email || !formData.password || !formData.name) {
                     throw new Error('All fields are required')
                 }
-                if (formData.password.length < 6) {
-                    throw new Error('Password must be at least 6 characters')
+                if (formData.password.length < 8) {
+                    throw new Error('Password must be at least 8 characters')
                 }
                 await api.post('/staff', formData)
                 setSuccess('Staff member created successfully')
@@ -377,9 +377,9 @@ export default function MyStaff() {
                                                 className="form-input"
                                                 value={formData.password}
                                                 onChange={e => setFormData(prev => ({ ...prev, password: e.target.value }))}
-                                                placeholder="Min 6 characters"
+                                                placeholder="Min 8 characters"
                                                 required
-                                                minLength={6}
+                                                minLength={8}
                                             />
                                         </div>
                                         <hr style={{ margin: '1rem 0', borderColor: 'var(--border-color)' }} />

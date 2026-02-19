@@ -129,6 +129,21 @@ router.post('/register', authLimiter, async (req, res, next) => {
         // Encrypt panel API key if provided
         const encryptedPanelKey = panelApiKey ? encrypt(panelApiKey) : null;
 
+        // Validate smmPanelUrl if provided (only allow http/https)
+        let validatedPanelUrl = null;
+        if (smmPanelUrl) {
+            try {
+                const parsed = new URL(smmPanelUrl);
+                if (!['http:', 'https:'].includes(parsed.protocol)) {
+                    throw new Error('Invalid protocol');
+                }
+                validatedPanelUrl = parsed.href;
+            } catch {
+                // Invalid URL — silently ignore (optional field)
+                validatedPanelUrl = null;
+            }
+        }
+
         // Get default credit from env
         const defaultCredit = parseFloat(process.env.DEFAULT_USER_CREDIT) || 0;
 
@@ -143,7 +158,7 @@ router.post('/register', authLimiter, async (req, res, next) => {
                 status: 'ACTIVE',
                 whatsappNumber: whatsappNumber || null,
                 telegramUsername: telegramUsername || null,
-                primaryPanelUrl: smmPanelUrl || null,
+                primaryPanelUrl: validatedPanelUrl,
                 primaryPanelKey: encryptedPanelKey,
                 creditBalance: defaultCredit,
                 messageCredits: 0, // Will be added via messageCreditService
@@ -435,8 +450,8 @@ router.post('/change-password', authenticate, async (req, res, next) => {
             throw new AppError('Current password and new password are required', 400);
         }
 
-        if (newPassword.length < 6) {
-            throw new AppError('New password must be at least 6 characters', 400);
+        if (newPassword.length < 8) {
+            throw new AppError('New password must be at least 8 characters', 400);
         }
 
         // Get user with password

@@ -241,7 +241,20 @@ router.post('/import', authenticate, async (req, res, next) => {
 
         // Check if this is a CSV text upload (sent as { csv: "...", tags: [...] })
         if (req.body.csv) {
+            // Limit raw CSV size to prevent memory exhaustion (5MB max)
+            const MAX_CSV_SIZE = 5 * 1024 * 1024; // 5MB
+            if (req.body.csv.length > MAX_CSV_SIZE) {
+                throw new AppError(`CSV data too large. Maximum size is 5MB (received ${(req.body.csv.length / 1024 / 1024).toFixed(1)}MB)`, 400);
+            }
+
             const lines = req.body.csv.split('\n').map(l => l.trim()).filter(Boolean);
+
+            // Limit row count before parsing to prevent DoS
+            const MAX_CSV_ROWS = 10000;
+            if (lines.length > MAX_CSV_ROWS + 1) { // +1 for header
+                throw new AppError(`CSV has too many rows (${lines.length - 1}). Maximum is ${MAX_CSV_ROWS} rows`, 400);
+            }
+
             if (lines.length < 2) {
                 throw new AppError('CSV must have a header row and at least one data row', 400);
             }
@@ -288,7 +301,10 @@ router.post('/import', authenticate, async (req, res, next) => {
                 contactItems.push(item);
             }
         } else if (req.body.contacts && Array.isArray(req.body.contacts)) {
-            // JSON body import
+            // JSON body import — limit array size early
+            if (req.body.contacts.length > 10000) {
+                throw new AppError(`Too many contacts (${req.body.contacts.length}). Maximum is 10,000 per import`, 400);
+            }
             contactItems = req.body.contacts;
         } else {
             throw new AppError('Provide either a "csv" string or a "contacts" array', 400);
@@ -301,6 +317,21 @@ router.post('/import', authenticate, async (req, res, next) => {
         if (contactItems.length > 5000) {
             throw new AppError('Maximum 5000 contacts per import', 400);
         }
+
+        // ========== Auto-deduplicate within the import file ==========
+        const totalBeforeDedup = contactItems.length;
+        const phoneMap = new Map();
+        let duplicatesInFile = 0;
+        for (const item of contactItems) {
+            const phone = normalizePhone(item.phone || '');
+            if (!phone) continue;
+            if (phoneMap.has(phone)) {
+                duplicatesInFile++;
+            }
+            // Last occurrence wins (later row overrides earlier)
+            phoneMap.set(phone, { ...item, phone });
+        }
+        contactItems = Array.from(phoneMap.values());
 
         let created = 0;
         let updated = 0;
@@ -499,12 +530,13 @@ router.post('/import', authenticate, async (req, res, next) => {
         created = Math.max(0, created);
 
         successResponse(res, {
-            total: contactItems.length,
+            total: totalBeforeDedup,
             created,
             updated,
             skipped,
+            duplicatesInFile,
             errors: errors.slice(0, 20) // Limit error details
-        }, `Import complete: ${created} created, ${updated} updated, ${skipped} skipped`);
+        }, `Import complete: ${created} created, ${updated} updated, ${skipped} skipped${duplicatesInFile > 0 ? `, ${duplicatesInFile} duplicates merged` : ''}`);
     } catch (error) {
         next(error);
     }

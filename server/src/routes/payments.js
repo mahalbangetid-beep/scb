@@ -12,10 +12,21 @@ const paymentGatewayService = require('../services/paymentGateway');
 // Apply rate limiting to all payment routes
 router.use(sensitiveLimiter);
 
-// Get all available payment gateways
+// Get available payment gateways (optionally filtered by country)
 router.get('/gateways', authenticate, async (req, res, next) => {
     try {
-        const gateways = await paymentGatewayService.getAvailableGateways();
+        let gateways = await paymentGatewayService.getAvailableGateways();
+
+        // Country-based filtering
+        const { country } = req.query;
+        if (country && country.trim()) {
+            const countryCode = country.trim().toUpperCase();
+            gateways = gateways.filter(g => {
+                if (!g.countries || g.countries.length === 0) return true; // no restriction
+                return g.countries.includes('*') || g.countries.includes(countryCode);
+            });
+        }
+
         res.json({
             success: true,
             gateways

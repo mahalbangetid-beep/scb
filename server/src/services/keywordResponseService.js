@@ -12,6 +12,7 @@
  */
 
 const prisma = require('../utils/prisma');
+const { safeRegexTest } = require('../utils/safeRegex');
 
 class KeywordResponseService {
     constructor() {
@@ -271,12 +272,7 @@ class KeywordResponseService {
                 return content.endsWith(keyword);
 
             case 'REGEX':
-                try {
-                    const regex = new RegExp(rule.keyword, rule.caseSensitive ? '' : 'i');
-                    return regex.test(message);
-                } catch {
-                    return false;
-                }
+                return safeRegexTest(rule.keyword, message, rule.caseSensitive ? '' : 'i');
 
             default:
                 return content.includes(keyword);

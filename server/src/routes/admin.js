@@ -177,64 +177,92 @@ router.put('/users/:id', async (req, res, next) => {
             throw new AppError('Only Master Admin can modify Admin users', 403);
         }
 
-        // Only Master Admin can set admin roles
-        if (role && (role === ROLES.MASTER_ADMIN || role === ROLES.ADMIN)) {
+        // Only Master Admin can change any user's role
+        if (role && role !== existingUser.role) {
             if (req.user.role !== ROLES.MASTER_ADMIN) {
-                throw new AppError('Only Master Admin can assign admin roles', 403);
+                throw new AppError('Only Master Admin can change user roles', 403);
             }
         }
 
         // Validate creditBalance if provided
         const oldBalance = existingUser.creditBalance || 0;
         let creditAdjustment = null;
+        let parsedCreditBalance = null;
 
         if (creditBalance !== undefined) {
-            const newBalance = parseFloat(creditBalance);
-            if (isNaN(newBalance) || newBalance < 0) {
+            parsedCreditBalance = parseFloat(creditBalance);
+            if (isNaN(parsedCreditBalance) || parsedCreditBalance < 0) {
                 throw new AppError('Credit balance must be a non-negative number', 400);
             }
-            creditAdjustment = newBalance - oldBalance;
+            creditAdjustment = parsedCreditBalance - oldBalance;
         }
 
-        // Update user (without credit balance - that will be handled atomically)
-        const user = await prisma.user.update({
-            where: { id: req.params.id },
-            data: {
-                ...(name && { name }),
-                ...(status && { status }),
-                ...(role && { role }),
-                ...(discountRate !== undefined && { discountRate: parseFloat(discountRate) }),
-                ...(customWaRate !== undefined && { customWaRate: customWaRate ? parseFloat(customWaRate) : null }),
-                ...(customTgRate !== undefined && { customTgRate: customTgRate ? parseFloat(customTgRate) : null }),
-                ...(customGroupRate !== undefined && { customGroupRate: customGroupRate ? parseFloat(customGroupRate) : null }),
-                ...(isActive !== undefined && { isActive })
-            },
-            select: {
-                id: true,
-                username: true,
-                email: true,
-                name: true,
-                role: true,
-                status: true,
-                creditBalance: true,
-                discountRate: true
+        // Build profile update data
+        const profileUpdateData = {
+            ...(name && { name }),
+            ...(status && { status }),
+            ...(role && { role }),
+            ...(discountRate !== undefined && { discountRate: parseFloat(discountRate) }),
+            ...(customWaRate !== undefined && { customWaRate: customWaRate ? parseFloat(customWaRate) : null }),
+            ...(customTgRate !== undefined && { customTgRate: customTgRate ? parseFloat(customTgRate) : null }),
+            ...(customGroupRate !== undefined && { customGroupRate: customGroupRate ? parseFloat(customGroupRate) : null }),
+            ...(isActive !== undefined && { isActive })
+        };
+
+        // Atomic transaction: profile update + credit adjustment together
+        const user = await prisma.$transaction(async (tx) => {
+            // 1. Handle credit adjustment first (can fail if insufficient balance)
+            if (creditAdjustment !== null && creditAdjustment !== 0) {
+                const description = `Admin adjustment by ${req.user.username}`;
+                const reference = `ADMIN_${req.user.id}`;
+
+                // Read current balance inside transaction
+                const currentUser = await tx.user.findUnique({
+                    where: { id: req.params.id },
+                    select: { creditBalance: true }
+                });
+                const balanceBefore = currentUser.creditBalance || 0;
+                const newBalance = balanceBefore + creditAdjustment;
+
+                if (newBalance < 0) {
+                    throw new AppError('Insufficient balance for deduction', 400);
+                }
+
+                // Update credit balance
+                profileUpdateData.creditBalance = newBalance;
+
+                // Create transaction record
+                await tx.creditTransaction.create({
+                    data: {
+                        userId: req.params.id,
+                        type: creditAdjustment > 0 ? 'CREDIT' : 'DEBIT',
+                        amount: Math.abs(creditAdjustment),
+                        balanceBefore,
+                        balanceAfter: newBalance,
+                        description,
+                        reference
+                    }
+                });
             }
+
+            // 2. Update user profile + credit balance atomically
+            const updatedUser = await tx.user.update({
+                where: { id: req.params.id },
+                data: profileUpdateData,
+                select: {
+                    id: true,
+                    username: true,
+                    email: true,
+                    name: true,
+                    role: true,
+                    status: true,
+                    creditBalance: true,
+                    discountRate: true
+                }
+            });
+
+            return updatedUser;
         });
-
-        // Handle credit adjustment atomically using creditService
-        if (creditAdjustment !== null && creditAdjustment !== 0) {
-            const description = `Admin adjustment by ${req.user.username}`;
-            const reference = `ADMIN_${req.user.id}`;
-
-            if (creditAdjustment > 0) {
-                await creditService.addCredit(req.params.id, creditAdjustment, description, reference);
-            } else {
-                await creditService.deductCredit(req.params.id, Math.abs(creditAdjustment), description, reference);
-            }
-
-            // Refresh user data to get updated balance
-            user.creditBalance = parseFloat(creditBalance);
-        }
 
         successResponse(res, user, 'User updated successfully');
     } catch (error) {
@@ -324,6 +352,10 @@ router.post('/users/:id/suspend', async (req, res, next) => {
             throw new AppError('User not found', 404);
         }
 
+        if (req.params.id === req.user.id) {
+            throw new AppError('Cannot suspend yourself', 400);
+        }
+
         if (user.role === ROLES.MASTER_ADMIN) {
             throw new AppError('Cannot suspend Master Admin', 403);
         }
@@ -350,6 +382,10 @@ router.post('/users/:id/ban', requireMasterAdmin, async (req, res, next) => {
             throw new AppError('User not found', 404);
         }
 
+        if (req.params.id === req.user.id) {
+            throw new AppError('Cannot ban yourself', 400);
+        }
+
         if (user.role === ROLES.MASTER_ADMIN) {
             throw new AppError('Cannot ban Master Admin', 403);
         }
@@ -368,6 +404,14 @@ router.post('/users/:id/ban', requireMasterAdmin, async (req, res, next) => {
 // POST /api/admin/users/:id/activate - Activate user
 router.post('/users/:id/activate', async (req, res, next) => {
     try {
+        const user = await prisma.user.findUnique({
+            where: { id: req.params.id }
+        });
+
+        if (!user) {
+            throw new AppError('User not found', 404);
+        }
+
         await prisma.user.update({
             where: { id: req.params.id },
             data: {
@@ -563,10 +607,14 @@ router.get('/staff', async (req, res, next) => {
 // POST /api/admin/staff - Create staff account
 router.post('/staff', async (req, res, next) => {
     try {
-        const { username, email, password, name, permissions } = req.body;
+        const { username, email, password, name, permissions, scopeUserId } = req.body;
 
         if (!username || !email || !password || !name) {
             throw new AppError('Username, email, password, and name are required', 400);
+        }
+
+        if (password.length < 8) {
+            throw new AppError('Password must be at least 8 characters', 400);
         }
 
         // Check if username/email exists
@@ -583,10 +631,19 @@ router.post('/staff', async (req, res, next) => {
             throw new AppError('Username or email already exists', 400);
         }
 
+        // Validate scopeUserId if provided
+        if (scopeUserId) {
+            const scopeUser = await prisma.user.findUnique({ where: { id: scopeUserId } });
+            if (!scopeUser) {
+                throw new AppError('Scope user not found', 404);
+            }
+        }
+
         // Hash password
         const hashedPassword = await bcrypt.hash(password, 12);
 
         // Create staff user with permissions
+        // userId = scopeUserId (specific user) or null (global — can manage all users)
         const staff = await prisma.user.create({
             data: {
                 username: username.toLowerCase(),
@@ -598,6 +655,7 @@ router.post('/staff', async (req, res, next) => {
                 staffPermissions: permissions ? {
                     create: permissions.map(p => ({
                         permission: p.permission,
+                        userId: scopeUserId || null,
                         canView: p.canView ?? true,
                         canEdit: p.canEdit ?? false,
                         canDelete: p.canDelete ?? false
@@ -634,19 +692,38 @@ router.put('/staff/:id/permissions', requireMasterAdmin, async (req, res, next) 
             throw new AppError('Staff member not found', 404);
         }
 
-        // Delete existing permissions
+        // Validate permissions BEFORE deleting existing ones (to avoid data loss on invalid input)
+        const { scopeUserId } = req.body;
+        if (permissions && permissions.length > 0) {
+            const VALID_PERMISSIONS = [
+                'user_view', 'user_edit', 'user_suspend', 'user_credit',
+                'order_view', 'order_manage',
+                'payment_view', 'payment_approve',
+                'voucher_manage', 'device_manage', 'panel_manage',
+                'reports_view', 'support',
+                'contacts_view', 'broadcast_manage', 'bot_settings',
+                'keyword_view', 'dashboard_view'
+            ];
+
+            const permKeys = permissions.map(p => typeof p === 'string' ? p : p.permission);
+            const invalid = permKeys.filter(k => !VALID_PERMISSIONS.includes(k));
+            if (invalid.length > 0) {
+                throw new AppError(`Invalid permissions: ${invalid.join(', ')}`, 400);
+            }
+        }
+
+        // Delete existing and create new in sequence (validation already passed)
         await prisma.staffPermission.deleteMany({
             where: { staffId: req.params.id }
         });
 
-        // Create new permissions (handle both string array and object array formats)
         if (permissions && permissions.length > 0) {
             await prisma.staffPermission.createMany({
                 data: permissions.map(p => {
-                    // Support both string format ['order_view'] and object format [{permission: 'order_view', ...}]
                     const permKey = typeof p === 'string' ? p : p.permission;
                     return {
                         staffId: req.params.id,
+                        userId: scopeUserId || null,
                         permission: permKey,
                         canView: typeof p === 'string' ? true : (p.canView ?? true),
                         canEdit: typeof p === 'string' ? false : (p.canEdit ?? false),
@@ -884,31 +961,72 @@ router.get('/dashboard-stats', async (req, res, next) => {
             };
         } catch (e) { }
 
-        // ── 7-day trend (messages per day) ──
+        // ── 7-day trend (messages per day) — optimized: 3 queries instead of 28 ──
+        const weekStart = new Date(now);
+        weekStart.setDate(weekStart.getDate() - 6);
+        weekStart.setHours(0, 0, 0, 0);
+
+        const [messagesByDay, ordersByDayRaw, usersByDayRaw] = await Promise.all([
+            prisma.$queryRaw`
+                SELECT DATE("createdAt") as day, type, COUNT(*)::int as count
+                FROM "Message"
+                WHERE "createdAt" >= ${weekStart}
+                GROUP BY DATE("createdAt"), type
+                ORDER BY day
+            `.catch(() => []),
+            prisma.$queryRaw`
+                SELECT DATE("createdAt") as day, COUNT(*)::int as count
+                FROM "Order"
+                WHERE "createdAt" >= ${weekStart}
+                GROUP BY DATE("createdAt")
+                ORDER BY day
+            `.catch(() => []),
+            prisma.$queryRaw`
+                SELECT DATE("createdAt") as day, COUNT(*)::int as count
+                FROM "User"
+                WHERE "createdAt" >= ${weekStart}
+                GROUP BY DATE("createdAt")
+                ORDER BY day
+            `.catch(() => [])
+        ]);
+
+        // Build lookup maps from raw query results
+        const sentByDay = {};
+        const receivedByDay = {};
+        const ordersMap = {};
+        const usersMap = {};
+
+        for (const row of (messagesByDay || [])) {
+            const dayStr = new Date(row.day).toISOString().split('T')[0];
+            if (row.type === 'outgoing') sentByDay[dayStr] = row.count;
+            if (row.type === 'incoming') receivedByDay[dayStr] = row.count;
+        }
+        for (const row of (ordersByDayRaw || [])) {
+            const dayStr = new Date(row.day).toISOString().split('T')[0];
+            ordersMap[dayStr] = row.count;
+        }
+        for (const row of (usersByDayRaw || [])) {
+            const dayStr = new Date(row.day).toISOString().split('T')[0];
+            usersMap[dayStr] = row.count;
+        }
+
         const weeklyTrend = [];
         for (let i = 6; i >= 0; i--) {
-            const dayStart = new Date(now);
-            dayStart.setDate(dayStart.getDate() - i);
-            dayStart.setHours(0, 0, 0, 0);
-            const dayEnd = new Date(dayStart);
-            dayEnd.setHours(23, 59, 59, 999);
-
-            const [sent, received, orders, newUsers] = await Promise.all([
-                prisma.message.count({ where: { createdAt: { gte: dayStart, lte: dayEnd }, type: 'outgoing' } }),
-                prisma.message.count({ where: { createdAt: { gte: dayStart, lte: dayEnd }, type: 'incoming' } }),
-                prisma.order.count({ where: { createdAt: { gte: dayStart, lte: dayEnd } } }),
-                prisma.user.count({ where: { createdAt: { gte: dayStart, lte: dayEnd } } })
-            ]);
+            const day = new Date(now);
+            day.setDate(day.getDate() - i);
+            day.setHours(0, 0, 0, 0);
+            const dayStr = day.toISOString().split('T')[0];
 
             weeklyTrend.push({
-                date: dayStart.toISOString().split('T')[0],
-                label: dayStart.toLocaleDateString('en', { weekday: 'short' }),
-                sent,
-                received,
-                orders,
-                newUsers
+                date: dayStr,
+                label: day.toLocaleDateString('en', { weekday: 'short' }),
+                sent: sentByDay[dayStr] || 0,
+                received: receivedByDay[dayStr] || 0,
+                orders: ordersMap[dayStr] || 0,
+                newUsers: usersMap[dayStr] || 0
             });
         }
+
 
         // ── Recent activity ──
         const recentPayments = await prisma.payment.findMany({
@@ -1141,11 +1259,14 @@ router.put('/charges', requireMasterAdmin, async (req, res, next) => {
         // Atomic transaction
         await prisma.$transaction(upserts);
 
-        // Invalidate credit service cache
+        // Invalidate credit service caches so new prices take effect immediately
         try {
             const creditService = require('../services/creditService');
-            creditService.configCache = null;
-            creditService.configCacheTime = 0;
+            creditService.clearCache();
+        } catch (e) { /* ignore */ }
+        try {
+            const messageCreditService = require('../services/messageCreditService');
+            messageCreditService.clearCache();
         } catch (e) { /* ignore */ }
 
         successResponse(res, { updated: upserts.length }, `Updated ${upserts.length} charge settings`);
@@ -1458,7 +1579,7 @@ router.get('/messages', requireMasterAdmin, async (req, res, next) => {
                         select: {
                             id: true,
                             name: true,
-                            phoneNumber: true,
+                            phone: true,
                             user: {
                                 select: {
                                     id: true,
@@ -1517,37 +1638,69 @@ router.get('/contacts/backup', requireMasterAdmin, async (req, res, next) => {
     }
 });
 
-// POST /api/admin/contacts/export - Export all contacts as JSON (Master Admin only)
+// POST /api/admin/contacts/export - Export all contacts as CSV stream (Master Admin only)
 router.post('/contacts/export', requireMasterAdmin, async (req, res, next) => {
     try {
-        const contacts = await prisma.contact.findMany({
-            include: {
-                user: {
-                    select: {
-                        id: true,
-                        username: true
+        const MAX_EXPORT = 500000; // Safety cap
+        const BATCH_SIZE = 1000;
+
+        // Get total count first
+        const totalContacts = await prisma.contact.count();
+        if (totalContacts > MAX_EXPORT) {
+            throw new AppError(`Too many contacts to export (${totalContacts}). Maximum is ${MAX_EXPORT}`, 400);
+        }
+
+        // Set CSV response headers
+        res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+        res.setHeader('Content-Disposition', `attachment; filename="contacts_export_${new Date().toISOString().split('T')[0]}.csv"`);
+
+        // Write CSV header
+        res.write('name,phone,email,username,createdAt,updatedAt\n');
+
+        // Stream contacts in batches to avoid OOM
+        let cursor = undefined;
+        let exported = 0;
+
+        while (true) {
+            const batch = await prisma.contact.findMany({
+                take: BATCH_SIZE,
+                ...(cursor ? { skip: 1, cursor: { id: cursor } } : {}),
+                include: {
+                    user: {
+                        select: { username: true }
                     }
-                }
-            },
-            orderBy: { createdAt: 'desc' }
-        });
+                },
+                orderBy: { id: 'asc' }
+            });
 
-        const exportData = {
-            exportedAt: new Date().toISOString(),
-            totalContacts: contacts.length,
-            exportedBy: req.user.username,
-            contacts: contacts.map(c => ({
-                name: c.name,
-                phone: c.phone,
-                email: c.email,
-                username: c.user.username,
-                createdAt: c.createdAt,
-                updatedAt: c.updatedAt
-            }))
-        };
+            if (batch.length === 0) break;
 
-        successResponse(res, exportData, `Exported ${contacts.length} contacts`);
+            // Write CSV rows
+            for (const c of batch) {
+                const row = [
+                    `"${(c.name || '').replace(/"/g, '""')}"`,
+                    `"${(c.phone || '').replace(/"/g, '""')}"`,
+                    `"${(c.email || '').replace(/"/g, '""')}"`,
+                    `"${(c.user?.username || '').replace(/"/g, '""')}"`,
+                    c.createdAt ? c.createdAt.toISOString() : '',
+                    c.updatedAt ? c.updatedAt.toISOString() : ''
+                ].join(',');
+                res.write(row + '\n');
+            }
+
+            exported += batch.length;
+            cursor = batch[batch.length - 1].id;
+
+            if (batch.length < BATCH_SIZE) break;
+        }
+
+        res.end();
     } catch (error) {
+        // If headers already sent, can't use normal error handler
+        if (res.headersSent) {
+            res.end();
+            return;
+        }
         next(error);
     }
 });
@@ -1654,7 +1807,7 @@ router.get('/online-users', requireMasterAdmin, async (req, res, next) => {
                     select: {
                         id: true,
                         name: true,
-                        phoneNumber: true,
+                        phone: true,
                         status: true
                     }
                 }
@@ -1711,8 +1864,9 @@ router.get('/activity-logs/stats', requireMasterAdmin, async (req, res, next) =>
 // DELETE /api/admin/activity-logs/cleanup - Clean old logs
 router.delete('/activity-logs/cleanup', requireMasterAdmin, async (req, res, next) => {
     try {
-        const { daysToKeep = 30 } = req.body;
-        const deletedCount = await activityLogService.cleanOldLogs(parseInt(daysToKeep));
+        // Read from query params (preferred for DELETE) or body (backward compatible)
+        const daysToKeep = parseInt(req.query.daysToKeep || req.body?.daysToKeep || 30);
+        const deletedCount = await activityLogService.cleanOldLogs(daysToKeep);
         successResponse(res, { deletedCount }, `Cleaned ${deletedCount} old log entries`);
     } catch (error) {
         next(error);

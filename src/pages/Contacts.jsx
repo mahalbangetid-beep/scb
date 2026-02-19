@@ -203,6 +203,30 @@ export default function Contacts() {
         }
 
         const headers = lines[0].split(',').map(h => h.trim().replace(/^["']|["']$/g, ''))
+        const phoneColIdx = headers.findIndex(h =>
+            ['phone', 'phone number', 'phonenumber', 'nomor', 'no', 'whatsapp', 'wa'].includes(h.toLowerCase())
+        )
+
+        // Detect duplicates by phone number
+        let duplicateCount = 0
+        let invalidRows = 0
+        if (phoneColIdx !== -1) {
+            const seenPhones = new Set()
+            for (let i = 1; i < lines.length; i++) {
+                const values = parseCSVLine(lines[i])
+                const phone = (values[phoneColIdx] || '').trim().replace(/[^\d+]/g, '')
+                if (!phone) {
+                    invalidRows++
+                    continue
+                }
+                if (seenPhones.has(phone)) {
+                    duplicateCount++
+                } else {
+                    seenPhones.add(phone)
+                }
+            }
+        }
+
         const previewRows = []
         for (let i = 1; i < Math.min(lines.length, 6); i++) {
             const values = parseCSVLine(lines[i])
@@ -211,13 +235,14 @@ export default function Contacts() {
             previewRows.push(row)
         }
 
+        const totalRows = lines.length - 1
         setCsvPreview({
             headers,
             rows: previewRows,
-            totalRows: lines.length - 1,
-            hasPhone: headers.some(h =>
-                ['phone', 'phone number', 'phonenumber', 'nomor', 'no', 'whatsapp', 'wa'].includes(h.toLowerCase())
-            )
+            totalRows,
+            hasPhone: phoneColIdx !== -1,
+            duplicateCount,
+            uniqueCount: totalRows - duplicateCount - invalidRows
         })
     }
 
@@ -558,10 +583,13 @@ export default function Contacts() {
                                         <CheckCircle size={16} style={{ display: 'inline', marginRight: '6px' }} />
                                         Import Complete
                                     </div>
-                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.5rem', fontSize: '0.85rem' }}>
+                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(100px, 1fr))', gap: '0.5rem', fontSize: '0.85rem' }}>
                                         <div><strong>{importResult.created || 0}</strong> created</div>
                                         <div><strong>{importResult.updated || 0}</strong> updated</div>
                                         <div><strong>{importResult.skipped || 0}</strong> skipped</div>
+                                        {(importResult.duplicatesInFile || 0) > 0 && (
+                                            <div style={{ color: '#f59e0b' }}><strong>{importResult.duplicatesInFile}</strong> duplicates merged</div>
+                                        )}
                                     </div>
                                     {importResult.errors?.length > 0 && (
                                         <div style={{ marginTop: '0.75rem', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
@@ -615,7 +643,11 @@ export default function Contacts() {
                                                 <FileText size={32} style={{ color: 'var(--primary-color)', marginBottom: '0.5rem' }} />
                                                 <div style={{ fontWeight: 600 }}>{csvFileName}</div>
                                                 <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
-                                                    {csvPreview ? `${csvPreview.totalRows} contacts found` : 'Parsing...'}
+                                                    {csvPreview ? (
+                                                        csvPreview.duplicateCount > 0
+                                                            ? `${csvPreview.uniqueCount} unique contacts (${csvPreview.duplicateCount} duplicates will be merged)`
+                                                            : `${csvPreview.totalRows} contacts found`
+                                                    ) : 'Parsing...'}
                                                 </div>
                                                 <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.5rem' }}>
                                                     Click to select a different file
@@ -659,6 +691,24 @@ export default function Contacts() {
                                                 }}>
                                                     <AlertTriangle size={16} />
                                                     No "phone" column found! CSV must have a column named "phone", "wa", "whatsapp", or "nomor".
+                                                </div>
+                                            )}
+
+                                            {csvPreview.duplicateCount > 0 && (
+                                                <div style={{
+                                                    padding: '0.6rem 0.85rem',
+                                                    borderRadius: '8px',
+                                                    marginBottom: '0.75rem',
+                                                    background: 'rgba(245, 158, 11, 0.08)',
+                                                    border: '1px solid rgba(245, 158, 11, 0.25)',
+                                                    color: '#f59e0b',
+                                                    fontSize: '0.82rem',
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    gap: '0.5rem'
+                                                }}>
+                                                    <AlertTriangle size={15} />
+                                                    <span><strong>{csvPreview.duplicateCount}</strong> duplicate phone number{csvPreview.duplicateCount > 1 ? 's' : ''} detected — they will be auto-merged on import (last row wins).</span>
                                                 </div>
                                             )}
 
@@ -721,7 +771,7 @@ export default function Contacts() {
                                     disabled={importing || !csvText || (csvPreview && !csvPreview.hasPhone)}
                                 >
                                     {importing ? <Loader2 className="animate-spin" size={16} /> : <Upload size={16} />}
-                                    {importing ? 'Importing...' : `Import ${csvPreview ? csvPreview.totalRows : 0} Contacts`}
+                                    {importing ? 'Importing...' : `Import ${csvPreview ? (csvPreview.uniqueCount != null ? csvPreview.uniqueCount : csvPreview.totalRows) : 0} Contacts`}
                                 </button>
                             )}
                         </div>

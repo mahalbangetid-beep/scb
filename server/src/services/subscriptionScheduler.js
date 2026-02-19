@@ -110,11 +110,30 @@ class SubscriptionScheduler {
         if (!results.details) return;
 
         const failures = results.details.filter(d => !d.success);
+        if (failures.length === 0) return;
+
+        const { activityLogService } = require('./activityLog');
 
         for (const failure of failures) {
-            // TODO: Send WhatsApp/Telegram notification to affected user
-            // This would use the messaging service to notify users
-            console.log(`[SubscriptionScheduler] Notification needed for user ${failure.userId}: ${failure.reason}`);
+            try {
+                // Log activity so user sees it in their dashboard
+                await activityLogService.log({
+                    userId: failure.userId,
+                    action: 'subscription_renewal_failed',
+                    category: 'billing',
+                    description: `Subscription renewal failed for ${failure.resourceType || 'resource'}: ${failure.reason || 'Insufficient balance'}. Please top up your balance to restore service.`,
+                    metadata: {
+                        subscriptionId: failure.subscriptionId,
+                        resourceType: failure.resourceType,
+                        reason: failure.reason
+                    },
+                    status: 'failed'
+                });
+
+                console.log(`[SubscriptionScheduler] Failure notification logged for user ${failure.userId}: ${failure.reason}`);
+            } catch (notifErr) {
+                console.error(`[SubscriptionScheduler] Failed to send notification for user ${failure.userId}:`, notifErr.message);
+            }
         }
     }
 

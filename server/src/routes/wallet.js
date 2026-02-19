@@ -4,8 +4,17 @@ const prisma = require('../utils/prisma');
 const { successResponse, createdResponse, paginatedResponse, parsePagination } = require('../utils/response');
 const { AppError } = require('../middleware/errorHandler');
 const { authenticate, requireAdmin, requireMasterAdmin } = require('../middleware/auth');
+const { createRateLimiter } = require('../middleware/rateLimiter');
 const creditService = require('../services/creditService');
 const crypto = require('crypto');
+
+// Rate limiter for payment verification (5 attempts per minute per user)
+const paymentVerifyLimiter = createRateLimiter({
+    windowMs: 60 * 1000,
+    max: 5,
+    message: 'Too many payment verification attempts. Please wait before trying again.',
+    keyGenerator: 'user'
+});
 
 // All routes require authentication
 router.use(authenticate);
@@ -74,16 +83,24 @@ router.get('/transactions', async (req, res, next) => {
         const where = { userId: req.user.id };
 
         if (type) {
-            where.type = type;
+            const validTypes = ['CREDIT', 'DEBIT'];
+            if (!validTypes.includes(type.toUpperCase())) {
+                throw new AppError(`Invalid type filter. Valid values: ${validTypes.join(', ')}`, 400);
+            }
+            where.type = type.toUpperCase();
         }
 
         if (startDate || endDate) {
             where.createdAt = {};
             if (startDate) {
-                where.createdAt.gte = new Date(startDate);
+                const d = new Date(startDate);
+                if (isNaN(d.getTime())) throw new AppError('Invalid startDate format', 400);
+                where.createdAt.gte = d;
             }
             if (endDate) {
-                where.createdAt.lte = new Date(endDate);
+                const d = new Date(endDate);
+                if (isNaN(d.getTime())) throw new AppError('Invalid endDate format', 400);
+                where.createdAt.lte = d;
             }
         }
 
@@ -322,7 +339,7 @@ router.post('/binance/create', async (req, res, next) => {
 });
 
 // POST /api/wallet/binance/verify - Verify Binance transaction
-router.post('/binance/verify', async (req, res, next) => {
+router.post('/binance/verify', paymentVerifyLimiter, async (req, res, next) => {
     try {
         const { paymentId, transactionId } = req.body;
 
@@ -357,6 +374,19 @@ router.post('/binance/verify', async (req, res, next) => {
                 message: verifyResult.error,
                 notFound: verifyResult.notFound
             });
+        }
+
+        // Double-spend protection: check if this Binance transactionId was already used
+        const existingPayment = await prisma.payment.findFirst({
+            where: {
+                transactionId: verifyResult.transactionId || transactionId,
+                status: 'COMPLETED',
+                method: 'BINANCE'
+            }
+        });
+
+        if (existingPayment) {
+            throw new AppError('This Binance transaction has already been used for a previous payment', 400);
         }
 
         // Complete payment and credit balance
@@ -678,6 +708,10 @@ router.post('/admin/vouchers', requireAdmin, async (req, res, next) => {
 
         createdResponse(res, voucher, 'Voucher created');
     } catch (error) {
+        // Handle unique constraint violation (TOCTOU race condition)
+        if (error.code === 'P2002') {
+            return next(new AppError('Voucher code already exists', 400));
+        }
         next(error);
     }
 });
@@ -738,32 +772,60 @@ router.post('/admin/vouchers/generate', requireAdmin, async (req, res, next) => 
             throw new AppError('Amount must be a positive number', 400);
         }
 
-        if (count > 100) {
-            throw new AppError('Maximum 100 vouchers per batch', 400);
+        if (count < 1 || count > 100) {
+            throw new AppError('Count must be between 1 and 100', 400);
         }
 
-        // Use transaction for atomicity — all or nothing
-        const voucherCreateOps = Array.from({ length: count }, () => {
-            const code = `${prefix || 'VOUCHER'}-${crypto.randomBytes(4).toString('hex').toUpperCase()}`;
-            return prisma.voucher.create({
-                data: {
-                    code,
-                    amount,
-                    maxUsage: maxUsagePerVoucher || 1,
-                    expiresAt: expiresAt ? new Date(expiresAt) : null,
-                    singleUsePerUser: singleUsePerUser !== false,
-                    isActive: true,
-                    createdBy: req.user.id
-                }
+        // Generate unique codes with collision protection
+        const codePrefix = prefix || 'VOUCHER';
+        const generatedCodes = new Set();
+        const maxRetries = 3;
+
+        for (let attempt = 0; attempt < maxRetries; attempt++) {
+            generatedCodes.clear();
+
+            // Generate codes ensuring no in-batch duplicates
+            while (generatedCodes.size < count) {
+                const code = `${codePrefix}-${crypto.randomBytes(8).toString('hex').toUpperCase()}`;
+                generatedCodes.add(code);
+            }
+
+            // Check for existing codes in database
+            const codes = Array.from(generatedCodes);
+            const existingCodes = await prisma.voucher.findMany({
+                where: { code: { in: codes } },
+                select: { code: true }
             });
-        });
 
-        const vouchers = await prisma.$transaction(voucherCreateOps);
+            if (existingCodes.length === 0) {
+                // No collisions — proceed with creation
+                const voucherCreateOps = codes.map(code =>
+                    prisma.voucher.create({
+                        data: {
+                            code,
+                            amount,
+                            maxUsage: maxUsagePerVoucher || 1,
+                            expiresAt: expiresAt ? new Date(expiresAt) : null,
+                            singleUsePerUser: singleUsePerUser !== false,
+                            isActive: true,
+                            createdBy: req.user.id
+                        }
+                    })
+                );
 
-        createdResponse(res, {
-            count: vouchers.length,
-            vouchers: vouchers.map(v => ({ code: v.code, amount: v.amount }))
-        }, `Generated ${vouchers.length} vouchers`);
+                const vouchers = await prisma.$transaction(voucherCreateOps);
+
+                return createdResponse(res, {
+                    count: vouchers.length,
+                    vouchers: vouchers.map(v => ({ code: v.code, amount: v.amount }))
+                }, `Generated ${vouchers.length} vouchers`);
+            }
+
+            // Collision found — retry with new codes
+            console.warn(`[Voucher] Code collision on attempt ${attempt + 1}, retrying...`);
+        }
+
+        throw new AppError('Failed to generate unique voucher codes after retries. Please try again.', 500);
     } catch (error) {
         next(error);
     }

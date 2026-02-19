@@ -12,6 +12,7 @@
  */
 
 const prisma = require('../utils/prisma');
+const { isRegexSafe } = require('../utils/safeRegex');
 
 class GuaranteeService {
     constructor() {
@@ -101,6 +102,10 @@ class GuaranteeService {
                 for (const patternStr of customPatterns) {
                     if (!patternStr) continue;
                     try {
+                        if (!isRegexSafe(patternStr)) {
+                            console.log(`[GuaranteeService] Blocked unsafe pattern: ${patternStr}`);
+                            continue;
+                        }
                         const pattern = new RegExp(patternStr, 'i');
                         const match = serviceName.match(pattern);
                         if (match && match[1]) {

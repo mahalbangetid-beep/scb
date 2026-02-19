@@ -16,10 +16,19 @@ try {
     console.warn(`[Broadcast] Could not create upload dir: ${err.message}. Image uploads may fail.`);
 }
 
+// Map MIME types to safe extensions
+const MIME_TO_EXT = {
+    'image/jpeg': '.jpg',
+    'image/png': '.png',
+    'image/gif': '.gif',
+    'image/webp': '.webp'
+};
+
 const storage = multer.diskStorage({
     destination: (req, file, cb) => cb(null, UPLOAD_DIR),
     filename: (req, file, cb) => {
-        const ext = path.extname(file.originalname);
+        // Use extension from validated MIME type, not user-controlled originalname
+        const ext = MIME_TO_EXT[file.mimetype] || '.bin';
         cb(null, `broadcast-${Date.now()}-${Math.random().toString(36).slice(2, 8)}${ext}`);
     }
 });
@@ -119,6 +128,11 @@ router.post('/', authenticate, upload.single('media'), async (req, res, next) =>
             try { targetGroups = JSON.parse(targetGroups); } catch { targetGroups = [targetGroups]; }
         }
 
+        // Validate required fields first
+        if (!name || !deviceId || !message) {
+            throw new AppError('name, deviceId, and message are required', 400);
+        }
+
         // Validate based on broadcast type
         if (broadcastType === 'group') {
             // Group-only: requires targetGroups, recipients optional
@@ -137,10 +151,6 @@ router.post('/', authenticate, upload.single('media'), async (req, res, next) =>
             if (!recipients || !Array.isArray(recipients) || recipients.length === 0) {
                 throw new AppError('recipients must be a non-empty array', 400);
             }
-        }
-
-        if (!name || !deviceId || !message) {
-            throw new AppError('name, deviceId, and message are required', 400);
         }
 
         // Section 6.3: Auto duplicate removal with country code normalization

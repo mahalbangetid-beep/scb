@@ -2,6 +2,9 @@
   "name": "smmchatbot-server",
   "version": "1.0.0",
   "description": "SMMChatBot WhatsApp Gateway API Server",
+  "engines": {
+    "node": ">=18"
+  },
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",

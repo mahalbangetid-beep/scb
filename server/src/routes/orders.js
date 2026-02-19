@@ -78,10 +78,14 @@ router.get('/', async (req, res, next) => {
         if (startDate || endDate) {
             where.createdAt = {};
             if (startDate) {
-                where.createdAt.gte = new Date(startDate);
+                const d = new Date(startDate);
+                if (isNaN(d.getTime())) throw new AppError('Invalid startDate format', 400);
+                where.createdAt.gte = d;
             }
             if (endDate) {
-                where.createdAt.lte = new Date(endDate);
+                const d = new Date(endDate);
+                if (isNaN(d.getTime())) throw new AppError('Invalid endDate format', 400);
+                where.createdAt.lte = d;
             }
         }
 

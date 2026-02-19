@@ -128,8 +128,8 @@ router.post('/', async (req, res, next) => {
             throw new AppError('Username must be 3-30 characters', 400);
         }
 
-        if (password.length < 6) {
-            throw new AppError('Password must be at least 6 characters', 400);
+        if (password.length < 8) {
+            throw new AppError('Password must be at least 8 characters', 400);
         }
 
         // Check if username/email exists

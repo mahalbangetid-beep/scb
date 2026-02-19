@@ -187,6 +187,25 @@ router.post('/admin/process-renewals', requireRole(['ADMIN', 'MASTER_ADMIN']), a
 router.post('/admin/:id/pause', requireRole(['ADMIN', 'MASTER_ADMIN']), async (req, res, next) => {
     try {
         const { reason } = req.body;
+
+        // Verify subscription exists
+        const prisma = require('../utils/prisma');
+        const existing = await prisma.monthlySubscription.findUnique({
+            where: { id: req.params.id }
+        });
+
+        if (!existing) {
+            throw new AppError('Subscription not found', 404);
+        }
+
+        if (existing.status === 'PAUSED') {
+            throw new AppError('Subscription is already paused', 400);
+        }
+
+        if (existing.status === 'CANCELLED') {
+            throw new AppError('Cannot pause a cancelled subscription', 400);
+        }
+
         const subscription = await subscriptionService.pauseSubscription(req.params.id, reason);
         successResponse(res, subscription, 'Subscription paused');
     } catch (error) {

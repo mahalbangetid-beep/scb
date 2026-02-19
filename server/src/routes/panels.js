@@ -313,10 +313,32 @@ router.get('/:id', async (req, res, next) => {
             throw new AppError('Panel not found', 404);
         }
 
-        // Mask API key
+        // Mask API key (decrypt first, then mask the plaintext)
+        let maskedApiKey = null;
+        if (panel.apiKey) {
+            try {
+                const decryptedKey = decrypt(panel.apiKey);
+                maskedApiKey = mask(decryptedKey, 4, 4);
+            } catch {
+                maskedApiKey = '****encrypted****';
+            }
+        }
+
+        // Mask Admin API key similarly
+        let maskedAdminApiKey = null;
+        if (panel.adminApiKey) {
+            try {
+                const decryptedAdminKey = decrypt(panel.adminApiKey);
+                maskedAdminApiKey = mask(decryptedAdminKey, 4, 4);
+            } catch {
+                maskedAdminApiKey = '****encrypted****';
+            }
+        }
+
         const response = {
             ...panel,
-            apiKey: panel.apiKey ? mask(panel.apiKey, 10, 10) : null
+            apiKey: maskedApiKey,
+            adminApiKey: maskedAdminApiKey
         };
 
         successResponse(res, response);

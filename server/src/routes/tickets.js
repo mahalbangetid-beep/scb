@@ -8,7 +8,7 @@
 const express = require('express');
 const router = express.Router();
 const ticketService = require('../services/ticketAutomationService');
-const { authenticate } = require('../middleware/auth');
+const { authenticate, requireStaffPermission } = require('../middleware/auth');
 const { successResponse, createdResponse } = require('../utils/response');
 const { AppError } = require('../middleware/errorHandler');
 
@@ -20,14 +20,9 @@ router.use(authenticate);
  * Staff: Get all tickets from users they manage
  * Requires support permission
  */
-router.get('/staff/all', async (req, res, next) => {
+router.get('/staff/all', requireStaffPermission('support'), async (req, res, next) => {
     try {
         const prismaClient = require('../utils/prisma');
-
-        // Check if user is staff with support permission
-        if (req.user.role !== 'STAFF' && req.user.role !== 'ADMIN' && req.user.role !== 'MASTER_ADMIN') {
-            throw new AppError('Not authorized', 403);
-        }
 
         let targetUserIds = [];
 
@@ -40,10 +35,6 @@ router.get('/staff/all', async (req, res, next) => {
                 where: { staffId: req.user.id, permission: 'support' },
                 select: { userId: true }
             });
-
-            if (perms.length === 0) {
-                throw new AppError('No support permission', 403);
-            }
 
             // Get user IDs this staff can manage
             targetUserIds = perms.map(p => p.userId).filter(Boolean);

@@ -41,11 +41,13 @@ const PaymentSettings = () => {
         esewa_merchant_code: '',
         esewa_secret_key: '',
         esewa_sandbox: true,
+        esewa_countries: 'NP',
 
         // Cryptomus
         cryptomus_enabled: false,
         cryptomus_merchant_id: '',
         cryptomus_api_key: '',
+        cryptomus_countries: '*',
 
         // Binance Pay
         binance_enabled: false,
@@ -57,6 +59,7 @@ const PaymentSettings = () => {
         binance_bonus: 0,
         binance_name: '',
         binance_currency: 'USDT',
+        binance_countries: '*',
 
         // Manual Payment
         manual_enabled: true,
@@ -65,6 +68,7 @@ const PaymentSettings = () => {
         manual_account_number: '',
         manual_paypal_email: '',
         manual_instructions: '',
+        manual_countries: '*',
 
         // General
         min_deposit: 5,
@@ -343,6 +347,16 @@ const PaymentSettings = () => {
                                     Sandbox Mode (Testing)
                                 </label>
                             </div>
+                            <div className="form-group">
+                                <label><Globe size={16} /> Allowed Countries</label>
+                                <input
+                                    type="text"
+                                    value={settings.esewa_countries || 'NP'}
+                                    onChange={(e) => handleChange('esewa_countries', e.target.value)}
+                                    placeholder="NP"
+                                />
+                                <small className="form-hint">Comma-separated ISO country codes. Use * for all countries.</small>
+                            </div>
                         </div>
                     </div>
                 )}
@@ -390,6 +404,16 @@ const PaymentSettings = () => {
                                     onChange={(e) => handleChange('cryptomus_api_key', e.target.value)}
                                     placeholder="••••••••"
                                 />
+                            </div>
+                            <div className="form-group">
+                                <label><Globe size={16} /> Allowed Countries</label>
+                                <input
+                                    type="text"
+                                    value={settings.cryptomus_countries || '*'}
+                                    onChange={(e) => handleChange('cryptomus_countries', e.target.value)}
+                                    placeholder="*"
+                                />
+                                <small className="form-hint">Comma-separated ISO country codes. Use * for all countries.</small>
                             </div>
                         </div>
                     </div>
@@ -546,6 +570,17 @@ const PaymentSettings = () => {
                                 <small className="form-hint">Extra credit given to customers (e.g., 5 = +5%)</small>
                             </div>
                         </div>
+
+                        <div className="form-group">
+                            <label><Globe size={16} /> Allowed Countries</label>
+                            <input
+                                type="text"
+                                value={settings.binance_countries || '*'}
+                                onChange={(e) => handleChange('binance_countries', e.target.value)}
+                                placeholder="*"
+                            />
+                            <small className="form-hint">Comma-separated ISO country codes. Use * for all countries.</small>
+                        </div>
                     </div>
                 )}
 
@@ -620,6 +655,16 @@ const PaymentSettings = () => {
                                 onChange={(e) => handleChange('manual_instructions', e.target.value)}
                                 placeholder="Enter instructions that will be shown to users when they select manual payment..."
                             />
+                        </div>
+                        <div className="form-group">
+                            <label><Globe size={16} /> Allowed Countries</label>
+                            <input
+                                type="text"
+                                value={settings.manual_countries || '*'}
+                                onChange={(e) => handleChange('manual_countries', e.target.value)}
+                                placeholder="*"
+                            />
+                            <small className="form-hint">Comma-separated ISO country codes. Use * for all countries.</small>
                         </div>
                     </div>
                 )}

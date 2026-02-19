@@ -294,7 +294,7 @@ export default function SystemSettings() {
                     {sections.map(section => (
                         <button
                             key={section.id}
-                            className={`nav-item ${activeSection === section.id ? 'active' : ''}`}
+                            className={`settings-nav-item ${activeSection === section.id ? 'active' : ''}`}
                             onClick={() => setActiveSection(section.id)}
                         >
                             <div className="nav-icon" style={{ background: `${section.color}15`, color: section.color }}>
@@ -1211,7 +1211,7 @@ export default function SystemSettings() {
                     margin-bottom: var(--spacing-xs);
                 }
 
-                .nav-item {
+                .settings-nav-item {
                     display: flex;
                     align-items: center;
                     gap: var(--spacing-md);
@@ -1227,12 +1227,12 @@ export default function SystemSettings() {
                     transition: all 0.2s;
                 }
 
-                .nav-item:hover {
+                .settings-nav-item:hover {
                     background: var(--bg-tertiary);
                     color: var(--text-primary);
                 }
 
-                .nav-item.active {
+                .settings-nav-item.active {
                     background: var(--bg-tertiary);
                     color: var(--text-primary);
                     font-weight: 500;

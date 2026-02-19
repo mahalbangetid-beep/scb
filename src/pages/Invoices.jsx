@@ -41,10 +41,24 @@ const Invoices = () => {
         }
     }
 
-    const handleDownload = (invoiceId) => {
-        const token = localStorage.getItem('token')
-        const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001/api'
-        window.open(`${apiUrl}/invoices/${invoiceId}/download?token=${token}`, '_blank')
+    const handleDownload = async (invoiceId) => {
+        try {
+            const res = await api.get(`/invoices/${invoiceId}/download`, {
+                responseType: 'blob'
+            })
+            // api interceptor returns response.data, so res is the blob
+            const blob = res instanceof Blob ? res : new Blob([res])
+            const url = window.URL.createObjectURL(blob)
+            const a = document.createElement('a')
+            a.href = url
+            a.download = `invoice-${invoiceId}.pdf`
+            document.body.appendChild(a)
+            a.click()
+            a.remove()
+            window.URL.revokeObjectURL(url)
+        } catch (err) {
+            console.error('Failed to download invoice:', err)
+        }
     }
 
     const formatDate = (date) => {

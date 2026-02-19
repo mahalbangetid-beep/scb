@@ -7,6 +7,12 @@
 
 const prisma = require('../utils/prisma');
 
+/**
+ * Round to 2 decimal places to prevent floating-point drift.
+ * e.g. 10.00 - 0.01 = 9.99 (not 9.990000000000002)
+ */
+const round2 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
+
 class CreditService {
     constructor() {
         // Default rates (can be overridden by SystemConfig)
@@ -21,7 +27,15 @@ class CreditService {
         // Cache for system config
         this.configCache = null;
         this.configCacheTime = 0;
-        this.configCacheTTL = 60000; // 1 minute
+        this.configCacheTTL = 15000; // 15 seconds (reduced from 60s for faster price propagation)
+    }
+
+    /**
+     * Clear config cache — call after admin updates pricing
+     */
+    clearCache() {
+        this.configCache = null;
+        this.configCacheTime = 0;
     }
 
     /**
@@ -77,7 +91,7 @@ class CreditService {
             rate = rate * (1 - user.discountRate / 100);
         }
 
-        return parseFloat(rate);
+        return round2(parseFloat(rate));
     }
 
     /**
@@ -117,8 +131,8 @@ class CreditService {
                 throw new Error('User not found');
             }
 
-            const balanceBefore = user.creditBalance || 0;
-            const newBalance = balanceBefore - amount;
+            const balanceBefore = round2(user.creditBalance || 0);
+            const newBalance = round2(balanceBefore - amount);
 
             if (newBalance < 0) {
                 throw new Error('Insufficient balance');
@@ -195,8 +209,8 @@ class CreditService {
                 throw new Error('User not found');
             }
 
-            const balanceBefore = user.creditBalance || 0;
-            const newBalance = balanceBefore + amount;
+            const balanceBefore = round2(user.creditBalance || 0);
+            const newBalance = round2(balanceBefore + amount);
 
             // Update balance atomically
             await tx.user.update({

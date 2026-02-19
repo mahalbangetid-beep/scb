@@ -749,76 +749,92 @@ async function processSystemBotRenewals() {
         results.processed++;
         const fee = sub.monthlyFee || sub.device.systemBotPrice || 5.00;
 
-        if ((sub.user.creditBalance || 0) >= fee) {
-            // Sufficient balance — renew
-            try {
-                const nextBilling = new Date(now);
-                nextBilling.setMonth(nextBilling.getMonth() + 1);
+        try {
+            const nextBilling = new Date(now);
+            nextBilling.setMonth(nextBilling.getMonth() + 1);
 
-                await prisma.$transaction(async (tx) => {
-                    await tx.user.update({
-                        where: { id: sub.userId },
-                        data: { creditBalance: { decrement: fee } }
-                    });
-
-                    await tx.creditTransaction.create({
-                        data: {
-                            userId: sub.userId,
-                            type: 'DEBIT',
-                            amount: fee,
-                            description: `System Bot renewal - ${sub.device.name}`,
-                            balanceBefore: sub.user.creditBalance || 0,
-                            balanceAfter: (sub.user.creditBalance || 0) - fee
-                        }
-                    });
-
-                    await tx.systemBotSubscription.update({
-                        where: { id: sub.id },
-                        data: {
-                            nextBillingDate: nextBilling,
-                            lastBilledAt: now,
-                            usageCount: 0, // Reset usage
-                            failedAttempts: 0
-                        }
-                    });
+            const renewed = await prisma.$transaction(async (tx) => {
+                // Read fresh balance INSIDE transaction to prevent TOCTOU
+                const freshUser = await tx.user.findUnique({
+                    where: { id: sub.userId },
+                    select: { creditBalance: true }
                 });
 
+                const currentBalance = freshUser?.creditBalance || 0;
+
+                if (currentBalance < fee) {
+                    // Insufficient balance — return false to handle outside
+                    return { success: false, balance: currentBalance };
+                }
+
+                // Deduct balance
+                await tx.user.update({
+                    where: { id: sub.userId },
+                    data: { creditBalance: { decrement: fee } }
+                });
+
+                // Log transaction with accurate balance values
+                await tx.creditTransaction.create({
+                    data: {
+                        userId: sub.userId,
+                        type: 'DEBIT',
+                        amount: fee,
+                        description: `System Bot renewal - ${sub.device.name}`,
+                        balanceBefore: currentBalance,
+                        balanceAfter: currentBalance - fee
+                    }
+                });
+
+                // Update subscription
+                await tx.systemBotSubscription.update({
+                    where: { id: sub.id },
+                    data: {
+                        nextBillingDate: nextBilling,
+                        lastBilledAt: now,
+                        usageCount: 0,
+                        failedAttempts: 0
+                    }
+                });
+
+                return { success: true };
+            });
+
+            if (renewed.success) {
                 results.success++;
                 results.details.push({ userId: sub.userId, deviceId: sub.deviceId, success: true });
-            } catch (err) {
+            } else {
+                // Insufficient balance (detected inside transaction)
                 results.failed++;
-                results.details.push({ userId: sub.userId, deviceId: sub.deviceId, success: false, reason: err.message });
+                const failedAttempts = sub.failedAttempts + 1;
+
+                const updateData = {
+                    failedAttempts,
+                    lastFailReason: 'Insufficient balance'
+                };
+
+                if (failedAttempts >= 3) {
+                    const graceEnd = new Date(now);
+                    graceEnd.setDate(graceEnd.getDate() + (sub.gracePeriodDays || 3));
+                    updateData.status = 'SUSPENDED';
+                    updateData.expiresAt = graceEnd;
+                }
+
+                await prisma.systemBotSubscription.update({
+                    where: { id: sub.id },
+                    data: updateData
+                });
+
+                results.details.push({
+                    userId: sub.userId,
+                    deviceId: sub.deviceId,
+                    success: false,
+                    reason: `Insufficient balance ($${(renewed.balance || 0).toFixed(2)} < $${fee.toFixed(2)})`,
+                    suspended: failedAttempts >= 3
+                });
             }
-        } else {
-            // Insufficient balance
+        } catch (err) {
             results.failed++;
-            const failedAttempts = sub.failedAttempts + 1;
-
-            const updateData = {
-                failedAttempts,
-                lastFailReason: 'Insufficient balance'
-            };
-
-            // After 3 failed attempts, suspend
-            if (failedAttempts >= 3) {
-                const graceEnd = new Date(now);
-                graceEnd.setDate(graceEnd.getDate() + (sub.gracePeriodDays || 3));
-                updateData.status = 'SUSPENDED';
-                updateData.expiresAt = graceEnd;
-            }
-
-            await prisma.systemBotSubscription.update({
-                where: { id: sub.id },
-                data: updateData
-            });
-
-            results.details.push({
-                userId: sub.userId,
-                deviceId: sub.deviceId,
-                success: false,
-                reason: `Insufficient balance ($${(sub.user.creditBalance || 0).toFixed(2)} < $${fee.toFixed(2)})`,
-                suspended: failedAttempts >= 3
-            });
+            results.details.push({ userId: sub.userId, deviceId: sub.deviceId, success: false, reason: err.message });
         }
     }
 

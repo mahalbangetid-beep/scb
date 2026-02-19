@@ -11,6 +11,7 @@ const commandHandler = require('./commandHandler');
 const creditService = require('./creditService');
 const messageCreditService = require('./messageCreditService');
 const billingModeService = require('./billingModeService');
+const { safeRegexTest } = require('../utils/safeRegex');
 
 class BotMessageHandler {
     constructor() {
@@ -620,6 +621,7 @@ class BotMessageHandler {
         await this.logMessage({
             deviceId,
             userId,
+            senderNumber,
             content: message,
             type: 'smm_command',
             platform,
@@ -671,13 +673,19 @@ class BotMessageHandler {
                 // Charge credit for response
                 const user = await prisma.user.findUnique({
                     where: { id: userId },
-                    select: { messageCredits: true, role: true }
+                    select: { messageCredits: true, creditBalance: true, role: true, customWaRate: true, customTgRate: true, customGroupRate: true, discountRate: true, customCreditRate: true }
                 });
 
                 let creditResult = { charged: false };
                 if (user.role !== 'MASTER_ADMIN' && user.role !== 'ADMIN') {
                     try {
-                        creditResult = await messageCreditService.chargeMessage(userId, platform, isGroup);
+                        // Check billing mode (same pattern as handleSmmCommand)
+                        const isCreditsMode = await billingModeService.isCreditsMode();
+                        if (isCreditsMode) {
+                            creditResult = await messageCreditService.chargeMessage(userId, platform, isGroup, user);
+                        } else {
+                            creditResult = await creditService.chargeMessage(userId, platform, isGroup, user);
+                        }
 
                         if (!creditResult.charged && creditResult.reason === 'insufficient_credits') {
                             return {
@@ -697,6 +705,7 @@ class BotMessageHandler {
                 await this.logMessage({
                     deviceId,
                     userId,
+                    senderNumber,
                     content: message,
                     type: 'auto_reply',
                     platform,
@@ -723,9 +732,9 @@ class BotMessageHandler {
      */
     matchesRule(message, rule) {
         const normalizedMessage = message.toLowerCase().trim();
-        const trigger = rule.trigger.toLowerCase().trim();
+        const trigger = rule.keywords.toLowerCase().trim();
 
-        switch (rule.matchType) {
+        switch (rule.triggerType) {
             case 'exact':
                 return normalizedMessage === trigger;
             case 'contains':
@@ -733,12 +742,7 @@ class BotMessageHandler {
             case 'startsWith':
                 return normalizedMessage.startsWith(trigger);
             case 'regex':
-                try {
-                    const regex = new RegExp(rule.trigger, 'i');
-                    return regex.test(message);
-                } catch {
-                    return false;
-                }
+                return safeRegexTest(rule.keywords, message, 'i');
             default:
                 return normalizedMessage.includes(trigger);
         }

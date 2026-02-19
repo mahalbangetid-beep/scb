@@ -330,11 +330,19 @@ class ManualPaymentService {
     async getGatewayInfo() {
         // Check admin setting for manual payment
         let isEnabled = false;
+        let countries = ['*']; // default: all countries
         try {
-            const config = await prisma.systemConfig.findFirst({
-                where: { key: 'manual_enabled' }
+            const configs = await prisma.systemConfig.findMany({
+                where: { key: { in: ['manual_enabled', 'manual_countries'] } }
             });
-            isEnabled = config?.value === 'true' || config?.value === true;
+            for (const c of configs) {
+                if (c.key === 'manual_enabled') {
+                    isEnabled = c.value === 'true' || c.value === true;
+                }
+                if (c.key === 'manual_countries' && c.value && c.value.trim()) {
+                    countries = c.value.split(',').map(cc => cc.trim().toUpperCase()).filter(Boolean);
+                }
+            }
         } catch (e) {
             // Default to disabled
         }
@@ -349,7 +357,8 @@ class ManualPaymentService {
             maxAmount: 10000,
             isAvailable: isEnabled,
             requiresProof: true,
-            processingTime: '1-24 hours'
+            processingTime: '1-24 hours',
+            countries
         };
     }
 }

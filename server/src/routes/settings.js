@@ -3,6 +3,7 @@ const router = express.Router();
 const prisma = require('../utils/prisma');
 const { authenticate } = require('../middleware/auth');
 const { successResponse } = require('../utils/response');
+const { AppError } = require('../middleware/errorHandler');
 
 // GET /api/settings - Get all settings for user
 router.get('/', authenticate, async (req, res, next) => {
@@ -522,42 +523,7 @@ router.put('/bot-toggles', authenticate, async (req, res, next) => {
     }
 });
 
-// ==================== WILDCARD ROUTES (MUST BE LAST) ====================
-// These routes use /:key which would match any path
-// They MUST be defined after all specific named routes
-
-// POST /api/settings - Update or create multiple settings
-router.post('/', authenticate, async (req, res, next) => {
-    try {
-        const settings = req.body; // Expecting { key: value, ... }
-
-        const operations = Object.entries(settings).map(([key, value]) => {
-            return prisma.setting.upsert({
-                where: {
-                    key_userId: {
-                        key,
-                        userId: req.user.id
-                    }
-                },
-                update: { value },
-                create: {
-                    key,
-                    value,
-                    userId: req.user.id
-                }
-            });
-        });
-
-        await Promise.all(operations);
-
-        successResponse(res, null, 'Settings updated');
-    } catch (error) {
-        next(error);
-    }
-});
-
 // ==================== STAFF OVERRIDE GROUP (Section 5) ====================
-// IMPORTANT: These MUST be before /:key wildcard routes below!
 
 // GET /api/settings/staff-override-groups - Get staff override group config
 router.get('/staff-override-groups', authenticate, async (req, res, next) => {
@@ -615,10 +581,70 @@ router.delete('/staff-override-groups/:groupJid', authenticate, async (req, res,
     }
 });
 
+// POST /api/settings - Update or create multiple settings
+router.post('/', authenticate, async (req, res, next) => {
+    try {
+        const settings = req.body; // Expecting { key: value, ... }
+
+        // Validate: limit keys per request and value sizes
+        const entries = Object.entries(settings);
+        if (entries.length > 50) {
+            throw new AppError('Too many settings in a single request (max 50)', 400);
+        }
+
+        for (const [key, value] of entries) {
+            if (typeof key !== 'string' || key.length > 100) {
+                throw new AppError(`Invalid setting key: ${key} (max 100 characters)`, 400);
+            }
+            if (typeof value === 'string' && value.length > 10000) {
+                throw new AppError(`Setting value too large for key: ${key} (max 10000 characters)`, 400);
+            }
+        }
+
+        const operations = entries.map(([key, value]) => {
+            return prisma.setting.upsert({
+                where: {
+                    key_userId: {
+                        key,
+                        userId: req.user.id
+                    }
+                },
+                update: { value },
+                create: {
+                    key,
+                    value,
+                    userId: req.user.id
+                }
+            });
+        });
+
+        await Promise.all(operations);
+
+        successResponse(res, null, 'Settings updated');
+    } catch (error) {
+        next(error);
+    }
+});
+
+// ==================== WILDCARD ROUTES (MUST BE LAST) ====================
+// These routes use /:key which would match any path segment.
+// ALL specific named routes (e.g. /bot-security, /binance, /bot-toggles,
+// /staff-override-groups, /stats/*) MUST be defined ABOVE this line.
+// Do NOT add new named routes below this comment.
+
+// Reserved route prefixes — /:key must not match these
+const RESERVED_PREFIXES = ['stats', 'bot-security', 'binance', 'bot-toggles', 'staff-override-groups', 'cleanup-cooldowns'];
+
 // GET /api/settings/:key - Get specific setting (MUST BE AFTER NAMED ROUTES)
 router.get('/:key', authenticate, async (req, res, next) => {
     try {
         const key = req.params.key;
+
+        // Safety net: reject reserved route names that should have been caught above
+        if (RESERVED_PREFIXES.includes(key)) {
+            throw new AppError(`'${key}' is a reserved settings route, not a setting key`, 400);
+        }
+
         if (!key || !/^[a-zA-Z0-9_\-.]{1,100}$/.test(key)) {
             throw new AppError('Invalid setting key format', 400);
         }
@@ -646,6 +672,12 @@ router.get('/:key', authenticate, async (req, res, next) => {
 router.put('/:key', authenticate, async (req, res, next) => {
     try {
         const key = req.params.key;
+
+        // Safety net: reject reserved route names
+        if (RESERVED_PREFIXES.includes(key)) {
+            throw new AppError(`'${key}' is a reserved settings route, not a setting key`, 400);
+        }
+
         if (!key || !/^[a-zA-Z0-9_\-.]{1,100}$/.test(key)) {
             throw new AppError('Invalid setting key format', 400);
         }

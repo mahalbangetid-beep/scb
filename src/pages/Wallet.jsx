@@ -53,12 +53,24 @@ export default function WalletPage() {
                 api.get('/wallet/summary'),
                 api.get('/wallet/transactions?limit=10'),
                 api.get('/wallet/payments?limit=10'),
-                api.get('/credit-packages').catch(() => ({ data: { data: [] } })),
+                api.get('/credit-packages').catch(() => ({ data: [] })),
                 api.get('/message-credits/balance').catch(() => ({ data: null })),
                 api.get('/billing-mode').catch(() => ({ data: { mode: 'CREDITS' } })),
-                api.get('/payments/gateways').catch(() => ({ gateways: [] }))
+                api.get('/payments/gateways', {
+                    params: {
+                        country: (() => {
+                            try {
+                                // Detect country from browser locale
+                                const locale = navigator.language || '';
+                                // Extract country code from locale (e.g., 'en-US' -> 'US', 'ne-NP' -> 'NP')
+                                const parts = locale.split('-');
+                                return parts.length > 1 ? parts[parts.length - 1].toUpperCase() : undefined;
+                            } catch (e) { return undefined; }
+                        })()
+                    }
+                }).catch(() => ({ data: { gateways: [] } }))
             ])
-            // API returns { success, message, data } - extract .data
+            // API interceptor unwraps axios response.data, so res = { success, data, message }
             setWalletInfo(walletRes.data || walletRes)
             setSummary(summaryRes.data || summaryRes)
             setTransactions(txRes.data || [])
@@ -68,7 +80,7 @@ export default function WalletPage() {
             setBillingMode(modeRes.data?.mode || 'CREDITS')
 
             // Parse available gateways for top-up modal
-            const gateways = gatewaysRes.gateways || gatewaysRes.data?.gateways || []
+            const gateways = gatewaysRes.data?.gateways || []
             const activeGateways = gateways.filter(g => g.isAvailable || g.enabled)
             setAvailableGateways(activeGateways)
 

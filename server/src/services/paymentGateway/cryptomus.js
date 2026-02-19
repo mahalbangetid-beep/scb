@@ -399,6 +399,17 @@ class CryptomusService {
     async getGatewayInfo() {
         const config = await this.getConfig();
 
+        // Read allowed countries from config
+        let countries = ['*']; // default: all countries
+        try {
+            const countriesConfig = await prisma.systemConfig.findFirst({
+                where: { key: 'cryptomus_countries' }
+            });
+            if (countriesConfig && countriesConfig.value && countriesConfig.value.trim()) {
+                countries = countriesConfig.value.split(',').map(c => c.trim().toUpperCase()).filter(Boolean);
+            }
+        } catch (e) { /* use default */ }
+
         return {
             id: 'cryptomus',
             name: 'Cryptomus',
@@ -409,7 +420,8 @@ class CryptomusService {
             maxAmount: 100000,
             isAvailable: config.enabled && config.isConfigured,
             isSandbox: false,
-            supportedCrypto: ['BTC', 'ETH', 'USDT', 'LTC', 'TRX', 'BNB', 'DOGE', 'SOL']
+            supportedCrypto: ['BTC', 'ETH', 'USDT', 'LTC', 'TRX', 'BNB', 'DOGE', 'SOL'],
+            countries
         };
     }
 }

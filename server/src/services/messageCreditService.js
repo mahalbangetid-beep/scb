@@ -21,7 +21,15 @@ class MessageCreditService {
         // Cache for system config
         this.configCache = null;
         this.configCacheTime = 0;
-        this.configCacheTTL = 60000; // 1 minute
+        this.configCacheTTL = 15000; // 15 seconds (reduced from 60s for faster propagation)
+    }
+
+    /**
+     * Clear config cache — call after admin updates pricing
+     */
+    clearCache() {
+        this.configCache = null;
+        this.configCacheTime = 0;
     }
 
     /**

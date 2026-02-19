@@ -390,6 +390,17 @@ class EsewaService {
     async getGatewayInfo() {
         const config = await this.getConfig();
 
+        // Read allowed countries from config (default: Nepal only)
+        let countries = ['NP'];
+        try {
+            const countriesConfig = await prisma.systemConfig.findFirst({
+                where: { key: 'esewa_countries' }
+            });
+            if (countriesConfig && countriesConfig.value && countriesConfig.value.trim()) {
+                countries = countriesConfig.value.split(',').map(c => c.trim().toUpperCase()).filter(Boolean);
+            }
+        } catch (e) { /* use default */ }
+
         return {
             id: 'esewa',
             name: 'eSewa',
@@ -400,7 +411,7 @@ class EsewaService {
             maxAmount: 100000,
             isAvailable: config.enabled,
             isSandbox: config.isSandbox,
-            countries: ['NP'],
+            countries,
             testCredentials: config.isSandbox ? {
                 esewaIds: '9806800001 - 9806800005',
                 password: 'Nepal@123',
