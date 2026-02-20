@@ -942,61 +942,121 @@ class AdminApiService {
         try {
             console.log(`[AdminAPI] Getting status for order ${orderId} on panel ${panel.alias}`);
 
+            const isRental = this.isRentalPanel(panel);
             let response;
 
-            // Use detected endpoint if available
-            if (panel.detectedStatusEndpoint) {
-                let endpoint = panel.detectedStatusEndpoint.replace('{id}', orderId);
+            if (isRental) {
+                // V1/Rental Panel: Use action=getOrders&orders=orderId
+                console.log(`[AdminAPI] V1 panel — using action=getOrders&orders=${orderId}`);
+                response = await this.makeAdminRequest(panel, 'GET', '', {
+                    action: 'getOrders',
+                    orders: orderId
+                });
 
-                // Fix: Remove /adminapi/v2 prefix from endpoint if present (baseUrl already has it)
-                endpoint = endpoint.replace(/^\/adminapi\/v[12]/, '');
+                // V1 returns: { "7618634": { id: "7618634", status: "In progress", ... } }
+                // or error string like "Incorrect request"
+                if (response.error) {
+                    throw new Error(response.error);
+                }
 
-                console.log(`[AdminAPI] Using detected endpoint: ${endpoint}`);
-                response = await this.makeAdminRequest(panel, 'GET', endpoint);
+                // Extract order data from V1 response (keyed by order ID)
+                let orderData = null;
+                const resData = response.data || response;
+
+                if (resData[orderId]) {
+                    orderData = resData[orderId];
+                } else if (resData[String(orderId)]) {
+                    orderData = resData[String(orderId)];
+                } else if (typeof resData === 'object' && resData.id) {
+                    orderData = resData;
+                } else {
+                    // Try first key if response is an object with order data
+                    const keys = Object.keys(resData).filter(k => k !== 'error' && k !== 'success');
+                    if (keys.length > 0 && typeof resData[keys[0]] === 'object') {
+                        orderData = resData[keys[0]];
+                    }
+                }
+
+                if (!orderData) {
+                    throw new Error(`Order ${orderId} not found in panel response`);
+                }
+
+                console.log(`[AdminAPI] V1 order data for ${orderId}: status=${orderData.status}, user=${orderData.user}, provider=${orderData.provider}`);
+
+                let chargeValue = null;
+                if (orderData.charge) {
+                    chargeValue = typeof orderData.charge === 'object'
+                        ? parseFloat(orderData.charge.value)
+                        : parseFloat(orderData.charge);
+                }
+
+                return {
+                    success: true,
+                    status: this.normalizeStatus(orderData.status),
+                    charge: chargeValue,
+                    startCount: orderData.start_count ? parseInt(orderData.start_count) : null,
+                    remains: orderData.remains !== undefined ? parseInt(orderData.remains) : null,
+                    quantity: orderData.quantity ? parseInt(orderData.quantity) : null,
+                    link: orderData.link,
+                    serviceName: orderData.service?.name || orderData.service_name || null,
+                    // Customer info - CRITICAL for User Mapping validation
+                    customerUsername: orderData.user || orderData.username || null,
+                    providerName: typeof orderData.provider === 'string' ? orderData.provider :
+                        (orderData.provider?.name || orderData.provider_name || null),
+                    providerOrderId: orderData.external_id || orderData.provider_order_id || null,
+                    providerStatus: orderData.provider_status || orderData.status,
+                    // V1 actions
+                    canRefill: orderData.actions?.refill === true || orderData.actions?.resend === true || false,
+                    canCancel: orderData.actions?.cancel_and_refund === true || orderData.actions?.request_cancel === true || false
+                };
+
             } else {
-                // Fallback to default pattern
-                response = await this.makeAdminRequest(panel, 'GET', `/orders/${orderId}`);
+                // V2/Perfect Panel: Use RESTful endpoint /orders/{id}
+                if (panel.detectedStatusEndpoint) {
+                    let endpoint = panel.detectedStatusEndpoint.replace('{id}', orderId);
+                    endpoint = endpoint.replace(/^\/adminapi\/v[12]/, '');
+                    console.log(`[AdminAPI] Using detected endpoint: ${endpoint}`);
+                    response = await this.makeAdminRequest(panel, 'GET', endpoint);
+                } else {
+                    response = await this.makeAdminRequest(panel, 'GET', `/orders/${orderId}`);
+                }
+
+                if (response.error) {
+                    throw new Error(response.error);
+                }
+
+                // Handle nested response structure
+                let orderData = response.data || response;
+                if (orderData.data && typeof orderData.data === 'object' && orderData.data.id) {
+                    orderData = orderData.data;
+                }
+
+                console.log(`[AdminAPI] Extracted order data for ${orderId}: status=${orderData.status}, provider=${orderData.provider}`);
+
+                let chargeValue = null;
+                if (orderData.charge) {
+                    chargeValue = typeof orderData.charge === 'object'
+                        ? parseFloat(orderData.charge.value)
+                        : parseFloat(orderData.charge);
+                }
+
+                return {
+                    success: true,
+                    status: this.normalizeStatus(orderData.status),
+                    charge: chargeValue,
+                    startCount: orderData.start_count ? parseInt(orderData.start_count) : null,
+                    remains: orderData.remains !== undefined ? parseInt(orderData.remains) : null,
+                    quantity: orderData.quantity ? parseInt(orderData.quantity) : null,
+                    link: orderData.link,
+                    serviceName: orderData.service_name,
+                    customerUsername: orderData.user || orderData.username || null,
+                    providerName: typeof orderData.provider === 'string' ? orderData.provider : orderData.provider?.name,
+                    providerOrderId: orderData.external_id || orderData.provider_order_id,
+                    providerStatus: orderData.status,
+                    canRefill: orderData.actions?.refill === true || orderData.actions?.resend === true,
+                    canCancel: orderData.actions?.cancel_and_refund === true || orderData.actions?.request_cancel === true
+                };
             }
-
-            if (response.error) {
-                throw new Error(response.error);
-            }
-
-            // Handle nested response structure: { data: { id, status, ... }, error_message, error_code }
-            // The actual order data is inside response.data.data (or response.data if already unwrapped)
-            let orderData = response.data || response;
-            if (orderData.data && typeof orderData.data === 'object' && orderData.data.id) {
-                orderData = orderData.data;  // Unwrap nested data
-            }
-
-            console.log(`[AdminAPI] Extracted order data for ${orderId}: status=${orderData.status}, provider=${orderData.provider}`);
-
-            // Handle charge which can be an object with 'value' or a direct number
-            let chargeValue = null;
-            if (orderData.charge) {
-                chargeValue = typeof orderData.charge === 'object'
-                    ? parseFloat(orderData.charge.value)
-                    : parseFloat(orderData.charge);
-            }
-
-            return {
-                success: true,
-                status: this.normalizeStatus(orderData.status),
-                charge: chargeValue,
-                startCount: orderData.start_count ? parseInt(orderData.start_count) : null,
-                remains: orderData.remains !== undefined ? parseInt(orderData.remains) : null,
-                quantity: orderData.quantity ? parseInt(orderData.quantity) : null,
-                link: orderData.link,
-                serviceName: orderData.service_name,
-                // Customer info - CRITICAL for User Mapping validation
-                customerUsername: orderData.user || orderData.username || null,
-                providerName: typeof orderData.provider === 'string' ? orderData.provider : orderData.provider?.name,
-                providerOrderId: orderData.external_id || orderData.provider_order_id,
-                providerStatus: orderData.status,
-                // Check actions object for refill/cancel availability
-                canRefill: orderData.actions?.refill === true || orderData.actions?.resend === true,
-                canCancel: orderData.actions?.cancel_and_refund === true || orderData.actions?.request_cancel === true
-            };
         } catch (error) {
             console.error('[AdminAPI] getOrderStatus error:', error.message);
             return {
