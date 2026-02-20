@@ -1015,7 +1015,14 @@ class AdminApiService {
                     throw new Error(`Order ${orderId} not found in panel response`);
                 }
 
-                console.log(`[AdminAPI] V1 order data for ${orderId}: status=${orderData.status}, user=${orderData.user}, provider=${orderData.provider}`);
+                // V1 responses use different field names depending on action:
+                // getOrders: { status, user, provider, ... }
+                // getOrders-by-id: { order_status, username, provider, service, ... }
+                const orderStatus = orderData.order_status || orderData.status;
+                const customerUser = orderData.username || orderData.user;
+                const serviceName = orderData.service || orderData.service_name || orderData.service?.name;
+
+                console.log(`[AdminAPI] V1 order data for ${orderId}: status=${orderStatus}, user=${customerUser}, provider=${orderData.provider}, service=${serviceName}`);
 
                 let chargeValue = null;
                 if (orderData.charge) {
@@ -1026,22 +1033,22 @@ class AdminApiService {
 
                 return {
                     success: true,
-                    status: this.normalizeStatus(orderData.status),
+                    status: this.normalizeStatus(orderStatus),
                     charge: chargeValue,
                     startCount: orderData.start_count ? parseInt(orderData.start_count) : null,
                     remains: orderData.remains !== undefined ? parseInt(orderData.remains) : null,
                     quantity: orderData.quantity ? parseInt(orderData.quantity) : null,
                     link: orderData.link,
-                    serviceName: orderData.service?.name || orderData.service_name || null,
+                    serviceName: serviceName || null,
                     // Customer info - CRITICAL for User Mapping validation
-                    customerUsername: orderData.user || orderData.username || null,
+                    customerUsername: customerUser || null,
                     providerName: typeof orderData.provider === 'string' ? orderData.provider :
                         (orderData.provider?.name || orderData.provider_name || null),
                     providerOrderId: orderData.external_id || orderData.provider_order_id || null,
-                    providerStatus: orderData.provider_status || orderData.status,
-                    // V1 actions
-                    canRefill: orderData.actions?.refill === true || orderData.actions?.resend === true || false,
-                    canCancel: orderData.actions?.cancel_and_refund === true || orderData.actions?.request_cancel === true || false
+                    providerStatus: orderData.provider_status || orderStatus,
+                    // V1 panels don't always return actions — default to true (allow attempt)
+                    canRefill: orderData.actions?.refill ?? orderData.actions?.resend ?? true,
+                    canCancel: orderData.actions?.cancel_and_refund ?? orderData.actions?.request_cancel ?? true
                 };
 
             } else {

@@ -589,7 +589,7 @@ class SecurityService {
                     // Get panel info - make sure to include adminApiKey
                     let panel = order.panel;
                     if (!panel || !panel.adminApiKey) {
-                        panel = await prisma.panel.findUnique({
+                        panel = await prisma.smmPanel.findUnique({
                             where: { id: order.panelId }
                         });
                         console.log(`[Security] Loaded panel: ${panel?.alias || panel?.name}, hasAdminApiKey: ${!!panel?.adminApiKey}`);
