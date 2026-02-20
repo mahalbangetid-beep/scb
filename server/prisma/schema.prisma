@@ -387,6 +387,17 @@ model Device {
   lastActive  DateTime?
   isActive    Boolean   @default(true) // ON/OFF toggle - bot stops processing when OFF
 
+  // Reply Scope Control - Controls where the bot replies
+  // 'all' = Reply to groups + private messages (default)
+  // 'groups_only' = Reply only in group chats
+  // 'private_only' = Reply only to private/DM messages
+  // 'disabled' = Do not reply anywhere (silent mode)
+  replyScope  String    @default("all")
+
+  // Forward-Only Mode (Bug 1.3) - When enabled, bot processes commands
+  // and forwards to provider groups but does NOT reply to the original chat
+  forwardOnly Boolean   @default(false)
+
   // Panel Binding - Which SMM Panel this device serves
   // If null, device will search orders across ALL user's panels
   panelId String?
@@ -423,6 +434,25 @@ model Device {
   botFeatureToggles  BotFeatureToggles[]   // Per-device bot settings
   commandTemplates   CommandTemplate[]     // Per-device command templates
   supportGroups      SupportGroup[]        // Section 7: Support groups
+  groupBlocks        DeviceGroupBlock[]    // Per-device group reply blocking
+}
+
+// ==================== DEVICE GROUP BLOCKS ====================
+// Per-device group reply blocking (Bug 1.2)
+// When a group JID is in this table, the bot will NOT reply to messages in that group.
+
+model DeviceGroupBlock {
+  id        String   @id @default(cuid())
+  deviceId  String
+  groupJid  String   // WhatsApp group JID (e.g., 120363xxx@g.us)
+  groupName String?  // Display name (cached from WhatsApp)
+
+  createdAt DateTime @default(now())
+
+  device Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  @@unique([deviceId, groupJid]) // One block per device+group
+  @@index([deviceId])
 }
 
 // ==================== SYSTEM BOT SUBSCRIPTIONS ====================
@@ -562,9 +592,10 @@ model TelegramBot {
   createdAt  DateTime  @default(now())
   updatedAt  DateTime  @updatedAt
 
-  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  panel    SmmPanel? @relation(fields: [panelId], references: [id], onDelete: SetNull)
-  messages Message[]
+  user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  panel      SmmPanel?   @relation(fields: [panelId], references: [id], onDelete: SetNull)
+  messages   Message[]
+  broadcasts Broadcast[]
 }
 
 // ==================== MESSAGES ====================
@@ -705,7 +736,9 @@ model WebhookLog {
 model Broadcast {
   id              String    @id @default(cuid())
   name            String
-  deviceId        String
+  deviceId        String?   // For WhatsApp broadcasts (optional for Telegram)
+  telegramBotId   String?   // For Telegram broadcasts (Bug 5.1)
+  platform        String    @default("WHATSAPP") // WHATSAPP or TELEGRAM (Bug 5.1)
   message         String
   mediaUrl        String?
   status          String    @default("draft") // draft, scheduled, processing, completed, cancelled, failed
@@ -735,9 +768,10 @@ model Broadcast {
   // Section 6.5: Charge category tracking
   chargeCategory  String    @default("own_device") // own_device, system_bot, telegram
 
-  device     Device               @relation(fields: [deviceId], references: [id], onDelete: Cascade)
-  recipients BroadcastRecipient[]
-  messages   Message[]
+  device        Device?              @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  telegramBot   TelegramBot?         @relation(fields: [telegramBotId], references: [id], onDelete: Cascade)
+  recipients    BroadcastRecipient[]
+  messages      Message[]
 }
 
 // Section 6: Per-user Marketing Configuration

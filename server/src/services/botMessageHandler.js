@@ -66,7 +66,7 @@ class BotMessageHandler {
         // If device is deactivated (ON/OFF toggle), skip all message processing
         const device = await prisma.device.findUnique({
             where: { id: deviceId },
-            select: { isSystemBot: true, groupOnly: true, usageLimit: true, isActive: true }
+            select: { isSystemBot: true, groupOnly: true, usageLimit: true, isActive: true, replyScope: true, forwardOnly: true }
         });
 
         if (device && !device.isActive) {
@@ -74,16 +74,38 @@ class BotMessageHandler {
             return { handled: false, type: 'device_inactive' };
         }
 
+        // ==================== REPLY SCOPE CONTROL ====================
+        // Enforce per-device reply scope setting
+        const replyScope = device?.replyScope || 'all';
+        if (replyScope === 'disabled') {
+            // Silent mode — do not reply to any messages
+            console.log(`[BotHandler] Device ${deviceId} replyScope=disabled, ignoring message`);
+            return { handled: false, type: 'reply_scope_disabled' };
+        }
+        if (replyScope === 'groups_only' && !isGroup) {
+            // Only reply in groups — ignore DMs
+            console.log(`[BotHandler] Device ${deviceId} replyScope=groups_only, ignoring DM from ${senderNumber}`);
+            return { handled: false, type: 'reply_scope_groups_only' };
+        }
+        if (replyScope === 'private_only' && isGroup) {
+            // Only reply to private/DM messages — ignore groups
+            console.log(`[BotHandler] Device ${deviceId} replyScope=private_only, ignoring group message`);
+            return { handled: false, type: 'reply_scope_private_only' };
+        }
+
         // ==================== SYSTEM BOT CHECKS ====================
         // Check if this device is a system bot and enforce restrictions
 
         if (device?.isSystemBot) {
-            // System bot: Group-only restriction with configurable auto-reply (1.1)
-            if (device.groupOnly && !isGroup) {
-                console.log(`[BotHandler] System bot ${deviceId} - private message (group-only mode)`);
+            // ==================== SYSTEM BOT: STRICT REPLY BEHAVIOR (Bug 2.5) ====================
+            // System Bot must NOT behave like a normal private device.
+            // It must ONLY respond in linked, active support groups.
 
-                // Check Master Admin's System Bot auto-reply config
-                let autoReplyMsg = '⚠️ This bot only works in WhatsApp groups. Please use this bot in a group chat.';
+            // 1) DM HANDLING — Silent by default, optional admin auto-reply
+            if (device.groupOnly && !isGroup) {
+                console.log(`[BotHandler] System bot ${deviceId} - private message ignored (group-only mode)`);
+
+                // Check if Master Admin has EXPLICITLY enabled auto-reply for DMs
                 try {
                     const sysConfig = await prisma.systemConfig.findUnique({
                         where: { key: 'system_bot_auto_reply' }
@@ -92,61 +114,102 @@ class BotMessageHandler {
                         const settings = JSON.parse(sysConfig.value);
                         if (settings.enabled && settings.message &&
                             (settings.triggerType === 'all' || settings.triggerType === 'personal')) {
-                            autoReplyMsg = settings.message;
+                            return {
+                                handled: true,
+                                type: 'system_bot_auto_reply',
+                                response: settings.message
+                            };
                         }
                     }
                 } catch (e) {
                     console.error('[BotHandler] Error reading system bot auto-reply config:', e.message);
                 }
 
-                return {
-                    handled: true,
-                    type: 'system_bot_auto_reply',
-                    response: autoReplyMsg
-                };
+                // No auto-reply configured — silently ignore DM (per spec: "No response")
+                return { handled: false, type: 'system_bot_dm_ignored' };
             }
 
-            // System bot: Check subscriber has active subscription
-            // We need to find which user sent this message, and check their subscription
-            // For system bots, the userId is the admin who owns the bot.
-            // We need to check if any user with an active subscription is using this bot.
-            const activeSubscription = await prisma.systemBotSubscription.findFirst({
-                where: {
-                    deviceId,
-                    status: 'ACTIVE'
-                },
-                // For now, system bots serve all active subscribers in the same groups
-                // In a more advanced setup, we'd match subscriber by group membership
-                select: {
-                    id: true,
-                    userId: true,
-                    usageCount: true,
-                    usageLimit: true
+            // 2) GROUP HANDLING — Only respond in linked, active support groups
+            if (isGroup && groupJid) {
+                // Check if this groupJid is assigned AND active for ANY subscriber on this device
+                const linkedGroup = await prisma.systemBotGroup.findFirst({
+                    where: {
+                        groupJid,
+                        isActive: true,
+                        subscription: {
+                            deviceId,
+                            status: 'ACTIVE'
+                        }
+                    },
+                    select: {
+                        id: true,
+                        subscriptionId: true,
+                        subscription: {
+                            select: {
+                                id: true,
+                                userId: true,
+                                usageCount: true,
+                                usageLimit: true
+                            }
+                        }
+                    }
+                });
+
+                if (!linkedGroup) {
+                    // Group is NOT linked/active — silently ignore (per spec: "No response" for unlinked groups)
+                    console.log(`[BotHandler] System bot ${deviceId} - unlinked group ${groupJid}, ignoring`);
+                    return { handled: false, type: 'system_bot_unlinked_group' };
                 }
-            });
 
-            if (!activeSubscription) {
-                console.log(`[BotHandler] System bot ${deviceId} - no active subscriptions`);
-                return {
-                    handled: true,
-                    type: 'system_bot_restriction',
-                    response: '⚠️ No active subscription found for this bot. Please subscribe first from the dashboard.'
-                };
+                // Group is linked — use the matched subscriber's subscription
+                const activeSubscription = linkedGroup.subscription;
+
+                // Usage limit check
+                const effectiveLimit = activeSubscription.usageLimit || device.usageLimit;
+                if (effectiveLimit && activeSubscription.usageCount >= effectiveLimit) {
+                    console.log(`[BotHandler] System bot ${deviceId} - usage limit reached for subscription ${activeSubscription.id}`);
+                    return {
+                        handled: true,
+                        type: 'system_bot_restriction',
+                        response: `⚠️ Usage limit reached (${activeSubscription.usageCount}/${effectiveLimit} messages this period). Please wait for the next billing cycle or upgrade your plan.`
+                    };
+                }
+
+                // Store subscription info for later usage increment
+                params._systemBotSubscriptionId = activeSubscription.id;
+
+            } else {
+                // System bot, not a group message and not groupOnly — check for any active subscription
+                const activeSubscription = await prisma.systemBotSubscription.findFirst({
+                    where: {
+                        deviceId,
+                        status: 'ACTIVE'
+                    },
+                    select: {
+                        id: true,
+                        userId: true,
+                        usageCount: true,
+                        usageLimit: true
+                    }
+                });
+
+                if (!activeSubscription) {
+                    console.log(`[BotHandler] System bot ${deviceId} - no active subscriptions`);
+                    return { handled: false, type: 'system_bot_no_subscription' };
+                }
+
+                const effectiveLimit = activeSubscription.usageLimit || device.usageLimit;
+                if (effectiveLimit && activeSubscription.usageCount >= effectiveLimit) {
+                    console.log(`[BotHandler] System bot ${deviceId} - usage limit reached`);
+                    return {
+                        handled: true,
+                        type: 'system_bot_restriction',
+                        response: `⚠️ Usage limit reached (${activeSubscription.usageCount}/${effectiveLimit} messages this period).`
+                    };
+                }
+
+                params._systemBotSubscriptionId = activeSubscription.id;
             }
-
-            // System bot: Usage limit check
-            const effectiveLimit = activeSubscription.usageLimit || device.usageLimit;
-            if (effectiveLimit && activeSubscription.usageCount >= effectiveLimit) {
-                console.log(`[BotHandler] System bot ${deviceId} - usage limit reached (${activeSubscription.usageCount}/${effectiveLimit})`);
-                return {
-                    handled: true,
-                    type: 'system_bot_restriction',
-                    response: `⚠️ Usage limit reached (${activeSubscription.usageCount}/${effectiveLimit} messages this period). Please wait for the next billing cycle or upgrade your plan.`
-                };
-            }
-
-            // Store subscription info for later usage increment
-            params._systemBotSubscriptionId = activeSubscription.id;
         }
 
         // ==================== CHECK IF FROM PROVIDER SUPPORT GROUP ====================
@@ -161,6 +224,18 @@ class BotMessageHandler {
                     reason: 'provider_support_group',
                     message: 'Messages from provider support groups are not processed'
                 };
+            }
+
+            // ==================== GROUP REPLY BLOCK CHECK (Bug 1.2) ====================
+            // Check if this group is explicitly blocked for this device
+            const groupBlock = await prisma.deviceGroupBlock.findUnique({
+                where: {
+                    deviceId_groupJid: { deviceId, groupJid }
+                }
+            });
+            if (groupBlock) {
+                console.log(`[BotHandler] Group ${groupJid} is blocked on device ${deviceId}, ignoring message`);
+                return { handled: false, type: 'group_blocked' };
             }
 
             // ==================== STAFF OVERRIDE GROUP (Section 5) ====================
@@ -362,6 +437,16 @@ class BotMessageHandler {
             if (smmResult.handled && params._systemBotSubscriptionId) {
                 await this.incrementSystemBotUsage(params._systemBotSubscriptionId);
             }
+
+            // ==================== FORWARD-ONLY MODE (Bug 1.3) ====================
+            // If device has forwardOnly enabled, suppress the reply response.
+            // The command was fully processed (forwarding, logging, charging all happened),
+            // but we don't want to send any reply back in the original chat.
+            if (device?.forwardOnly && smmResult.handled) {
+                console.log(`[BotHandler] Device ${deviceId} forwardOnly=true, suppressing reply for command`);
+                return { ...smmResult, response: null };
+            }
+
             return smmResult;
         }
 

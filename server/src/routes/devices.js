@@ -60,6 +60,8 @@ router.get('/', authenticate, async (req, res, next) => {
                 phone: device.phone,
                 status: device.status,
                 isActive: device.isActive,
+                replyScope: device.replyScope || 'all',
+                forwardOnly: device.forwardOnly || false,
                 panelId: device.panelId,
                 panel: device.panel,
                 panels: (device.panelBindings || []).map(b => b.panel),
@@ -205,7 +207,7 @@ router.delete('/:id', authenticate, async (req, res, next) => {
 // PUT /api/devices/:id - Update device (panel binding, name, etc.)
 router.put('/:id', authenticate, async (req, res, next) => {
     try {
-        const { panelId, panelIds, name } = req.body;
+        const { panelId, panelIds, name, replyScope, forwardOnly } = req.body;
 
         // Find device
         const device = await prisma.device.findFirst({
@@ -239,6 +241,16 @@ router.put('/:id', authenticate, async (req, res, next) => {
         }
         if (name) {
             updateData.name = name;
+        }
+        if (replyScope !== undefined) {
+            const validScopes = ['all', 'groups_only', 'private_only', 'disabled'];
+            if (!validScopes.includes(replyScope)) {
+                throw new AppError(`Invalid replyScope. Must be one of: ${validScopes.join(', ')}`, 400);
+            }
+            updateData.replyScope = replyScope;
+        }
+        if (forwardOnly !== undefined) {
+            updateData.forwardOnly = Boolean(forwardOnly);
         }
 
         // Update device
@@ -404,6 +416,242 @@ router.get('/:id/qr', authenticate, async (req, res, next) => {
             qrCode: status.qr,
             status: status.status
         });
+    } catch (error) {
+        next(error);
+    }
+});
+
+// ==================== GROUP REPLY BLOCKING (Bug 1.2) ====================
+
+// GET /api/devices/:id/groups - Get live WhatsApp groups from a connected device
+router.get('/:id/groups', authenticate, async (req, res, next) => {
+    try {
+        const device = await prisma.device.findFirst({
+            where: { id: req.params.id, userId: req.user.id }
+        });
+
+        if (!device) {
+            throw new AppError('Device not found', 404);
+        }
+
+        // Block group fetching on System Bots (Bug 2.4) — defense-in-depth.
+        // System Bots are shared by multiple users; exposing their group list
+        // could leak other subscribers' support group data.
+        if (device.isSystemBot) {
+            throw new AppError('Group fetching is not allowed on System Bots. Users should assign their own support groups instead.', 403);
+        }
+
+        if (device.status !== 'connected') {
+            throw new AppError('Device must be connected to fetch groups', 400);
+        }
+
+        const whatsappService = req.app.get('whatsapp');
+        if (!whatsappService) {
+            throw new AppError('WhatsApp service not available', 500);
+        }
+
+        const socket = whatsappService.getSession(req.params.id);
+        if (!socket || typeof socket.groupFetchAllParticipating !== 'function') {
+            throw new AppError('WhatsApp session not available for this device', 400);
+        }
+
+        const liveGroups = await socket.groupFetchAllParticipating();
+        const groupList = Object.values(liveGroups).map(g => ({
+            groupJid: g.id,
+            groupName: g.subject || g.id,
+            participantCount: g.participants?.length || 0
+        }));
+
+        // Also fetch blocked status for each group
+        const blocks = await prisma.deviceGroupBlock.findMany({
+            where: { deviceId: req.params.id },
+            select: { groupJid: true }
+        });
+        const blockedJids = new Set(blocks.map(b => b.groupJid));
+
+        const enriched = groupList.map(g => ({
+            ...g,
+            isBlocked: blockedJids.has(g.groupJid)
+        }));
+
+        successResponse(res, enriched, `${groupList.length} groups found`);
+    } catch (error) {
+        next(error);
+    }
+});
+
+// GET /api/devices/:id/group-blocks - Get all blocked groups for a device
+router.get('/:id/group-blocks', authenticate, async (req, res, next) => {
+    try {
+        const device = await prisma.device.findFirst({
+            where: { id: req.params.id, userId: req.user.id }
+        });
+
+        if (!device) {
+            throw new AppError('Device not found', 404);
+        }
+
+        const blocks = await prisma.deviceGroupBlock.findMany({
+            where: { deviceId: req.params.id },
+            orderBy: { createdAt: 'desc' }
+        });
+
+        successResponse(res, blocks, `${blocks.length} blocked groups`);
+    } catch (error) {
+        next(error);
+    }
+});
+
+// POST /api/devices/:id/group-blocks - Block a group (or multiple groups)
+router.post('/:id/group-blocks', authenticate, async (req, res, next) => {
+    try {
+        const { groupJid, groupName, groups } = req.body;
+
+        const device = await prisma.device.findFirst({
+            where: { id: req.params.id, userId: req.user.id }
+        });
+
+        if (!device) {
+            throw new AppError('Device not found', 404);
+        }
+
+        // Support single or bulk block
+        const toBlock = groups && Array.isArray(groups)
+            ? groups
+            : [{ groupJid, groupName }];
+
+        if (toBlock.length === 0 || !toBlock[0].groupJid) {
+            throw new AppError('groupJid is required', 400);
+        }
+
+        let added = 0, skipped = 0;
+        const results = [];
+
+        for (const g of toBlock) {
+            if (!g.groupJid) { skipped++; continue; }
+
+            try {
+                const block = await prisma.deviceGroupBlock.upsert({
+                    where: {
+                        deviceId_groupJid: {
+                            deviceId: req.params.id,
+                            groupJid: g.groupJid
+                        }
+                    },
+                    update: {
+                        groupName: g.groupName || undefined
+                    },
+                    create: {
+                        deviceId: req.params.id,
+                        groupJid: g.groupJid,
+                        groupName: g.groupName || null
+                    }
+                });
+                results.push(block);
+                added++;
+            } catch (e) {
+                skipped++;
+            }
+        }
+
+        successResponse(res, {
+            added,
+            skipped,
+            blocks: results
+        }, `${added} group(s) blocked`);
+    } catch (error) {
+        next(error);
+    }
+});
+
+// POST /api/devices/:id/group-blocks/mass-action - Mass block/unblock groups
+router.post('/:id/group-blocks/mass-action', authenticate, async (req, res, next) => {
+    try {
+        const { action, groupJids } = req.body;
+
+        if (!action || !['block', 'unblock'].includes(action)) {
+            throw new AppError('action must be "block" or "unblock"', 400);
+        }
+        if (!groupJids || !Array.isArray(groupJids) || groupJids.length === 0) {
+            throw new AppError('groupJids must be a non-empty array', 400);
+        }
+
+        const device = await prisma.device.findFirst({
+            where: { id: req.params.id, userId: req.user.id }
+        });
+
+        if (!device) {
+            throw new AppError('Device not found', 404);
+        }
+
+        let affected = 0;
+
+        if (action === 'block') {
+            // Block all specified groups
+            for (const jid of groupJids) {
+                try {
+                    await prisma.deviceGroupBlock.upsert({
+                        where: {
+                            deviceId_groupJid: {
+                                deviceId: req.params.id,
+                                groupJid: jid
+                            }
+                        },
+                        update: {},
+                        create: {
+                            deviceId: req.params.id,
+                            groupJid: jid
+                        }
+                    });
+                    affected++;
+                } catch (e) {
+                    // Skip errors
+                }
+            }
+        } else {
+            // Unblock all specified groups
+            const result = await prisma.deviceGroupBlock.deleteMany({
+                where: {
+                    deviceId: req.params.id,
+                    groupJid: { in: groupJids }
+                }
+            });
+            affected = result.count;
+        }
+
+        successResponse(res, { action, affected }, `${affected} group(s) ${action}ed`);
+    } catch (error) {
+        next(error);
+    }
+});
+
+// DELETE /api/devices/:id/group-blocks/:blockId - Unblock a single group
+router.delete('/:id/group-blocks/:blockId', authenticate, async (req, res, next) => {
+    try {
+        const device = await prisma.device.findFirst({
+            where: { id: req.params.id, userId: req.user.id }
+        });
+
+        if (!device) {
+            throw new AppError('Device not found', 404);
+        }
+
+        const block = await prisma.deviceGroupBlock.findFirst({
+            where: {
+                id: req.params.blockId,
+                deviceId: req.params.id
+            }
+        });
+
+        if (!block) {
+            throw new AppError('Block not found', 404);
+        }
+
+        await prisma.deviceGroupBlock.delete({
+            where: { id: req.params.blockId }
+        });
+
+        successResponse(res, { id: req.params.blockId }, 'Group unblocked');
     } catch (error) {
         next(error);
     }

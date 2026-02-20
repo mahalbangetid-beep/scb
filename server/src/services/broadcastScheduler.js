@@ -18,11 +18,21 @@ let whatsappInstance = null;
 async function processBroadcast(broadcastId) {
     const broadcast = await prisma.broadcast.findUnique({
         where: { id: broadcastId },
-        include: { device: true }
+        include: { device: true, telegramBot: true }
     });
 
-    if (!broadcast || !whatsappInstance) {
-        console.error(`[Scheduler] Cannot process broadcast ${broadcastId}: not found or no WhatsApp instance`);
+    if (!broadcast) {
+        console.error(`[Scheduler] Cannot process broadcast ${broadcastId}: not found`);
+        return;
+    }
+
+    // Route to Telegram processor if platform is TELEGRAM (Bug 5.1)
+    if (broadcast.platform === 'TELEGRAM') {
+        return processScheduledTelegramBroadcast(broadcast);
+    }
+
+    if (!whatsappInstance) {
+        console.error(`[Scheduler] Cannot process broadcast ${broadcastId}: no WhatsApp instance`);
         return;
     }
 
@@ -188,6 +198,89 @@ async function processBroadcast(broadcastId) {
 }
 
 /**
+ * Process scheduled Telegram broadcast (Bug 5.1)
+ */
+async function processScheduledTelegramBroadcast(broadcast) {
+    const broadcastId = broadcast.id;
+    const telegramService = require('./telegram');
+    const marketingService = require('./marketingService');
+
+    let autoIdCounter = broadcast.autoIdStart || 1;
+    const autoIdEnabled = broadcast.autoIdEnabled;
+    const visibleWatermark = broadcast.watermarkText;
+    const autoIdPrefix = broadcast.autoIdPrefix || '';
+    const broadcastUserId = broadcast.telegramBot?.userId || null;
+
+    function composeFinalText(baseMessage) {
+        let text = baseMessage;
+        if (visibleWatermark) text = `${text}\n\n${visibleWatermark}`;
+        if (autoIdEnabled) {
+            text = `${text}\nID: ${autoIdPrefix}${autoIdCounter}`;
+            autoIdCounter++;
+        }
+        return text;
+    }
+
+    const recipients = await prisma.broadcastRecipient.findMany({
+        where: { broadcastId, status: 'pending' }
+    });
+
+    let sent = 0, failed = 0;
+
+    for (const recipient of recipients) {
+        try {
+            const finalText = composeFinalText(broadcast.message);
+            await telegramService.sendMessage(broadcast.telegramBotId, recipient.phone, finalText);
+            await prisma.broadcastRecipient.update({
+                where: { id: recipient.id },
+                data: { status: 'sent', sentAt: new Date() }
+            });
+            sent++;
+        } catch (error) {
+            await prisma.broadcastRecipient.update({
+                where: { id: recipient.id },
+                data: { status: 'failed', error: error.message }
+            });
+            failed++;
+        }
+        await new Promise(r => setTimeout(r, 500));
+        if ((sent + failed) % 10 === 0) {
+            const current = await prisma.broadcast.findUnique({ where: { id: broadcastId }, select: { status: true } });
+            if (current?.status === 'cancelled') break;
+        }
+    }
+
+    // Charge credits
+    if (broadcastUserId && sent > 0) {
+        try {
+            const messageCreditService = require('./messageCreditService');
+            const chargeCategory = broadcast.chargeCategory || 'telegram';
+            const rate = await marketingService.getChargeRate(broadcastUserId, chargeCategory);
+            const totalCharge = sent * rate;
+            if (totalCharge > 0) {
+                await messageCreditService.deductCredits(broadcastUserId, totalCharge, `Telegram Broadcast: ${broadcast.name}`, broadcastId);
+            }
+        } catch (e) {
+            console.warn('[Scheduler/TG] Failed to charge credits:', e.message);
+        }
+    }
+
+    const current = await prisma.broadcast.findUnique({ where: { id: broadcastId }, select: { status: true } });
+    let finalStatus;
+    if (current?.status === 'cancelled') finalStatus = 'cancelled';
+    else if (failed === recipients.length) finalStatus = 'failed';
+    else if (failed > 0 && sent > 0) finalStatus = 'partial';
+    else finalStatus = 'completed';
+
+    await prisma.broadcast.update({
+        where: { id: broadcastId },
+        data: { status: finalStatus, sent, failed, completedAt: new Date() }
+    });
+
+    console.log(`[Scheduler/TG] Broadcast ${broadcastId} completed: ${sent} sent, ${failed} failed`);
+}
+
+/**
  * Check for due scheduled broadcasts and trigger them
  */
 async function checkScheduledBroadcasts() {
@@ -200,35 +293,38 @@ async function checkScheduledBroadcasts() {
                 }
             },
             include: {
-                device: { select: { status: true } }
+                device: { select: { status: true } },
+                telegramBot: { select: { status: true } }
             }
         });
 
         const MAX_WAIT_MS = 24 * 60 * 60 * 1000; // 24 hours max wait for device reconnect
 
         for (const broadcast of dueBroadcasts) {
-            // Skip if device is not connected
-            if (broadcast.device?.status !== 'connected') {
+            // Platform-aware connectivity check (Bug 5.1)
+            const isTelegram = broadcast.platform === 'TELEGRAM';
+            const isConnected = isTelegram
+                ? broadcast.telegramBot?.status === 'connected'
+                : broadcast.device?.status === 'connected';
+
+            if (!isConnected) {
                 const waitedMs = Date.now() - new Date(broadcast.scheduledAt).getTime();
 
                 // If waited more than 24 hours, mark as failed
                 if (waitedMs > MAX_WAIT_MS) {
-                    console.error(`[Scheduler] Broadcast ${broadcast.id} (${broadcast.name}) TIMED OUT after 24h — device still offline. Marking as failed.`);
+                    const deviceType = isTelegram ? 'bot' : 'device';
+                    console.error(`[Scheduler] Broadcast ${broadcast.id} (${broadcast.name}) TIMED OUT after 24h — ${deviceType} still offline. Marking as failed.`);
                     await prisma.broadcast.update({
                         where: { id: broadcast.id },
-                        data: {
-                            status: 'failed',
-                            completedAt: new Date()
-                        }
+                        data: { status: 'failed', completedAt: new Date() }
                     });
-                    // Mark all pending recipients as failed too
                     await prisma.broadcastRecipient.updateMany({
                         where: { broadcastId: broadcast.id, status: 'pending' },
-                        data: { status: 'failed', error: 'Broadcast timed out: device was offline for more than 24 hours' }
+                        data: { status: 'failed', error: `Broadcast timed out: ${deviceType} was offline for more than 24 hours` }
                     });
                 } else {
                     const hoursWaited = Math.round(waitedMs / (60 * 60 * 1000) * 10) / 10;
-                    console.warn(`[Scheduler] Skipping broadcast ${broadcast.id} (${broadcast.name}): device not connected (waiting ${hoursWaited}h / max 24h)`);
+                    console.warn(`[Scheduler] Skipping broadcast ${broadcast.id} (${broadcast.name}): ${isTelegram ? 'bot' : 'device'} not connected (waiting ${hoursWaited}h / max 24h)`);
                 }
                 continue;
             }

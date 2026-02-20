@@ -79,6 +79,11 @@ router.post('/device/:deviceId', async (req, res, next) => {
             throw new AppError('Device not found', 404);
         }
 
+        // Block contact backup on System Bots (Bug 2.4)
+        if (device.isSystemBot) {
+            throw new AppError('Contact backup is not allowed on System Bots', 403);
+        }
+
         if (device.status !== 'connected') {
             throw new AppError('Device is not connected. Please connect the device first.', 400);
         }

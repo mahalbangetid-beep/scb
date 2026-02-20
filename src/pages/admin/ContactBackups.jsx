@@ -186,6 +186,37 @@ export default function ContactBackups() {
         }
     }
 
+    // CSV export for individual backup (Bug 5.5)
+    const handleDownloadBackupCsv = async (backupId) => {
+        try {
+            const endpoint = isMasterAdmin && activeTab === 'all-users'
+                ? `/contact-backup/admin/backup/${backupId}`
+                : `/contact-backup/${backupId}/download`
+            const res = await api.get(endpoint)
+            const data = res.data || res
+            const contacts = data.contacts || data.data?.contacts || []
+            const csvRows = ['Phone,Name,Type']
+            for (const c of contacts) {
+                const phone = (c.phone || c.jid || '').replace(/"/g, '""')
+                const name = (c.name || c.pushName || '').replace(/"/g, '""')
+                const type = c.isGroup ? 'Group' : 'Contact'
+                csvRows.push(`"${phone}","${name}","${type}"`)
+            }
+            const blob = new Blob([csvRows.join('\n')], { type: 'text/csv' })
+            const url = window.URL.createObjectURL(blob)
+            const a = document.createElement('a')
+            a.href = url
+            a.download = `backup_${backupId}.csv`
+            document.body.appendChild(a)
+            a.click()
+            document.body.removeChild(a)
+            window.URL.revokeObjectURL(url)
+        } catch (error) {
+            console.error('CSV download failed:', error)
+            alert('Failed to download CSV')
+        }
+    }
+
     const handleViewBackup = async (backupId, isAdmin = false) => {
         setViewLoading(true)
         try {
@@ -430,9 +461,17 @@ export default function ContactBackups() {
                                                 <button
                                                     className="btn btn-ghost btn-sm"
                                                     onClick={() => handleDownloadBackup(backup.id)}
-                                                    title="Download"
+                                                    title="Download JSON"
                                                 >
                                                     <Download size={14} />
+                                                </button>
+                                                <button
+                                                    className="btn btn-ghost btn-sm"
+                                                    onClick={() => handleDownloadBackupCsv(backup.id)}
+                                                    title="Download CSV"
+                                                    style={{ fontSize: '0.6rem', fontWeight: 600 }}
+                                                >
+                                                    CSV
                                                 </button>
                                                 <button
                                                     className="btn btn-ghost btn-sm"
@@ -726,9 +765,17 @@ export default function ContactBackups() {
                                                             <button
                                                                 className="btn btn-ghost btn-sm"
                                                                 onClick={() => handleDownloadBackup(backup.id)}
-                                                                title="Download"
+                                                                title="Download JSON"
                                                             >
                                                                 <Download size={14} />
+                                                            </button>
+                                                            <button
+                                                                className="btn btn-ghost btn-sm"
+                                                                onClick={() => handleDownloadBackupCsv(backup.id)}
+                                                                title="Download CSV"
+                                                                style={{ fontSize: '0.6rem', fontWeight: 600 }}
+                                                            >
+                                                                CSV
                                                             </button>
                                                             <button
                                                                 className="btn btn-ghost btn-sm"
@@ -856,7 +903,10 @@ export default function ContactBackups() {
                             </button>
                             <button className="btn btn-primary" onClick={() => handleDownloadBackup(viewBackup.id)}>
                                 <Download size={16} />
-                                Download Full Backup
+                                Download JSON
+                            </button>
+                            <button className="btn btn-secondary" onClick={() => handleDownloadBackupCsv(viewBackup.id)}>
+                                Download CSV
                             </button>
                         </div>
                     </div>

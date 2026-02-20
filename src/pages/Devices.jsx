@@ -17,10 +17,14 @@ import {
     Loader2,
     Link2,
     Settings,
-    Power
+    Power,
+    Users,
+    ShieldOff,
+    ShieldCheck
 } from 'lucide-react'
 import api from '../services/api'
 import { formatDistanceToNow } from 'date-fns'
+import { getPhoneFlag } from '../utils/countryFlag'
 
 export default function Devices() {
     const [devices, setDevices] = useState([])
@@ -46,7 +50,15 @@ export default function Devices() {
     const [showEditModal, setShowEditModal] = useState(false)
     const [editDevice, setEditDevice] = useState(null)
     const [editPanelIds, setEditPanelIds] = useState([])
+    const [editReplyScope, setEditReplyScope] = useState('all')
+    const [editForwardOnly, setEditForwardOnly] = useState(false)
     const [editLoading, setEditLoading] = useState(false)
+
+    // Group Block State
+    const [deviceGroups, setDeviceGroups] = useState([])
+    const [groupsLoading, setGroupsLoading] = useState(false)
+    const [selectedGroupJids, setSelectedGroupJids] = useState([])
+    const [groupActionLoading, setGroupActionLoading] = useState(false)
 
     const fetchDevices = async () => {
         try {
@@ -268,13 +280,107 @@ export default function Devices() {
         } else {
             setEditPanelIds([])
         }
+        setEditReplyScope(device.replyScope || 'all')
+        setEditForwardOnly(device.forwardOnly || false)
         setShowEditModal(true)
+
+        // Fetch groups if device is connected
+        if (device.status === 'connected') {
+            fetchDeviceGroups(device.id)
+        } else {
+            setDeviceGroups([])
+        }
     }
 
     const handleCloseEditModal = () => {
         setShowEditModal(false)
         setEditDevice(null)
         setEditPanelIds([])
+        setEditReplyScope('all')
+        setEditForwardOnly(false)
+        setDeviceGroups([])
+        setSelectedGroupJids([])
+    }
+
+    // Fetch live groups from WhatsApp device
+    const fetchDeviceGroups = async (deviceId) => {
+        setGroupsLoading(true)
+        try {
+            const res = await api.get(`/devices/${deviceId}/groups`)
+            setDeviceGroups(res.data || [])
+        } catch (error) {
+            console.error('Failed to fetch groups:', error)
+            setDeviceGroups([])
+        } finally {
+            setGroupsLoading(false)
+        }
+    }
+
+    // Toggle group block
+    const handleToggleGroupBlock = async (group) => {
+        if (!editDevice) return
+        try {
+            if (group.isBlocked) {
+                // Unblock: use mass-action with single JID
+                await api.post(`/devices/${editDevice.id}/group-blocks/mass-action`, {
+                    action: 'unblock',
+                    groupJids: [group.groupJid]
+                })
+            } else {
+                // Block
+                await api.post(`/devices/${editDevice.id}/group-blocks`, {
+                    groupJid: group.groupJid,
+                    groupName: group.groupName
+                })
+            }
+            // Refresh groups
+            fetchDeviceGroups(editDevice.id)
+        } catch (error) {
+            console.error('Failed to toggle group block:', error)
+        }
+    }
+
+    // Mass action on selected groups
+    const handleMassGroupAction = async (action) => {
+        if (!editDevice || selectedGroupJids.length === 0) return
+        setGroupActionLoading(true)
+        try {
+            if (action === 'block') {
+                const groups = selectedGroupJids.map(jid => {
+                    const g = deviceGroups.find(dg => dg.groupJid === jid)
+                    return { groupJid: jid, groupName: g?.groupName || null }
+                })
+                await api.post(`/devices/${editDevice.id}/group-blocks`, { groups })
+            } else {
+                await api.post(`/devices/${editDevice.id}/group-blocks/mass-action`, {
+                    action: 'unblock',
+                    groupJids: selectedGroupJids
+                })
+            }
+            setSelectedGroupJids([])
+            fetchDeviceGroups(editDevice.id)
+        } catch (error) {
+            console.error('Failed mass group action:', error)
+        } finally {
+            setGroupActionLoading(false)
+        }
+    }
+
+    // Toggle group selection for mass action
+    const handleToggleGroupSelection = (groupJid) => {
+        setSelectedGroupJids(prev =>
+            prev.includes(groupJid)
+                ? prev.filter(j => j !== groupJid)
+                : [...prev, groupJid]
+        )
+    }
+
+    const handleSelectAllGroups = () => {
+        if (selectedGroupJids.length === deviceGroups.length) {
+            setSelectedGroupJids([])
+        } else {
+            setSelectedGroupJids(deviceGroups.map(g => g.groupJid))
+        }
     }
 
     const handleTogglePanelId = (panelId) => {
@@ -311,7 +417,9 @@ export default function Devices() {
         try {
             await api.put(`/devices/${editDevice.id}`, {
                 panelId: editPanelIds.length === 1 ? editPanelIds[0] : null,
-                panelIds: editPanelIds
+                panelIds: editPanelIds,
+                replyScope: editReplyScope,
+                forwardOnly: editForwardOnly
             })
             fetchDevices()
             handleCloseEditModal()
@@ -418,9 +526,59 @@ export default function Devices() {
                                     <div style={{ fontWeight: 600, fontSize: '1rem', color: 'var(--text-primary)' }}>
                                         {device.name}
                                     </div>
-                                    <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-                                        {device.phone || 'Not connected'}
+                                    <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                        {device.phone ? (() => {
+                                            const { flag, formattedPhone } = getPhoneFlag(device.phone)
+                                            return <>
+                                                {flag && <span style={{ fontSize: '1rem' }}>{flag}</span>}
+                                                <span>{formattedPhone}</span>
+                                            </>
+                                        })() : 'Not connected'}
                                     </div>
+                                    {/* Reply Scope Badge */}
+                                    {device.replyScope && device.replyScope !== 'all' && (
+                                        <div style={{
+                                            display: 'inline-flex',
+                                            alignItems: 'center',
+                                            gap: '4px',
+                                            padding: '2px 8px',
+                                            borderRadius: '12px',
+                                            fontSize: '0.65rem',
+                                            fontWeight: 500,
+                                            marginTop: '3px',
+                                            background: device.replyScope === 'disabled'
+                                                ? 'rgba(239, 68, 68, 0.1)'
+                                                : device.replyScope === 'groups_only'
+                                                    ? 'rgba(168, 85, 247, 0.1)'
+                                                    : 'rgba(59, 130, 246, 0.1)',
+                                            color: device.replyScope === 'disabled'
+                                                ? '#ef4444'
+                                                : device.replyScope === 'groups_only'
+                                                    ? '#a855f7'
+                                                    : '#3b82f6'
+                                        }}>
+                                            {device.replyScope === 'disabled' && '🔇 Replies Disabled'}
+                                            {device.replyScope === 'groups_only' && '👥 Groups Only'}
+                                            {device.replyScope === 'private_only' && '💬 DM Only'}
+                                        </div>
+                                    )}
+                                    {/* Forward-Only Badge */}
+                                    {device.forwardOnly && (
+                                        <div style={{
+                                            display: 'inline-flex',
+                                            alignItems: 'center',
+                                            gap: '4px',
+                                            padding: '2px 8px',
+                                            borderRadius: '12px',
+                                            fontSize: '0.65rem',
+                                            fontWeight: 500,
+                                            marginTop: '3px',
+                                            background: 'rgba(245, 158, 11, 0.1)',
+                                            color: '#f59e0b'
+                                        }}>
+                                            🔀 Forward Only
+                                        </div>
+                                    )}
                                     {/* Panel Badges (multi-panel support) */}
                                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginTop: '4px' }}>
                                         {(device.panels && device.panels.length > 0) ? (
@@ -819,9 +977,9 @@ export default function Devices() {
 
             {/* Edit Panel Modal */}
             <div className={`modal-overlay ${showEditModal ? 'open' : ''}`} onClick={handleCloseEditModal}>
-                <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '400px' }}>
+                <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '480px' }}>
                     <div className="modal-header">
-                        <h3 className="modal-title">Edit Device Panel</h3>
+                        <h3 className="modal-title">Device Settings</h3>
                         <button className="btn btn-ghost btn-icon" onClick={handleCloseEditModal}>
                             <X size={20} />
                         </button>
@@ -839,6 +997,112 @@ export default function Devices() {
                                         </p>
                                     )}
                                 </div>
+
+                                {/* Reply Scope Control */}
+                                <div className="form-group">
+                                    <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                        <MessageSquare size={14} />
+                                        Reply Mode
+                                    </label>
+                                    <div style={{
+                                        display: 'grid',
+                                        gridTemplateColumns: '1fr 1fr',
+                                        gap: '8px'
+                                    }}>
+                                        {[
+                                            { value: 'all', label: 'All Messages', icon: '📨', desc: 'Groups + DMs' },
+                                            { value: 'groups_only', label: 'Groups Only', icon: '👥', desc: 'Ignore DMs' },
+                                            { value: 'private_only', label: 'DM Only', icon: '💬', desc: 'Ignore groups' },
+                                            { value: 'disabled', label: 'Disabled', icon: '🔇', desc: 'No replies' }
+                                        ].map(opt => (
+                                            <div
+                                                key={opt.value}
+                                                onClick={() => setEditReplyScope(opt.value)}
+                                                style={{
+                                                    padding: '10px 12px',
+                                                    borderRadius: '10px',
+                                                    border: editReplyScope === opt.value
+                                                        ? '2px solid var(--primary-color)'
+                                                        : '1px solid var(--border-color)',
+                                                    background: editReplyScope === opt.value
+                                                        ? 'rgba(99, 102, 241, 0.06)'
+                                                        : 'var(--bg-secondary)',
+                                                    cursor: 'pointer',
+                                                    transition: 'all 0.15s ease',
+                                                    textAlign: 'center'
+                                                }}
+                                            >
+                                                <div style={{ fontSize: '1.2rem', marginBottom: '4px' }}>{opt.icon}</div>
+                                                <div style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+                                                    {opt.label}
+                                                </div>
+                                                <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginTop: '2px' }}>
+                                                    {opt.desc}
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                    <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '6px' }}>
+                                        Controls whether the bot replies to group messages, private messages, both, or neither.
+                                    </p>
+                                </div>
+
+                                {/* Forward-Only Mode Toggle */}
+                                <div className="form-group">
+                                    <label
+                                        style={{
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'space-between',
+                                            padding: '12px 14px',
+                                            borderRadius: '10px',
+                                            border: editForwardOnly
+                                                ? '2px solid #f59e0b'
+                                                : '1px solid var(--border-color)',
+                                            background: editForwardOnly
+                                                ? 'rgba(245, 158, 11, 0.06)'
+                                                : 'var(--bg-secondary)',
+                                            cursor: 'pointer',
+                                            transition: 'all 0.15s'
+                                        }}
+                                    >
+                                        <div>
+                                            <div style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                🔀 Forward Without Reply
+                                            </div>
+                                            <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '2px' }}>
+                                                Commands are processed & forwarded, but no reply is sent in chat
+                                            </div>
+                                        </div>
+                                        <div
+                                            onClick={(e) => { e.preventDefault(); setEditForwardOnly(!editForwardOnly) }}
+                                            style={{
+                                                width: '40px',
+                                                height: '22px',
+                                                borderRadius: '11px',
+                                                background: editForwardOnly ? '#f59e0b' : 'var(--border-color)',
+                                                position: 'relative',
+                                                transition: 'background 0.2s',
+                                                cursor: 'pointer',
+                                                flexShrink: 0
+                                            }}
+                                        >
+                                            <div style={{
+                                                width: '18px',
+                                                height: '18px',
+                                                borderRadius: '50%',
+                                                background: '#fff',
+                                                position: 'absolute',
+                                                top: '2px',
+                                                left: editForwardOnly ? '20px' : '2px',
+                                                transition: 'left 0.2s',
+                                                boxShadow: '0 1px 3px rgba(0,0,0,0.2)'
+                                            }} />
+                                        </div>
+                                    </label>
+                                </div>
+
+                                <div style={{ borderTop: '1px solid var(--border-color)', margin: 'var(--spacing-sm) 0' }} />
 
                                 <div className="form-group">
                                     <label className="form-label">Assigned Panels</label>
@@ -903,6 +1167,150 @@ export default function Devices() {
                                         }
                                     </p>
                                 </div>
+
+                                {/* Group Reply Blocking */}
+                                {editDevice?.status === 'connected' && (
+                                    <>
+                                        <div style={{ borderTop: '1px solid var(--border-color)', margin: 'var(--spacing-sm) 0' }} />
+
+                                        <div className="form-group">
+                                            <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                <Users size={14} />
+                                                Group Reply Control
+                                            </label>
+
+                                            {groupsLoading ? (
+                                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px', gap: '8px', color: 'var(--text-muted)' }}>
+                                                    <Loader2 className="animate-spin" size={16} />
+                                                    <span style={{ fontSize: '0.85rem' }}>Loading groups...</span>
+                                                </div>
+                                            ) : deviceGroups.length === 0 ? (
+                                                <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', padding: '12px', textAlign: 'center', background: 'var(--bg-tertiary)', borderRadius: '8px' }}>
+                                                    No groups found on this device.
+                                                </p>
+                                            ) : (
+                                                <>
+                                                    {/* Mass Action Bar */}
+                                                    <div style={{
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        justifyContent: 'space-between',
+                                                        marginBottom: '8px',
+                                                        gap: '8px'
+                                                    }}>
+                                                        <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={selectedGroupJids.length === deviceGroups.length && deviceGroups.length > 0}
+                                                                onChange={handleSelectAllGroups}
+                                                                style={{ width: '14px', height: '14px', accentColor: 'var(--primary-color)' }}
+                                                            />
+                                                            Select All ({deviceGroups.length})
+                                                        </label>
+                                                        {selectedGroupJids.length > 0 && (
+                                                            <div style={{ display: 'flex', gap: '4px' }}>
+                                                                <button
+                                                                    className="btn btn-sm"
+                                                                    disabled={groupActionLoading}
+                                                                    onClick={() => handleMassGroupAction('block')}
+                                                                    style={{
+                                                                        fontSize: '0.7rem',
+                                                                        padding: '3px 10px',
+                                                                        background: 'rgba(239, 68, 68, 0.1)',
+                                                                        color: '#ef4444',
+                                                                        border: '1px solid rgba(239, 68, 68, 0.2)',
+                                                                        borderRadius: '6px',
+                                                                        cursor: 'pointer'
+                                                                    }}
+                                                                >
+                                                                    <ShieldOff size={10} /> Block ({selectedGroupJids.length})
+                                                                </button>
+                                                                <button
+                                                                    className="btn btn-sm"
+                                                                    disabled={groupActionLoading}
+                                                                    onClick={() => handleMassGroupAction('unblock')}
+                                                                    style={{
+                                                                        fontSize: '0.7rem',
+                                                                        padding: '3px 10px',
+                                                                        background: 'rgba(34, 197, 94, 0.1)',
+                                                                        color: '#22c55e',
+                                                                        border: '1px solid rgba(34, 197, 94, 0.2)',
+                                                                        borderRadius: '6px',
+                                                                        cursor: 'pointer'
+                                                                    }}
+                                                                >
+                                                                    <ShieldCheck size={10} /> Allow ({selectedGroupJids.length})
+                                                                </button>
+                                                            </div>
+                                                        )}
+                                                    </div>
+
+                                                    {/* Group List */}
+                                                    <div style={{
+                                                        border: '1px solid var(--border-color)',
+                                                        borderRadius: '8px',
+                                                        maxHeight: '240px',
+                                                        overflowY: 'auto',
+                                                        background: 'var(--bg-secondary)'
+                                                    }}>
+                                                        {deviceGroups.map(group => (
+                                                            <div
+                                                                key={group.groupJid}
+                                                                style={{
+                                                                    display: 'flex',
+                                                                    alignItems: 'center',
+                                                                    gap: '8px',
+                                                                    padding: '8px 10px',
+                                                                    borderBottom: '1px solid var(--border-color)',
+                                                                    background: group.isBlocked ? 'rgba(239, 68, 68, 0.03)' : 'transparent'
+                                                                }}
+                                                            >
+                                                                <input
+                                                                    type="checkbox"
+                                                                    checked={selectedGroupJids.includes(group.groupJid)}
+                                                                    onChange={() => handleToggleGroupSelection(group.groupJid)}
+                                                                    style={{ width: '14px', height: '14px', accentColor: 'var(--primary-color)', flexShrink: 0 }}
+                                                                />
+                                                                <div style={{ flex: 1, minWidth: 0 }}>
+                                                                    <div style={{ fontSize: '0.8rem', fontWeight: 500, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                                                        {group.groupName}
+                                                                    </div>
+                                                                    <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>
+                                                                        {group.participantCount} members
+                                                                    </div>
+                                                                </div>
+                                                                <button
+                                                                    onClick={() => handleToggleGroupBlock(group)}
+                                                                    style={{
+                                                                        display: 'flex',
+                                                                        alignItems: 'center',
+                                                                        gap: '4px',
+                                                                        padding: '3px 10px',
+                                                                        borderRadius: '12px',
+                                                                        fontSize: '0.65rem',
+                                                                        fontWeight: 500,
+                                                                        border: 'none',
+                                                                        cursor: 'pointer',
+                                                                        transition: 'all 0.15s',
+                                                                        background: group.isBlocked
+                                                                            ? 'rgba(239, 68, 68, 0.12)'
+                                                                            : 'rgba(34, 197, 94, 0.1)',
+                                                                        color: group.isBlocked ? '#ef4444' : '#22c55e'
+                                                                    }}
+                                                                >
+                                                                    {group.isBlocked ? <><ShieldOff size={10} /> Blocked</> : <><ShieldCheck size={10} /> Allowed</>}
+                                                                </button>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                    <p style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '6px' }}>
+                                                        {deviceGroups.filter(g => g.isBlocked).length} of {deviceGroups.length} groups blocked. Blocked groups will not receive any bot replies.
+                                                    </p>
+                                                </>
+                                            )}
+                                        </div>
+                                    </>
+                                )}
                             </>
                         )}
                     </div>

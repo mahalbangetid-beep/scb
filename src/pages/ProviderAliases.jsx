@@ -468,15 +468,16 @@ export default function ProviderAliases() {
                                             <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--spacing-sm)' }}>
                                                 {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
                                                 <div>
-                                                    <div style={{ fontWeight: 600, fontSize: '0.95rem' }}>{pName}</div>
+                                                    <div style={{ fontWeight: 600, fontSize: '0.95rem' }}>
+                                                        {config?.alias || pName}
+                                                    </div>
                                                     {config?.alias && config.alias !== pName && (
-                                                        <div style={{ fontSize: '0.8rem', color: 'var(--primary)' }}>Alias: {config.alias}</div>
+                                                        <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Provider: {pName}</div>
                                                     )}
-                                                    {provider.orderCount !== undefined && (
-                                                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                                                            {provider.orderCount} orders
-                                                        </div>
-                                                    )}
+                                                    <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', opacity: 0.7 }}>
+                                                        {selectedPanelObj?.url?.replace(/https?:\/\//, '').split('/')[0] || 'Unknown panel'}
+                                                        {provider.orderCount !== undefined && ` · ${provider.orderCount} orders`}
+                                                    </div>
                                                 </div>
                                             </div>
 
@@ -866,11 +867,60 @@ export default function ProviderAliases() {
                                     <div className="form-hint">Select which device will send the forwarded messages. Selection-based, no manual typing.</div>
                                 </div>
 
-                                {/* Forward Command Templates (Section 8.1: format) */}
+                                {/* Forward Command Templates (Section 8.1 + Bug 3.4) */}
                                 <div>
                                     <label className="form-label">Forward Command Format</label>
-                                    <div className="form-hint" style={{ marginBottom: 'var(--spacing-sm)' }}>
-                                        Variables: <code>{'{externalId}'}</code> <code>{'{orderId}'}</code> <code>{'{command}'}</code> <code>{'{service}'}</code> <code>{'{link}'}</code> <code>{'{quantity}'}</code>
+                                    <div style={{ marginBottom: 'var(--spacing-sm)' }}>
+                                        <div className="form-hint" style={{ marginBottom: '6px' }}>Click a variable to insert into the focused template field:</div>
+                                        <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+                                            {[
+                                                { var: '{externalId}', label: 'External ID', desc: 'Order external ID' },
+                                                { var: '{orderId}', label: 'Order ID', desc: 'Internal order ID' },
+                                                { var: '{command}', label: 'Command', desc: 'e.g. refill / cancel' },
+                                                { var: '{providerAlias}', label: 'Provider Alias', desc: 'Configured alias name' },
+                                                { var: '{service}', label: 'Service', desc: 'Service ID/name' },
+                                                { var: '{link}', label: 'Link', desc: 'Target URL' },
+                                                { var: '{quantity}', label: 'Quantity', desc: 'Order quantity' },
+                                            ].map(v => (
+                                                <button
+                                                    key={v.var}
+                                                    type="button"
+                                                    title={v.desc}
+                                                    style={{
+                                                        padding: '2px 8px',
+                                                        borderRadius: '4px',
+                                                        border: '1px solid var(--border-color)',
+                                                        background: 'var(--bg-secondary)',
+                                                        cursor: 'pointer',
+                                                        fontSize: '0.72rem',
+                                                        fontFamily: 'monospace',
+                                                        color: 'var(--primary)',
+                                                        transition: 'all 0.15s'
+                                                    }}
+                                                    onClick={() => {
+                                                        // Insert into the last focused template field
+                                                        const activeEl = document.activeElement;
+                                                        if (activeEl && activeEl.dataset.templateField) {
+                                                            const field = activeEl.dataset.templateField;
+                                                            const start = activeEl.selectionStart || activeEl.value.length;
+                                                            const val = activeEl.value;
+                                                            const newVal = val.slice(0, start) + v.var + val.slice(start);
+                                                            setFormData(p => ({ ...p, [field]: newVal }));
+                                                            // Restore cursor after render
+                                                            setTimeout(() => {
+                                                                activeEl.focus();
+                                                                activeEl.setSelectionRange(start + v.var.length, start + v.var.length);
+                                                            }, 0);
+                                                        } else {
+                                                            // Fallback: append to refill template
+                                                            setFormData(p => ({ ...p, refillTemplate: (p.refillTemplate || '') + ' ' + v.var }));
+                                                        }
+                                                    }}
+                                                >
+                                                    {v.var}
+                                                </button>
+                                            ))}
+                                        </div>
                                     </div>
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-sm)' }}>
                                         <div className="form-group">
@@ -879,6 +929,7 @@ export default function ProviderAliases() {
                                                 className="form-input"
                                                 placeholder="{externalId} {command}"
                                                 value={formData.refillTemplate}
+                                                data-template-field="refillTemplate"
                                                 onChange={e => setFormData(p => ({ ...p, refillTemplate: e.target.value }))}
                                             />
                                         </div>
@@ -888,6 +939,7 @@ export default function ProviderAliases() {
                                                 className="form-input"
                                                 placeholder="{externalId} cancel"
                                                 value={formData.cancelTemplate}
+                                                data-template-field="cancelTemplate"
                                                 onChange={e => setFormData(p => ({ ...p, cancelTemplate: e.target.value }))}
                                             />
                                         </div>
@@ -897,6 +949,7 @@ export default function ProviderAliases() {
                                                 className="form-input"
                                                 placeholder="{externalId} speedup"
                                                 value={formData.speedupTemplate}
+                                                data-template-field="speedupTemplate"
                                                 onChange={e => setFormData(p => ({ ...p, speedupTemplate: e.target.value }))}
                                             />
                                         </div>

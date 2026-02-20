@@ -485,8 +485,15 @@ Remains: {remains}
 
         // Panel order variables
         result = result.replace(/{externalOrderId}/gi, order.externalOrderId || 'N/A');
+        result = result.replace(/{externalId}/gi, order.externalOrderId || 'N/A'); // Alias (Bug 3.4)
         result = result.replace(/{panelOrderId}/gi, order.externalOrderId || 'N/A');
         result = result.replace(/{orderId}/gi, displayOrderId); // Use provider ID if available
+
+        // Provider alias (Bug 3.4) — resolve from ProviderConfig if available
+        result = result.replace(/{providerAlias}/gi, order.providerAlias || order.providerName || 'N/A');
+
+        // Command type (Bug 3.4) — e.g. "refill", "cancel", "speedup"
+        result = result.replace(/{command}/gi, order._commandType || 'N/A');
 
         // Panel info
         result = result.replace(/{panelAlias}/gi, order.panel?.alias || 'N/A');

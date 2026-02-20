@@ -361,6 +361,7 @@ const UserMappings = () => {
                                 <th>Telegram ID</th>
                                 <th>Group ID</th>
                                 <th>Status</th>
+                                <th>Created</th>
                                 <th>Notes</th>
                                 <th style={{ textAlign: 'right' }}>Actions</th>
                             </tr>
@@ -441,6 +442,13 @@ const UserMappings = () => {
                                                 {user.isBotEnabled ? <ToggleRight size={16} /> : <ToggleLeft size={16} />}
                                             </button>
                                         </div>
+                                    </td>
+
+                                    {/* Date Created */}
+                                    <td>
+                                        <span className="date-text" title={user.createdAt ? new Date(user.createdAt).toLocaleString() : ''}>
+                                            {user.createdAt ? new Date(user.createdAt).toLocaleDateString() : '—'}
+                                        </span>
                                     </td>
 
                                     {/* Notes */}

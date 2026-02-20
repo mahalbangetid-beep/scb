@@ -49,15 +49,18 @@ const upload = multer({
 router.get('/', authenticate, async (req, res, next) => {
     try {
         const { page, limit, skip } = parsePagination(req.query);
-        const { status } = req.query;
+        const { status, platform } = req.query;
 
+        // Support both WA (device-based) and Telegram (bot-based) campaigns
         const where = {
-            device: {
-                userId: req.user.id
-            }
+            OR: [
+                { device: { userId: req.user.id } },
+                { telegramBot: { userId: req.user.id } }
+            ]
         };
 
         if (status) where.status = status;
+        if (platform) where.platform = platform;
 
         const [campaigns, total] = await Promise.all([
             prisma.broadcast.findMany({
@@ -68,6 +71,9 @@ router.get('/', authenticate, async (req, res, next) => {
                 include: {
                     device: {
                         select: { name: true }
+                    },
+                    telegramBot: {
+                        select: { botName: true, botUsername: true }
                     }
                 }
             }),
@@ -86,13 +92,17 @@ router.get('/:id', authenticate, async (req, res, next) => {
         const campaign = await prisma.broadcast.findFirst({
             where: {
                 id: req.params.id,
-                device: {
-                    userId: req.user.id
-                }
+                OR: [
+                    { device: { userId: req.user.id } },
+                    { telegramBot: { userId: req.user.id } }
+                ]
             },
             include: {
                 device: {
                     select: { name: true }
+                },
+                telegramBot: {
+                    select: { botName: true, botUsername: true }
                 }
             }
         });
@@ -110,8 +120,9 @@ router.get('/:id', authenticate, async (req, res, next) => {
 // POST /api/broadcast - Create and send broadcast
 router.post('/', authenticate, upload.single('media'), async (req, res, next) => {
     try {
-        const { name, deviceId, message, scheduledAt } = req.body;
+        const { name, deviceId, telegramBotId, message, scheduledAt } = req.body;
         let { recipients, mediaUrl, broadcastType, targetGroups, watermarkText, autoIdEnabled, chargeCategory } = req.body;
+        const platform = req.body.platform || 'WHATSAPP'; // Bug 5.1: Unified Telegram + WhatsApp
 
         // Section 6.4: Determine broadcast type
         broadcastType = broadcastType || 'number'; // number, group, both
@@ -123,14 +134,27 @@ router.post('/', authenticate, upload.single('media'), async (req, res, next) =>
                 : [req.body['recipients[]']];
         }
 
+        // Handle targetGroups from form data (targetGroups[]) or JSON array (Bug 5.6)
+        if (!targetGroups && req.body['targetGroups[]']) {
+            targetGroups = Array.isArray(req.body['targetGroups[]'])
+                ? req.body['targetGroups[]']
+                : [req.body['targetGroups[]']];
+        }
+
         // Parse targetGroups if string
         if (targetGroups && typeof targetGroups === 'string') {
             try { targetGroups = JSON.parse(targetGroups); } catch { targetGroups = [targetGroups]; }
         }
 
-        // Validate required fields first
-        if (!name || !deviceId || !message) {
-            throw new AppError('name, deviceId, and message are required', 400);
+        // Validate required fields — platform-aware (Bug 5.1)
+        if (!name || !message) {
+            throw new AppError('name and message are required', 400);
+        }
+        if (platform === 'TELEGRAM' && !telegramBotId) {
+            throw new AppError('telegramBotId is required for Telegram broadcasts', 400);
+        }
+        if (platform === 'WHATSAPP' && !deviceId) {
+            throw new AppError('deviceId is required for WhatsApp broadcasts', 400);
         }
 
         // Validate based on broadcast type
@@ -183,17 +207,22 @@ router.post('/', authenticate, upload.single('media'), async (req, res, next) =>
             mediaUrl = req.file.path; // Absolute file path — Baileys accepts local file paths
         }
 
-        // Verify device ownership
-        const device = await prisma.device.findFirst({
-            where: { id: deviceId, userId: req.user.id }
-        });
+        // Verify device/bot ownership — platform-aware (Bug 5.1)
+        let device = null;
+        let telegramBot = null;
 
-        if (!device) {
-            throw new AppError('Device not found', 404);
-        }
-
-        if (device.status !== 'connected') {
-            throw new AppError('Device is not connected', 400);
+        if (platform === 'WHATSAPP') {
+            device = await prisma.device.findFirst({
+                where: { id: deviceId, userId: req.user.id }
+            });
+            if (!device) throw new AppError('Device not found', 404);
+            if (device.status !== 'connected') throw new AppError('Device is not connected', 400);
+        } else if (platform === 'TELEGRAM') {
+            telegramBot = await prisma.telegramBot.findFirst({
+                where: { id: telegramBotId, userId: req.user.id }
+            });
+            if (!telegramBot) throw new AppError('Telegram bot not found', 404);
+            if (telegramBot.status !== 'connected') throw new AppError('Telegram bot is not connected', 400);
         }
 
         // Section 6.1 & 6.2: Compose final message (Message + Watermark + Auto ID)
@@ -216,12 +245,17 @@ router.post('/', authenticate, upload.single('media'), async (req, res, next) =>
         }
 
         // Section 6.5: Charge category
-        const effectiveChargeCategory = chargeCategory || (device.isSystemBot ? 'system_bot' : 'own_device');
+        const effectiveChargeCategory = chargeCategory || (device?.isSystemBot ? 'system_bot' : 'own_device');
+
+        // Section 6.5: Charge category — platform-aware
+        const effectiveChargeCategory2 = platform === 'TELEGRAM' ? 'telegram' : effectiveChargeCategory;
 
         const campaign = await prisma.broadcast.create({
             data: {
                 name,
-                deviceId,
+                deviceId: deviceId || null,
+                telegramBotId: telegramBotId || null,
+                platform,
                 message,
                 mediaUrl: mediaUrl || null,
                 status: scheduledAt ? 'scheduled' : 'processing',
@@ -231,13 +265,15 @@ router.post('/', authenticate, upload.single('media'), async (req, res, next) =>
                 autoIdEnabled: useAutoId,
                 autoIdStart,
                 autoIdPrefix,  // BUG #12 fix: snapshot prefix at create time
-                // Section 6.2
-                watermarkText: watermarkText || (mktConfig.watermarkEnabled ? mktConfig.defaultWatermark : null),
+                // Section 6.2 — Watermark: explicit from request takes priority (Bug 5.3)
+                watermarkText: watermarkText !== undefined
+                    ? (watermarkText || null)
+                    : (mktConfig.watermarkEnabled ? mktConfig.defaultWatermark : null),
                 // Section 6.4
                 broadcastType,
                 targetGroups: targetGroups || null,
                 // Section 6.5
-                chargeCategory: effectiveChargeCategory
+                chargeCategory: effectiveChargeCategory2
             }
         });
 
@@ -254,10 +290,15 @@ router.post('/', authenticate, upload.single('media'), async (req, res, next) =>
             });
         }
 
-        // Process broadcast in background (don't await)
+        // Process broadcast in background (don't await) — platform-aware (Bug 5.1)
         if (!scheduledAt) {
-            processBroadcast(req.app.get('whatsapp'), campaign.id, deviceId, message, mediaUrl, req.user.id)
-                .catch(err => console.error('[Broadcast] Error:', err.message));
+            if (platform === 'TELEGRAM') {
+                processTelegramBroadcast(campaign.id, telegramBotId, message, mediaUrl, req.user.id)
+                    .catch(err => console.error('[Broadcast/TG] Error:', err.message));
+            } else {
+                processBroadcast(req.app.get('whatsapp'), campaign.id, deviceId, message, mediaUrl, req.user.id)
+                    .catch(err => console.error('[Broadcast] Error:', err.message));
+            }
         }
 
         successResponse(res, campaign, 'Broadcast campaign created', 201);
@@ -271,6 +312,9 @@ async function processBroadcast(whatsapp, broadcastId, deviceId, message, mediaU
     try {
         const broadcast = await prisma.broadcast.findUnique({ where: { id: broadcastId } });
         if (!broadcast) return;
+
+        // Set start time for campaign reporting (Bug 5.4)
+        await prisma.broadcast.update({ where: { id: broadcastId }, data: { startedAt: new Date() } });
 
         const marketingService = require('../services/marketingService');
         const { watermarkService } = require('../services/watermarkService');
@@ -446,13 +490,116 @@ async function processBroadcast(whatsapp, broadcastId, deviceId, message, mediaU
     }
 }
 
+// ==================== TELEGRAM BROADCAST PROCESSOR (Bug 5.1) ====================
+async function processTelegramBroadcast(broadcastId, telegramBotId, message, mediaUrl, userId) {
+    try {
+        const broadcast = await prisma.broadcast.findUnique({ where: { id: broadcastId } });
+        if (!broadcast) return;
+
+        // Set start time for campaign reporting (Bug 5.4)
+        await prisma.broadcast.update({ where: { id: broadcastId }, data: { startedAt: new Date() } });
+
+        const telegramService = require('../services/telegram');
+        const marketingService = require('../services/marketingService');
+
+        let autoIdCounter = broadcast.autoIdStart || 1;
+        const autoIdEnabled = broadcast.autoIdEnabled;
+        const visibleWatermark = broadcast.watermarkText;
+        const autoIdPrefix = broadcast.autoIdPrefix || '';
+
+        function composeFinalText(baseMessage) {
+            let text = baseMessage;
+            if (visibleWatermark) text = `${text}\n\n${visibleWatermark}`;
+            if (autoIdEnabled) {
+                text = `${text}\nID: ${autoIdPrefix}${autoIdCounter}`;
+                autoIdCounter++;
+            }
+            return text;
+        }
+
+        // Get recipients (Telegram chat IDs)
+        const recipients = await prisma.broadcastRecipient.findMany({
+            where: { broadcastId, status: 'pending' }
+        });
+
+        let sent = 0, failed = 0;
+
+        for (const recipient of recipients) {
+            try {
+                const finalText = composeFinalText(message);
+                await telegramService.sendMessage(telegramBotId, recipient.phone, finalText);
+
+                await prisma.broadcastRecipient.update({
+                    where: { id: recipient.id },
+                    data: { status: 'sent', sentAt: new Date() }
+                });
+                sent++;
+            } catch (error) {
+                await prisma.broadcastRecipient.update({
+                    where: { id: recipient.id },
+                    data: { status: 'failed', error: error.message }
+                });
+                failed++;
+            }
+
+            // Telegram rate limit: ~30 messages/second to different users
+            await new Promise(r => setTimeout(r, 500));
+
+            // Check cancellation every 10 messages
+            if ((sent + failed) % 10 === 0) {
+                const current = await prisma.broadcast.findUnique({ where: { id: broadcastId }, select: { status: true } });
+                if (current?.status === 'cancelled') break;
+            }
+        }
+
+        // Charge credits
+        if (userId && sent > 0) {
+            try {
+                const messageCreditService = require('../services/messageCreditService');
+                const chargeCategory = broadcast.chargeCategory || 'telegram';
+                const rate = await marketingService.getChargeRate(userId, chargeCategory);
+                const totalCharge = sent * rate;
+                if (totalCharge > 0) {
+                    await messageCreditService.deductCredits(userId, totalCharge, `Telegram Broadcast: ${broadcast.name}`, broadcastId);
+                }
+            } catch (e) {
+                console.warn('[Broadcast/TG] Failed to charge credits:', e.message);
+            }
+        }
+
+        // Update campaign status
+        const current = await prisma.broadcast.findUnique({ where: { id: broadcastId }, select: { status: true } });
+        let finalStatus;
+        if (current?.status === 'cancelled') finalStatus = 'cancelled';
+        else if (failed === recipients.length) finalStatus = 'failed';
+        else if (failed > 0 && sent > 0) finalStatus = 'partial';
+        else finalStatus = 'completed';
+
+        await prisma.broadcast.update({
+            where: { id: broadcastId },
+            data: { status: finalStatus, sent, failed, completedAt: new Date() }
+        });
+
+        console.log(`[Broadcast/TG] Campaign ${broadcastId} completed: ${sent} sent, ${failed} failed`);
+    } catch (error) {
+        console.error(`[Broadcast/TG] Campaign ${broadcastId} crashed:`, error.message);
+        await prisma.broadcast.update({
+            where: { id: broadcastId },
+            data: { status: 'failed', completedAt: new Date() }
+        }).catch(() => { });
+    }
+}
+
 // POST /api/broadcast/:id/cancel - Cancel pending broadcast
 router.post('/:id/cancel', authenticate, async (req, res, next) => {
     try {
         const campaign = await prisma.broadcast.findFirst({
             where: {
                 id: req.params.id,
-                device: { userId: req.user.id }
+                OR: [
+                    { device: { userId: req.user.id } },
+                    { telegramBot: { userId: req.user.id } }
+                ]
             }
         });
 
@@ -483,7 +630,10 @@ router.get('/:id/recipients', authenticate, async (req, res, next) => {
         const where = {
             broadcastId: req.params.id,
             broadcast: {
-                device: { userId: req.user.id }
+                OR: [
+                    { device: { userId: req.user.id } },
+                    { telegramBot: { userId: req.user.id } }
+                ]
             }
         };
 
@@ -498,6 +648,43 @@ router.get('/:id/recipients', authenticate, async (req, res, next) => {
         ]);
 
         paginatedResponse(res, recipients, { page, limit, total });
+    } catch (error) {
+        next(error);
+    }
+});
+
+// GET /api/broadcast/:id/failed-export - Export failed recipients as CSV (Bug 5.4)
+router.get('/:id/failed-export', authenticate, async (req, res, next) => {
+    try {
+        const campaign = await prisma.broadcast.findFirst({
+            where: {
+                id: req.params.id,
+                OR: [
+                    { device: { userId: req.user.id } },
+                    { telegramBot: { userId: req.user.id } }
+                ]
+            }
+        });
+
+        if (!campaign) {
+            throw new AppError('Campaign not found', 404);
+        }
+
+        const failedRecipients = await prisma.broadcastRecipient.findMany({
+            where: { broadcastId: req.params.id, status: 'failed' },
+            orderBy: { id: 'asc' }
+        });
+
+        // Generate CSV
+        const csvRows = ['Phone,Error,Timestamp'];
+        for (const r of failedRecipients) {
+            const error = (r.error || 'Unknown error').replace(/"/g, '""');
+            csvRows.push(`"${r.phone}","${error}","${r.sentAt || ''}"`);
+        }
+
+        res.setHeader('Content-Type', 'text/csv');
+        res.setHeader('Content-Disposition', `attachment; filename="failed-${campaign.name}-${campaign.id}.csv"`);
+        res.send(csvRows.join('\n'));
     } catch (error) {
         next(error);
     }

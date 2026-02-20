@@ -640,14 +640,49 @@ class SecurityService {
             // Step 2: Find mapping by username (not by phone!)
             const mapping = await userMappingService.findByUsername(userId, orderUsername);
 
-            // Case 3: Username NOT in mapping (user not registered)
+            // Case 3: Username NOT in mapping → AUTO-CREATE mapping (Bug 4.2)
             if (!mapping) {
-                console.log(`[Security] CASE 3: Username "${orderUsername}" not found in User Mapping`);
-                return {
-                    allowed: false,
-                    message: '❌ Your account is not registered with the bot.\nPlease contact WhatsApp support team to register.',
-                    case: 'USER_NOT_REGISTERED'
-                };
+                console.log(`[Security] CASE 3: Username "${orderUsername}" not found in User Mapping — auto-creating...`);
+
+                try {
+                    // Auto-create mapping: link username + sender's WA number
+                    const newMapping = await userMappingService.createMapping(userId, {
+                        panelUsername: orderUsername,
+                        panelId: order.panelId || null,
+                        whatsappNumbers: [normalizedSender],
+                        whatsappName: null, // Will be captured on next message via auto-capture
+                        isBotEnabled: true,
+                        isVerified: false, // Unverified — admin can verify later
+                        adminNotes: `Auto-created on first interaction (Order #${order.externalOrderId})`
+                    });
+
+                    console.log(`[Security] Auto-created mapping ID ${newMapping.id} for username "${orderUsername}" + WA ${normalizedSender}`);
+
+                    // Record activity on the new mapping
+                    await userMappingService.recordActivity(newMapping.id);
+
+                    return {
+                        allowed: true,
+                        mapping: userMappingService.parseMapping(newMapping),
+                        case: 'AUTO_CREATED'
+                    };
+                } catch (createError) {
+                    // If creation fails (e.g., race condition where mapping was just created),
+                    // try to find the mapping again
+                    console.error(`[Security] Auto-create mapping failed:`, createError.message);
+
+                    const retryMapping = await userMappingService.findByUsername(userId, orderUsername);
+                    if (retryMapping) {
+                        console.log(`[Security] Found mapping on retry — proceeding`);
+                        return { allowed: true, mapping: retryMapping, case: 'RETRY_FOUND' };
+                    }
+
+                    return {
+                        allowed: false,
+                        message: '❌ Your account is not registered with the bot.\nPlease contact WhatsApp support team to register.',
+                        case: 'USER_NOT_REGISTERED'
+                    };
+                }
             }
 
             console.log(`[Security] Found mapping for username "${orderUsername}", ID: ${mapping.id}`);

@@ -4,7 +4,7 @@ import {
     Bot, CreditCard, AlertTriangle, Users, MessageSquare,
     CheckCircle, XCircle, Clock,
     Loader2, Shield, RefreshCw, X, Signal, Search, Plus,
-    Trash2, PlayCircle, Radio, Headphones
+    Trash2, PlayCircle, Radio, Headphones, ArrowRightLeft
 } from 'lucide-react';
 import api from '../services/api';
 
@@ -101,6 +101,10 @@ const SystemBots = () => {
     };
 
     const handleSwitch = async (currentBotId, newBotId) => {
+        const confirmed = window.confirm(
+            '⚠️ WARNING: If you switch this System Bot number, you must add the new number to all linked support groups. Otherwise, the bot will not function in those groups.\n\nAre you sure you want to switch?'
+        );
+        if (!confirmed) return;
         try {
             setActionLoading(currentBotId);
             const res = await api.post(`/system-bots/${currentBotId}/switch-number`, { newDeviceId: newBotId });
@@ -439,6 +443,64 @@ const SystemBots = () => {
                                         </div>
                                     </div>
 
+                                    {/* Slot Details Panel (Bug 2.2) */}
+                                    <div style={{
+                                        display: 'grid',
+                                        gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
+                                        gap: '8px',
+                                        padding: '12px 16px',
+                                        background: 'var(--bg-tertiary)',
+                                        borderRadius: '8px',
+                                        margin: '8px 0',
+                                        fontSize: '0.78rem'
+                                    }}>
+                                        <div>
+                                            <div style={{ color: 'var(--text-muted)', fontSize: '0.65rem', textTransform: 'uppercase', fontWeight: 600, marginBottom: '2px' }}>Slot</div>
+                                            <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
+                                                🎫 Slot #{mySubs.indexOf(sub) + 1}
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <div style={{ color: 'var(--text-muted)', fontSize: '0.65rem', textTransform: 'uppercase', fontWeight: 600, marginBottom: '2px' }}>Start Date</div>
+                                            <div style={{ color: 'var(--text-primary)' }}>
+                                                {sub.startDate ? new Date(sub.startDate).toLocaleDateString() : '—'}
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <div style={{ color: 'var(--text-muted)', fontSize: '0.65rem', textTransform: 'uppercase', fontWeight: 600, marginBottom: '2px' }}>Next Billing</div>
+                                            <div style={{ color: 'var(--text-primary)' }}>
+                                                {sub.nextBillingDate ? new Date(sub.nextBillingDate).toLocaleDateString() : '—'}
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <div style={{ color: 'var(--text-muted)', fontSize: '0.65rem', textTransform: 'uppercase', fontWeight: 600, marginBottom: '2px' }}>Remaining</div>
+                                            <div style={{
+                                                fontWeight: 600, color: (() => {
+                                                    if (!sub.nextBillingDate) return 'var(--text-primary)';
+                                                    const days = Math.max(0, Math.ceil((new Date(sub.nextBillingDate) - new Date()) / (1000 * 60 * 60 * 24)));
+                                                    return days <= 3 ? '#ef4444' : days <= 7 ? '#f59e0b' : '#10b981';
+                                                })()
+                                            }}>
+                                                {sub.nextBillingDate
+                                                    ? `${Math.max(0, Math.ceil((new Date(sub.nextBillingDate) - new Date()) / (1000 * 60 * 60 * 24)))} days`
+                                                    : '—'
+                                                }
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <div style={{ color: 'var(--text-muted)', fontSize: '0.65rem', textTransform: 'uppercase', fontWeight: 600, marginBottom: '2px' }}>Usage</div>
+                                            <div style={{ color: 'var(--text-primary)' }}>
+                                                {sub.usageCount || 0}{sub.usageLimit ? ` / ${sub.usageLimit}` : ' / ∞'}
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <div style={{ color: 'var(--text-muted)', fontSize: '0.65rem', textTransform: 'uppercase', fontWeight: 600, marginBottom: '2px' }}>Auto-Renew</div>
+                                            <div style={{ color: sub.autoRenew ? '#10b981' : '#ef4444' }}>
+                                                {sub.autoRenew ? '✅ On' : '❌ Off'}
+                                            </div>
+                                        </div>
+                                    </div>
+
                                     {/* Assigned Groups Table — Section 11 List View */}
                                     <div className="sub-groups">
                                         {(!sub.assignedGroups || sub.assignedGroups.length === 0) ? (
@@ -541,6 +603,24 @@ const SystemBots = () => {
                             <button className="modal-close" onClick={() => setShowSwitchModal(null)}><X size={18} /></button>
                         </div>
                         <div className="modal-body">
+                            <div style={{
+                                display: 'flex',
+                                alignItems: 'flex-start',
+                                gap: '10px',
+                                padding: '12px 14px',
+                                borderRadius: '10px',
+                                background: 'rgba(245, 158, 11, 0.08)',
+                                border: '1px solid rgba(245, 158, 11, 0.2)',
+                                marginBottom: '1rem',
+                                fontSize: '0.82rem',
+                                color: '#b45309',
+                                lineHeight: 1.5
+                            }}>
+                                <AlertTriangle size={18} style={{ flexShrink: 0, marginTop: '2px' }} />
+                                <div>
+                                    <strong>Important:</strong> If you switch this System Bot number, you must add the new number to all linked support groups. Otherwise, the bot will not function in those groups.
+                                </div>
+                            </div>
                             <p style={{ color: 'var(--text-secondary)', marginBottom: '1rem' }}>
                                 Select a new bot to switch to. Your remaining billing period transfers — no extra charge.
                             </p>
