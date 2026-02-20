@@ -67,6 +67,17 @@ const isTokenExpired = (token) => {
   }
 };
 
+// Helper: get default home page based on user role
+const getHomePage = () => {
+  try {
+    const user = JSON.parse(localStorage.getItem('user') || '{}');
+    if (user.role === 'MASTER_ADMIN') return '/admin/dashboard';
+    return '/dashboard';
+  } catch {
+    return '/dashboard';
+  }
+};
+
 // Protected Route Component
 const ProtectedRoute = ({ children }) => {
   const token = localStorage.getItem('token');
@@ -139,7 +150,7 @@ const AdminRoute = ({ children }) => {
   }
 
   if (!verified) {
-    return <Navigate to="/dashboard" replace />;
+    return <Navigate to={getHomePage()} replace />;
   }
 
   return children;
@@ -166,7 +177,7 @@ function AppContent() {
       <main className={`main-content ${sidebarCollapsed ? 'collapsed' : ''} ${!showSidebar ? 'full-width' : ''}`}>
         <Routes>
           {/* Public Routes */}
-          <Route path="/" element={token ? <Navigate to="/dashboard" replace /> : <LandingPage />} />
+          <Route path="/" element={token ? <Navigate to={getHomePage()} replace /> : <LandingPage />} />
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
 

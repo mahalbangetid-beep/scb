@@ -241,23 +241,25 @@ export default function Sidebar({ collapsed, onToggle }) {
             </div>
 
             <nav className="sidebar-nav">
-                {/* Overview Section */}
-                <div className="nav-section">
-                    <div className="nav-section-title">Overview</div>
-                    {overviewNavigation.map((item) => (
-                        <NavLink
-                            key={item.name}
-                            to={item.path}
-                            className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
-                        >
-                            <item.icon size={20} />
-                            <span>{item.name}</span>
-                        </NavLink>
-                    ))}
-                </div>
+                {/* Overview Section - Hidden for STAFF and MASTER_ADMIN */}
+                {user.role !== 'STAFF' && user.role !== 'MASTER_ADMIN' && (
+                    <div className="nav-section">
+                        <div className="nav-section-title">Overview</div>
+                        {overviewNavigation.map((item) => (
+                            <NavLink
+                                key={item.name}
+                                to={item.path}
+                                className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
+                            >
+                                <item.icon size={20} />
+                                <span>{item.name}</span>
+                            </NavLink>
+                        ))}
+                    </div>
+                )}
 
-                {/* Channels Section - Hidden for STAFF */}
-                {user.role !== 'STAFF' && (
+                {/* Channels Section - Hidden for STAFF and MASTER_ADMIN */}
+                {user.role !== 'STAFF' && user.role !== 'MASTER_ADMIN' && (
                     <div className="nav-section">
                         <div className="nav-section-title">Channels</div>
                         {channelsNavigation.map((item) => (
@@ -273,8 +275,8 @@ export default function Sidebar({ collapsed, onToggle }) {
                     </div>
                 )}
 
-                {/* SMM Integration Section - Hidden for STAFF */}
-                {user.role !== 'STAFF' && (
+                {/* SMM Integration Section - Hidden for STAFF and MASTER_ADMIN */}
+                {user.role !== 'STAFF' && user.role !== 'MASTER_ADMIN' && (
                     <div className="nav-section">
                         <div className="nav-section-title">SMM Integration</div>
                         {smmNavigation.map((item) => (
@@ -290,8 +292,8 @@ export default function Sidebar({ collapsed, onToggle }) {
                     </div>
                 )}
 
-                {/* Automation Section - Hidden for STAFF */}
-                {user.role !== 'STAFF' && (
+                {/* Automation Section - Hidden for STAFF and MASTER_ADMIN */}
+                {user.role !== 'STAFF' && user.role !== 'MASTER_ADMIN' && (
                     <div className="nav-section">
                         <div className="nav-section-title">Automation</div>
                         {automationNavigation.map((item) => (
@@ -307,8 +309,8 @@ export default function Sidebar({ collapsed, onToggle }) {
                     </div>
                 )}
 
-                {/* Finance Section - Hidden for STAFF */}
-                {user.role !== 'STAFF' && (
+                {/* Finance Section - Hidden for STAFF and MASTER_ADMIN */}
+                {user.role !== 'STAFF' && user.role !== 'MASTER_ADMIN' && (
                     <div className="nav-section">
                         <div className="nav-section-title">Finance</div>
                         {financeNavigation.map((item) => (
@@ -324,8 +326,8 @@ export default function Sidebar({ collapsed, onToggle }) {
                     </div>
                 )}
 
-                {/* Marketing Section - Hidden for STAFF */}
-                {user.role !== 'STAFF' && (
+                {/* Marketing Section - Hidden for STAFF and MASTER_ADMIN */}
+                {user.role !== 'STAFF' && user.role !== 'MASTER_ADMIN' && (
                     <div className="nav-section">
                         <div className="nav-section-title">Marketing</div>
                         {marketingNavigation.map((item) => (
@@ -341,8 +343,8 @@ export default function Sidebar({ collapsed, onToggle }) {
                     </div>
                 )}
 
-                {/* Settings Section - Hidden for STAFF */}
-                {user.role !== 'STAFF' && (
+                {/* Settings Section - Hidden for STAFF and MASTER_ADMIN */}
+                {user.role !== 'STAFF' && user.role !== 'MASTER_ADMIN' && (
                     <div className="nav-section">
                         <div className="nav-section-title">Settings</div>
                         {settingsNavigation.map((item) => (
