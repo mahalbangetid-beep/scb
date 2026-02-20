@@ -28,6 +28,16 @@ class AdminApiService {
         this.RATE_WINDOW = 1000; // 1 second
     }
 
+    /**
+     * Detect if panel is a Rental Panel (v1 API)
+     * Supports multiple naming conventions: RENTAL, V1, or URL-based detection
+     */
+    isRentalPanel(panel) {
+        return panel.panelType === 'RENTAL'
+            || panel.panelType === 'V1'
+            || (panel.adminApiBaseUrl && panel.adminApiBaseUrl.includes('/adminapi/v1'));
+    }
+
     // ==================== CORE METHODS ====================
 
     /**
@@ -46,7 +56,7 @@ class AdminApiService {
                 };
             }
 
-            const isRentalPanel = panel.panelType === 'RENTAL';
+            const isRentalPanel = this.isRentalPanel(panel);
             let response;
 
             if (isRentalPanel) {
@@ -144,7 +154,7 @@ class AdminApiService {
      */
     async getOrderWithProvider(panel, orderId) {
         try {
-            const isRentalPanel = panel.panelType === 'RENTAL';
+            const isRentalPanel = this.isRentalPanel(panel);
             let response;
 
             if (isRentalPanel) {
@@ -281,7 +291,7 @@ class AdminApiService {
                 return { success: true, data: [] };
             }
 
-            const isRentalPanel = panel.panelType === 'RENTAL';
+            const isRentalPanel = this.isRentalPanel(panel);
             const idsParam = orderIds.join(',');
             let response;
 
@@ -383,7 +393,7 @@ class AdminApiService {
      */
     async getProvidersList(panel) {
         try {
-            const isRentalPanel = panel.panelType === 'RENTAL';
+            const isRentalPanel = this.isRentalPanel(panel);
             let response;
 
             if (isRentalPanel) {
@@ -1001,11 +1011,12 @@ class AdminApiService {
                 };
             }
 
-            const isRentalPanel = panel.panelType === 'RENTAL';
+            const isRentalPanel = this.isRentalPanel(panel);
 
             // Build URL based on panel type, sanitize trailing slash to prevent double-slash URLs
             const rawBaseUrl = panel.adminApiBaseUrl || this.getDefaultAdminApiUrl(panel.url, panel.panelType);
-            const baseUrl = rawBaseUrl.replace(/\/+$/, '');
+            // Strip trailing slashes AND fix any internal double slashes in path (preserve https://)
+            const baseUrl = rawBaseUrl.replace(/\/+$/, '').replace(/([^:])\/\/+/g, '$1/');
 
             let url, config;
 
@@ -1038,7 +1049,8 @@ class AdminApiService {
                 }
             } else {
                 // Perfect Panel: Header auth + RESTful API
-                url = `${baseUrl}${endpoint}`;
+                // Sanitize potential double slashes in the assembled URL
+                url = `${baseUrl}${endpoint}`.replace(/([^:])\/\/+/g, '$1/');
 
                 config = {
                     method,
@@ -1211,7 +1223,7 @@ class AdminApiService {
         const baseUrl = panelUrl.replace(/\/$/, '');
 
         // Rental Panel uses /adminapi/v1
-        if (panelType === 'RENTAL') {
+        if (panelType === 'RENTAL' || panelType === 'V1') {
             return `${baseUrl}/adminapi/v1`;
         }
 
