@@ -105,7 +105,14 @@ class CommandHandlerService {
         const successfulOrders = [];
 
         // Process each order ID
-        for (const orderId of orderIds) {
+        for (let i = 0; i < orderIds.length; i++) {
+            const orderId = orderIds[i];
+
+            // Add delay between orders in bulk to prevent rate limiting
+            if (i > 0) {
+                await new Promise(resolve => setTimeout(resolve, 500));
+            }
+
             try {
                 const result = await this.processOrderCommand({
                     userId,
@@ -219,6 +226,8 @@ class CommandHandlerService {
                         name: true,
                         alias: true,
                         url: true,
+                        panelType: true,
+                        apiKey: true,
                         adminApiBaseUrl: true,
                         supportsAdminApi: true,
                         adminApiKey: true
@@ -364,6 +373,8 @@ class CommandHandlerService {
                                         name: true,
                                         alias: true,
                                         url: true,
+                                        panelType: true,
+                                        apiKey: true,
                                         adminApiBaseUrl: true,
                                         supportsAdminApi: true,
                                         adminApiKey: true
@@ -467,6 +478,8 @@ class CommandHandlerService {
                                 name: true,
                                 alias: true,
                                 url: true,
+                                panelType: true,
+                                apiKey: true,
                                 adminApiBaseUrl: true,
                                 supportsAdminApi: true,
                                 adminApiKey: true
@@ -574,6 +587,8 @@ class CommandHandlerService {
                                     name: true,
                                     alias: true,
                                     url: true,
+                                    panelType: true,
+                                    apiKey: true,
                                     adminApiBaseUrl: true,
                                     supportsAdminApi: true,
                                     adminApiKey: true
