@@ -377,16 +377,29 @@ class AdminApiService {
     /**
      * Get list of providers used by the panel
      * Note: This is derived from order data as there's no direct providers endpoint
+     * Supports both Perfect Panel (RESTful) and Rental Panel (action-based) formats
      * @param {Object} panel - Panel object
      * @returns {Array} List of unique providers
      */
     async getProvidersList(panel) {
         try {
-            // Fetch recent orders to extract unique providers
-            const response = await this.makeAdminRequest(panel, 'GET', '/orders', {
-                limit: 1000,
-                sort: 'date-desc'
-            });
+            const isRentalPanel = panel.panelType === 'RENTAL';
+            let response;
+
+            if (isRentalPanel) {
+                // Rental Panel: action=getOrders&provider=1 to include provider info
+                response = await this.makeAdminRequest(panel, 'GET', '', {
+                    action: 'getOrders',
+                    provider: 1,
+                    limit: 1000
+                });
+            } else {
+                // Perfect Panel: RESTful /orders endpoint
+                response = await this.makeAdminRequest(panel, 'GET', '/orders', {
+                    limit: 1000,
+                    sort: 'date-desc'
+                });
+            }
 
             if (!response.success) {
                 return {
@@ -395,8 +408,16 @@ class AdminApiService {
                 };
             }
 
-            const ordersData = response.data.data || response.data || [];
-            const orders = Array.isArray(ordersData) ? ordersData : [];
+            // Handle different response structures
+            let orders;
+            if (isRentalPanel) {
+                // Rental Panel: { status: "success", orders: [...] }
+                orders = response.data?.orders || response.data?.data || response.data || [];
+            } else {
+                // Perfect Panel: { data: [...] } or direct array
+                orders = response.data?.data || response.data || [];
+            }
+            orders = Array.isArray(orders) ? orders : [];
 
             // Extract unique provider names
             const providersMap = new Map();
@@ -414,6 +435,8 @@ class AdminApiService {
 
             const providers = Array.from(providersMap.values())
                 .sort((a, b) => b.orderCount - a.orderCount);
+
+            console.log(`[AdminApiService] Found ${providers.length} unique providers from ${orders.length} orders (${isRentalPanel ? 'Rental' : 'Perfect'} Panel)`);
 
             return {
                 success: true,
@@ -980,8 +1003,9 @@ class AdminApiService {
 
             const isRentalPanel = panel.panelType === 'RENTAL';
 
-            // Build URL based on panel type
-            const baseUrl = panel.adminApiBaseUrl || this.getDefaultAdminApiUrl(panel.url, panel.panelType);
+            // Build URL based on panel type, sanitize trailing slash to prevent double-slash URLs
+            const rawBaseUrl = panel.adminApiBaseUrl || this.getDefaultAdminApiUrl(panel.url, panel.panelType);
+            const baseUrl = rawBaseUrl.replace(/\/+$/, '');
 
             let url, config;
 
