@@ -108,9 +108,9 @@ class CommandHandlerService {
         for (let i = 0; i < orderIds.length; i++) {
             const orderId = orderIds[i];
 
-            // Add delay between orders in bulk to prevent rate limiting
+            // Add delay between orders in bulk to prevent rate limiting (429)
             if (i > 0) {
-                await new Promise(resolve => setTimeout(resolve, 500));
+                await new Promise(resolve => setTimeout(resolve, 2000));
             }
 
             try {
