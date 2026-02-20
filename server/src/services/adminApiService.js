@@ -946,24 +946,58 @@ class AdminApiService {
             let response;
 
             if (isRental) {
-                // V1/Rental Panel: Use action=getOrders&orders=orderId
-                console.log(`[AdminAPI] V1 panel — using action=getOrders&orders=${orderId}`);
-                response = await this.makeAdminRequest(panel, 'GET', '', {
-                    action: 'getOrders',
-                    orders: orderId
-                });
+                // V1/Rental Panel: Try multiple actions to find the order
+                // Different Rental Panel versions support different actions
+                const v1Actions = [
+                    { action: 'getOrders', params: { orders: orderId } },
+                    { action: 'getOrders-by-id', params: { orders: orderId, provider: 1 } },
+                ];
 
-                // V1 returns: { "7618634": { id: "7618634", status: "In progress", ... } }
-                // or error string like "Incorrect request"
-                if (response.error) {
-                    throw new Error(response.error);
+                let v1Response = null;
+                let v1Error = null;
+
+                for (const attempt of v1Actions) {
+                    try {
+                        console.log(`[AdminAPI] V1 panel — trying action=${attempt.action}`);
+                        const res = await this.makeAdminRequest(panel, 'GET', '', {
+                            action: attempt.action,
+                            ...attempt.params
+                        });
+
+                        if (res.error) {
+                            console.log(`[AdminAPI] V1 action ${attempt.action} error: ${res.error}`);
+                            v1Error = res.error;
+                            continue;
+                        }
+
+                        v1Response = res;
+                        console.log(`[AdminAPI] V1 action ${attempt.action} succeeded`);
+                        break;
+                    } catch (e) {
+                        console.log(`[AdminAPI] V1 action ${attempt.action} threw: ${e.message}`);
+                        v1Error = e.message;
+                    }
                 }
 
-                // Extract order data from V1 response (keyed by order ID)
+                if (!v1Response) {
+                    throw new Error(v1Error || 'All V1 actions failed');
+                }
+
+                response = v1Response;
+
+                // Extract order data from V1 response
+                // Supports multiple formats:
+                // - getOrders: { "7618634": { id, status, ... } }
+                // - getOrders-by-id: { orders: [{ id, status, ... }] }
                 let orderData = null;
                 const resData = response.data || response;
 
-                if (resData[orderId]) {
+                // Format 1: getOrders-by-id returns { orders: [...] }
+                if (resData.orders && Array.isArray(resData.orders) && resData.orders.length > 0) {
+                    orderData = resData.orders[0];
+                }
+                // Format 2: getOrders returns { "orderId": { ... } }
+                else if (resData[orderId]) {
                     orderData = resData[orderId];
                 } else if (resData[String(orderId)]) {
                     orderData = resData[String(orderId)];
@@ -971,7 +1005,7 @@ class AdminApiService {
                     orderData = resData;
                 } else {
                     // Try first key if response is an object with order data
-                    const keys = Object.keys(resData).filter(k => k !== 'error' && k !== 'success');
+                    const keys = Object.keys(resData).filter(k => k !== 'error' && k !== 'success' && k !== 'status' && k !== 'orders');
                     if (keys.length > 0 && typeof resData[keys[0]] === 'object') {
                         orderData = resData[keys[0]];
                     }
