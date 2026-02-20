@@ -44,7 +44,13 @@ class SmmPanelService {
      * Build full URL for an action
      */
     buildUrl(panel, action) {
-        const baseUrl = panel.url.replace(/\/$/, ''); // Remove trailing slash
+        let baseUrl = panel.url.replace(/\/$/, ''); // Remove trailing slash
+
+        // IMPORTANT: If panel.url contains admin API path (/adminapi/v1 or /adminapi/v2),
+        // strip it since this service uses the User API (not Admin API).
+        // User API uses /api/v2, not /adminapi/v1
+        baseUrl = baseUrl.replace(/\/adminapi\/v[12]$/, '');
+
         const format = panel.apiFormat || 'STANDARD';
 
         // Check for custom endpoints first
