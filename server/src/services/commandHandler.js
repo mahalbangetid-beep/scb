@@ -265,10 +265,52 @@ class CommandHandlerService {
                     if (!orderData) {
                         console.log(`[CommandHandler] Trying User API for order ${orderId}...`);
                         const smmPanelService = require('./smmPanel');
-                        const userApiResult = await smmPanelService.getOrderStatus(panel.id, orderId);
-                        if (userApiResult && userApiResult.status) {
-                            orderData = userApiResult;
-                            console.log(`[CommandHandler] User API succeeded for order ${orderId}`);
+                        try {
+                            const userApiResult = await smmPanelService.getOrderStatus(panel.id, orderId);
+                            if (userApiResult && userApiResult.status) {
+                                orderData = userApiResult;
+                                console.log(`[CommandHandler] User API succeeded for order ${orderId}`);
+                            }
+                        } catch (userApiErr) {
+                            console.log(`[CommandHandler] User API failed: ${userApiErr.message}`);
+
+                            // If URL contains /adminapi/, the User API was sent to wrong endpoint
+                            // Retry with direct API call using cleaned URL
+                            if (panel.url && panel.url.includes('/adminapi/')) {
+                                console.log(`[CommandHandler] Retrying with cleaned URL (removing /adminapi/ path)...`);
+                                try {
+                                    const axios = require('axios');
+                                    const { decrypt } = require('../utils/encryption');
+                                    const cleanUrl = panel.url.replace(/\/adminapi\/v[12].*$/, '').replace(/\/$/, '');
+                                    const apiKey = decrypt(panel.apiKey);
+                                    const userApiUrl = `${cleanUrl}/api/v2`;
+
+                                    console.log(`[CommandHandler] Retry URL: ${userApiUrl}`);
+                                    const retryRes = await axios.post(userApiUrl, new URLSearchParams({
+                                        key: apiKey,
+                                        action: 'status',
+                                        order: orderId
+                                    }), { timeout: 30000 });
+
+                                    const retryData = retryRes.data;
+                                    if (retryData && retryData.status && !retryData.error) {
+                                        orderData = {
+                                            status: retryData.status,
+                                            charge: retryData.charge ? parseFloat(retryData.charge) : null,
+                                            startCount: retryData.start_count ? parseInt(retryData.start_count) : null,
+                                            remains: retryData.remains !== undefined ? parseInt(retryData.remains) : null,
+                                            customerUsername: null, // User API doesn't return username
+                                            providerName: null,
+                                            providerOrderId: null
+                                        };
+                                        console.log(`[CommandHandler] Retry User API succeeded for order ${orderId}: status=${retryData.status}`);
+                                    } else if (retryData?.error) {
+                                        console.log(`[CommandHandler] Retry User API error: ${retryData.error}`);
+                                    }
+                                } catch (retryErr) {
+                                    console.log(`[CommandHandler] Retry User API failed: ${retryErr.message}`);
+                                }
+                            }
                         }
                     }
 
