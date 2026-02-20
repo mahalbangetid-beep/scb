@@ -386,112 +386,226 @@ class AdminApiService {
 
     /**
      * Get list of providers used by the panel
-     * Note: This is derived from order data as there's no direct providers endpoint
-     * Supports both Perfect Panel (RESTful) and Rental Panel (action-based) formats
+     * Uses multiple strategies per panel type with automatic fallback
      * @param {Object} panel - Panel object
-     * @returns {Array} List of unique providers
+     * @returns {Object} { success, data: [{ name, orderCount }] }
      */
     async getProvidersList(panel) {
         try {
             const isRentalPanel = this.isRentalPanel(panel);
-            let response;
-
-            // Errors that indicate "no data" rather than a real failure
-            const emptyDataErrors = [
-                'order_not_found', 'orders_not_found', 'no_orders',
-                'not_found', 'empty', 'no_data', 'no orders'
-            ];
-            const isEmptyDataError = (err) => {
-                if (!err) return false;
-                const errLower = String(err).toLowerCase();
-                return emptyDataErrors.some(e => errLower.includes(e));
-            };
+            console.log(`[AdminApiService] getProvidersList for "${panel.alias}" (${isRentalPanel ? 'Rental/V1' : 'Perfect/V2'})`);
 
             if (isRentalPanel) {
-                // Rental Panel: Try action=getOrders&provider=1 to include provider info
-                response = await this.makeAdminRequest(panel, 'GET', '', {
-                    action: 'getOrders',
-                    provider: 1,
-                    limit: 1000
-                });
-
-                // If provider=1 param caused an error, retry without it
-                // Some panels don't support this param or interpret it as a filter
-                if (!response.success && !isEmptyDataError(response.error)) {
-                    console.log(`[AdminApiService] Retrying getOrders without provider=1 param for panel: ${panel.alias}`);
-                    response = await this.makeAdminRequest(panel, 'GET', '', {
-                        action: 'getOrders',
-                        limit: 1000
-                    });
-                }
+                return await this._getProvidersV1(panel);
             } else {
-                // Perfect Panel: RESTful /orders endpoint
-                response = await this.makeAdminRequest(panel, 'GET', '/orders', {
-                    limit: 1000,
-                    sort: 'date-desc'
-                });
+                return await this._getProvidersV2(panel);
             }
-
-            // Handle "empty" errors as valid empty results (no orders = no providers)
-            if (!response.success) {
-                if (isEmptyDataError(response.error)) {
-                    console.log(`[AdminApiService] Panel "${panel.alias}" returned "${response.error}" — treating as 0 providers`);
-                    return {
-                        success: true,
-                        data: []
-                    };
-                }
-                return {
-                    success: false,
-                    error: response.error || 'Failed to fetch orders'
-                };
-            }
-
-            // Handle different response structures
-            let orders;
-            if (isRentalPanel) {
-                // Rental Panel: { status: "success", orders: [...] }
-                orders = response.data?.orders || response.data?.data || response.data || [];
-            } else {
-                // Perfect Panel: { data: [...] } or direct array
-                orders = response.data?.data || response.data || [];
-            }
-            orders = Array.isArray(orders) ? orders : [];
-
-            // Extract unique provider names
-            const providersMap = new Map();
-            orders.forEach(order => {
-                // Support both string provider name and object { name, id }
-                const providerName = typeof order.provider === 'string'
-                    ? order.provider
-                    : order.provider?.name || order.provider_name;
-                if (providerName && !providersMap.has(providerName)) {
-                    providersMap.set(providerName, {
-                        name: providerName,
-                        orderCount: 1
-                    });
-                } else if (providerName) {
-                    const existing = providersMap.get(providerName);
-                    existing.orderCount++;
-                }
-            });
-
-            const providers = Array.from(providersMap.values())
-                .sort((a, b) => b.orderCount - a.orderCount);
-
-            console.log(`[AdminApiService] Found ${providers.length} unique providers from ${orders.length} orders (${isRentalPanel ? 'Rental' : 'Perfect'} Panel: ${panel.alias})`);
-
-            return {
-                success: true,
-                data: providers
-            };
         } catch (error) {
             console.error('[AdminApiService] getProvidersList error:', error.message);
-            return {
-                success: false,
-                error: error.message
-            };
+            return { success: false, error: error.message };
         }
+    }
+
+    /**
+     * Check if an error indicates "no data" rather than a real failure
+     */
+    _isEmptyDataError(err) {
+        if (!err) return false;
+        const errLower = String(err).toLowerCase();
+        const emptyPatterns = [
+            'order_not_found', 'orders_not_found', 'no_orders',
+            'not_found', 'empty', 'no_data', 'no orders'
+        ];
+        return emptyPatterns.some(e => errLower.includes(e));
+    }
+
+    /**
+     * Extract unique provider names from an array of orders
+     */
+    _extractProvidersFromOrders(orders) {
+        const providersMap = new Map();
+        for (const order of orders) {
+            const name = typeof order.provider === 'string'
+                ? order.provider
+                : (order.provider?.name || order.provider_name || null);
+            if (!name) continue;
+            if (providersMap.has(name)) {
+                providersMap.get(name).orderCount++;
+            } else {
+                providersMap.set(name, { name, orderCount: 1 });
+            }
+        }
+        return Array.from(providersMap.values()).sort((a, b) => b.orderCount - a.orderCount);
+    }
+
+    /**
+     * V1 (Rental Panel) provider fetching — multi-strategy
+     */
+    async _getProvidersV1(panel) {
+        // ── Strategy 1: getOrders with provider=1 (includes provider column) ──
+        console.log(`[AdminApiService] V1 Strategy 1: getOrders&provider=1`);
+        const res1 = await this.makeAdminRequest(panel, 'GET', '', {
+            action: 'getOrders',
+            provider: 1,
+            limit: 1000
+        });
+
+        if (res1.success) {
+            const orders = res1.data?.orders || res1.data?.data || res1.data || [];
+            const list = Array.isArray(orders) ? orders : [];
+            const providers = this._extractProvidersFromOrders(list);
+            if (providers.length > 0) {
+                console.log(`[AdminApiService] V1 Strategy 1 OK: ${providers.length} providers from ${list.length} orders`);
+                return { success: true, data: providers };
+            }
+            // Orders exist but no provider field — fall through to strategy 2
+            if (list.length > 0) {
+                console.log(`[AdminApiService] V1 Strategy 1: ${list.length} orders but no provider field, trying getMassProviderData...`);
+            }
+        }
+
+        // ── Strategy 2: getOrders (basic) then getMassProviderData ──
+        console.log(`[AdminApiService] V1 Strategy 2: getOrders + getMassProviderData`);
+        const res2 = await this.makeAdminRequest(panel, 'GET', '', {
+            action: 'getOrders',
+            limit: 200
+        });
+
+        if (!res2.success) {
+            if (this._isEmptyDataError(res2.error)) {
+                console.log(`[AdminApiService] V1: "${res2.error}" — 0 providers (panel has no orders)`);
+                return { success: true, data: [] };
+            }
+            // If first strategy also failed with a real error, report it
+            if (!res1.success && !this._isEmptyDataError(res1.error)) {
+                return { success: false, error: res1.error || res2.error || 'Failed to fetch orders' };
+            }
+            return { success: false, error: res2.error || 'Failed to fetch orders' };
+        }
+
+        const orders2 = res2.data?.orders || res2.data?.data || res2.data || [];
+        const ordersList = Array.isArray(orders2) ? orders2 : [];
+
+        if (ordersList.length === 0) {
+            console.log(`[AdminApiService] V1: Orders list empty — 0 providers`);
+            return { success: true, data: [] };
+        }
+
+        // Extract order IDs for getMassProviderData
+        const orderIds = ordersList
+            .map(o => o.id || o.order_id)
+            .filter(Boolean)
+            .slice(0, 100);
+
+        if (orderIds.length > 0) {
+            const provRes = await this.makeAdminRequest(panel, 'GET', '', {
+                action: 'getMassProviderData',
+                orders: orderIds.join(',')
+            });
+
+            if (provRes.success) {
+                const provData = provRes.data?.data || provRes.data || {};
+                const providersMap = new Map();
+
+                // getMassProviderData returns: { "orderId": { provider: "X", ... }, ... }
+                if (typeof provData === 'object' && !Array.isArray(provData)) {
+                    for (const info of Object.values(provData)) {
+                        const name = info?.provider || info?.provider_name;
+                        if (!name) continue;
+                        if (providersMap.has(name)) {
+                            providersMap.get(name).orderCount++;
+                        } else {
+                            providersMap.set(name, { name, orderCount: 1 });
+                        }
+                    }
+                }
+
+                const providers = Array.from(providersMap.values()).sort((a, b) => b.orderCount - a.orderCount);
+                if (providers.length > 0) {
+                    console.log(`[AdminApiService] V1 Strategy 2 OK (getMassProviderData): ${providers.length} providers`);
+                    return { success: true, data: providers };
+                }
+                console.log(`[AdminApiService] V1 Strategy 2: getMassProviderData returned no provider names`);
+            } else {
+                console.log(`[AdminApiService] V1 Strategy 2: getMassProviderData failed: ${provRes.error}`);
+            }
+        }
+
+        // ── Strategy 3: Fallback — extract whatever we can from orders ──
+        const fallback = this._extractProvidersFromOrders(ordersList);
+        console.log(`[AdminApiService] V1 Strategy 3 (fallback from order fields): ${fallback.length} providers`);
+        return { success: true, data: fallback };
+    }
+
+    /**
+     * V2 (Perfect Panel) provider fetching — multi-strategy
+     */
+    async _getProvidersV2(panel) {
+        // ── Strategy 1: /orders bulk fetch ──
+        console.log(`[AdminApiService] V2 Strategy 1: /orders?limit=1000`);
+        const res1 = await this.makeAdminRequest(panel, 'GET', '/orders', {
+            limit: 1000,
+            sort: 'date-desc'
+        });
+
+        if (!res1.success) {
+            if (this._isEmptyDataError(res1.error)) {
+                console.log(`[AdminApiService] V2: "${res1.error}" — 0 providers`);
+                return { success: true, data: [] };
+            }
+            return { success: false, error: res1.error || 'Failed to fetch orders' };
+        }
+
+        const orders = res1.data?.data || res1.data || [];
+        const ordersList = Array.isArray(orders) ? orders : [];
+
+        if (ordersList.length === 0) {
+            console.log(`[AdminApiService] V2: Orders list empty — 0 providers`);
+            return { success: true, data: [] };
+        }
+
+        // Check if bulk response already has provider info
+        const bulkProviders = this._extractProvidersFromOrders(ordersList);
+        if (bulkProviders.length > 0) {
+            console.log(`[AdminApiService] V2 Strategy 1 OK: ${bulkProviders.length} providers from ${ordersList.length} orders`);
+            return { success: true, data: bulkProviders };
+        }
+
+        // ── Strategy 2: Sample individual orders (GET /orders/{id} includes provider) ──
+        console.log(`[AdminApiService] V2 Strategy 2: Sampling individual orders for provider info...`);
+        const sampleIds = ordersList
+            .map(o => o.id)
+            .filter(Boolean)
+            .slice(0, 15); // Sample 15 orders max to avoid rate limits
+
+        const providersMap = new Map();
+        let fetchedCount = 0;
+
+        for (const orderId of sampleIds) {
+            try {
+                const orderRes = await this.makeAdminRequest(panel, 'GET', `/orders/${orderId}`);
+                if (!orderRes.success) continue;
+
+                fetchedCount++;
+                const order = orderRes.data?.data || orderRes.data || {};
+                const name = typeof order.provider === 'string'
+                    ? order.provider
+                    : (order.provider?.name || order.provider_name || null);
+
+                if (!name) continue;
+                if (providersMap.has(name)) {
+                    providersMap.get(name).orderCount++;
+                } else {
+                    providersMap.set(name, { name, orderCount: 1 });
+                }
+            } catch (e) {
+                continue; // Skip failed fetches
+            }
+        }
+
+        const providers = Array.from(providersMap.values()).sort((a, b) => b.orderCount - a.orderCount);
+        console.log(`[AdminApiService] V2 Strategy 2: ${providers.length} providers from ${fetchedCount} sampled orders`);
+        return { success: true, data: providers };
     }
 
     /**
