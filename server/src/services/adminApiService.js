@@ -396,13 +396,34 @@ class AdminApiService {
             const isRentalPanel = this.isRentalPanel(panel);
             let response;
 
+            // Errors that indicate "no data" rather than a real failure
+            const emptyDataErrors = [
+                'order_not_found', 'orders_not_found', 'no_orders',
+                'not_found', 'empty', 'no_data', 'no orders'
+            ];
+            const isEmptyDataError = (err) => {
+                if (!err) return false;
+                const errLower = String(err).toLowerCase();
+                return emptyDataErrors.some(e => errLower.includes(e));
+            };
+
             if (isRentalPanel) {
-                // Rental Panel: action=getOrders&provider=1 to include provider info
+                // Rental Panel: Try action=getOrders&provider=1 to include provider info
                 response = await this.makeAdminRequest(panel, 'GET', '', {
                     action: 'getOrders',
                     provider: 1,
                     limit: 1000
                 });
+
+                // If provider=1 param caused an error, retry without it
+                // Some panels don't support this param or interpret it as a filter
+                if (!response.success && !isEmptyDataError(response.error)) {
+                    console.log(`[AdminApiService] Retrying getOrders without provider=1 param for panel: ${panel.alias}`);
+                    response = await this.makeAdminRequest(panel, 'GET', '', {
+                        action: 'getOrders',
+                        limit: 1000
+                    });
+                }
             } else {
                 // Perfect Panel: RESTful /orders endpoint
                 response = await this.makeAdminRequest(panel, 'GET', '/orders', {
@@ -411,7 +432,15 @@ class AdminApiService {
                 });
             }
 
+            // Handle "empty" errors as valid empty results (no orders = no providers)
             if (!response.success) {
+                if (isEmptyDataError(response.error)) {
+                    console.log(`[AdminApiService] Panel "${panel.alias}" returned "${response.error}" — treating as 0 providers`);
+                    return {
+                        success: true,
+                        data: []
+                    };
+                }
                 return {
                     success: false,
                     error: response.error || 'Failed to fetch orders'
@@ -432,13 +461,17 @@ class AdminApiService {
             // Extract unique provider names
             const providersMap = new Map();
             orders.forEach(order => {
-                if (order.provider && !providersMap.has(order.provider)) {
-                    providersMap.set(order.provider, {
-                        name: order.provider,
+                // Support both string provider name and object { name, id }
+                const providerName = typeof order.provider === 'string'
+                    ? order.provider
+                    : order.provider?.name || order.provider_name;
+                if (providerName && !providersMap.has(providerName)) {
+                    providersMap.set(providerName, {
+                        name: providerName,
                         orderCount: 1
                     });
-                } else if (order.provider) {
-                    const existing = providersMap.get(order.provider);
+                } else if (providerName) {
+                    const existing = providersMap.get(providerName);
                     existing.orderCount++;
                 }
             });
@@ -446,7 +479,7 @@ class AdminApiService {
             const providers = Array.from(providersMap.values())
                 .sort((a, b) => b.orderCount - a.orderCount);
 
-            console.log(`[AdminApiService] Found ${providers.length} unique providers from ${orders.length} orders (${isRentalPanel ? 'Rental' : 'Perfect'} Panel)`);
+            console.log(`[AdminApiService] Found ${providers.length} unique providers from ${orders.length} orders (${isRentalPanel ? 'Rental' : 'Perfect'} Panel: ${panel.alias})`);
 
             return {
                 success: true,
