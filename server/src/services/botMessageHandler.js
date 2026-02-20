@@ -156,9 +156,18 @@ class BotMessageHandler {
                 });
 
                 if (!linkedGroup) {
-                    // Group is NOT linked/active — silently ignore (per spec: "No response" for unlinked groups)
-                    console.log(`[BotHandler] System bot ${deviceId} - unlinked group ${groupJid}, ignoring`);
-                    return { handled: false, type: 'system_bot_unlinked_group' };
+                    // Group is NOT linked/active — but still allow utility commands
+                    // (.groupid is essential to GET the JID needed for linking)
+                    const cmdLower = message.toLowerCase().trim();
+                    const isUtilityCmd = ['.groupid', '/groupid', '.ping', '/ping', '.deviceid', '/deviceid', '.help', '/help', '.commands'].includes(cmdLower);
+
+                    if (isUtilityCmd) {
+                        console.log(`[BotHandler] System bot ${deviceId} - allowing utility command "${cmdLower}" in unlinked group ${groupJid}`);
+                        // Fall through to utility handler below
+                    } else {
+                        console.log(`[BotHandler] System bot ${deviceId} - unlinked group ${groupJid}, ignoring`);
+                        return { handled: false, type: 'system_bot_unlinked_group' };
+                    }
                 }
 
                 // Group is linked — use the matched subscriber's subscription
