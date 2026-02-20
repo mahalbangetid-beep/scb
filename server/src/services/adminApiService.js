@@ -946,10 +946,10 @@ class AdminApiService {
             let response;
 
             if (isRental) {
-                // V1/Rental Panel: Try multiple actions to find the order
-                // Different Rental Panel versions support different actions
+                // V1/Rental Panel: Use getOrders-by-id to look up order by ID
+                // Note: getOrders only filters by service type (not order ID),
+                // so getOrders-by-id is the only action that accepts order IDs
                 const v1Actions = [
-                    { action: 'getOrders', params: { orders: orderId } },
                     { action: 'getOrders-by-id', params: { orders: orderId, provider: 1 } },
                 ];
 
