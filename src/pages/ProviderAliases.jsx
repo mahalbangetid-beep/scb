@@ -3,7 +3,7 @@ import {
     Globe, RefreshCw, Loader2, AlertCircle, CheckCircle, X,
     ArrowRight, Save, Search, Eye, EyeOff, Trash2,
     Smartphone, Send, MessageSquare, TestTube, ChevronDown,
-    ChevronRight, Settings2, Layers, Zap, Shield
+    ChevronRight, Settings2, Layers, Zap, Shield, Plus, UserPlus
 } from 'lucide-react'
 import api from '../services/api'
 
@@ -31,6 +31,12 @@ export default function ProviderAliases() {
     const [showSetupModal, setShowSetupModal] = useState(false)
     const [togglingConfig, setTogglingConfig] = useState(null)
     const [deletingConfig, setDeletingConfig] = useState(null)
+
+    // Manual add provider state
+    const [showManualAdd, setShowManualAdd] = useState(false)
+    const [manualProviderName, setManualProviderName] = useState('')
+    const [manualProviderAlias, setManualProviderAlias] = useState('')
+    const [addingManual, setAddingManual] = useState(false)
 
     // Form state for inline setup
     const [formData, setFormData] = useState({
@@ -82,15 +88,33 @@ export default function ProviderAliases() {
         setLoadingProviders(true)
         try {
             const res = await api.post(`/panels/${panelId}/sync-providers`)
-            setProviders(res.data?.providers || [])
+            const apiProviders = res.data?.providers || []
+            // Merge with manually-added providers from configs
+            const apiNames = new Set(apiProviders.map(p => (p.name || '').toLowerCase()))
+            const manualProviders = configs
+                .filter(c => !apiNames.has((c.providerName || '').toLowerCase()))
+                .map(c => ({
+                    name: c.providerName,
+                    orderCount: 0,
+                    isManual: true
+                }))
+            setProviders([...apiProviders, ...manualProviders])
             // Re-fetch panels to update lastProviderSyncAt timestamp
             try {
                 const panelsRes = await api.get('/panels')
                 setPanels(panelsRes.data || [])
             } catch (_) { /* non-critical */ }
         } catch (err) {
-            setError(err.error?.message || err.message || 'Failed to fetch providers. Make sure Admin API is configured.')
-            setProviders([])
+            // Even if API fetch fails, show manually-added providers
+            const manualProviders = configs.map(c => ({
+                name: c.providerName,
+                orderCount: 0,
+                isManual: true
+            }))
+            setProviders(manualProviders)
+            if (manualProviders.length === 0) {
+                setError(err.error?.message || err.message || 'Failed to fetch providers. Make sure Admin API is configured.')
+            }
         } finally {
             setLoadingProviders(false)
         }
@@ -106,10 +130,21 @@ export default function ProviderAliases() {
     const handleReCatch = async () => {
         if (!selectedPanel) return
         setSyncing(true)
+        setError(null)
         try {
             const res = await api.post(`/panels/${selectedPanel}/sync-providers`)
-            setProviders(res.data?.providers || [])
-            setSuccess(`Re-caught ${res.data?.providers?.length || 0} providers from panel`)
+            const apiProviders = res.data?.providers || []
+            // Merge API providers with manually-added providers (from configs)
+            const apiNames = new Set(apiProviders.map(p => (p.name || '').toLowerCase()))
+            const manualProviders = configs
+                .filter(c => !apiNames.has((c.providerName || '').toLowerCase()))
+                .map(c => ({
+                    name: c.providerName,
+                    orderCount: 0,
+                    isManual: true
+                }))
+            setProviders([...apiProviders, ...manualProviders])
+            setSuccess(`Re-caught ${apiProviders.length} providers from panel`)
             // Re-fetch panels to update lastProviderSyncAt timestamp
             try {
                 const panelsRes = await api.get('/panels')
@@ -119,6 +154,51 @@ export default function ProviderAliases() {
             setError(err.error?.message || err.message || 'Re-catch failed')
         } finally {
             setSyncing(false)
+        }
+    }
+
+    // Handle manual provider add
+    const handleManualAdd = async () => {
+        if (!manualProviderName.trim()) {
+            setError('Provider name is required')
+            return
+        }
+
+        // Check if provider already exists
+        const exists = providers.some(p => (p.name || '').toLowerCase() === manualProviderName.trim().toLowerCase())
+        if (exists) {
+            setError('This provider already exists in the list')
+            return
+        }
+
+        setAddingManual(true)
+        try {
+            // Create provider config with just name and alias
+            await api.post('/provider-config', {
+                providerName: manualProviderName.trim(),
+                alias: manualProviderAlias.trim() || manualProviderName.trim(),
+                isActive: true
+            })
+
+            // Add to local providers list
+            setProviders(prev => [...prev, {
+                name: manualProviderName.trim(),
+                orderCount: 0,
+                isManual: true
+            }])
+
+            // Refresh configs
+            const configsRes = await api.get('/provider-config')
+            setConfigs(configsRes.data || [])
+
+            setSuccess(`Provider "${manualProviderAlias.trim() || manualProviderName.trim()}" added successfully`)
+            setShowManualAdd(false)
+            setManualProviderName('')
+            setManualProviderAlias('')
+        } catch (err) {
+            setError(err.error?.message || err.message || 'Failed to add provider')
+        } finally {
+            setAddingManual(false)
         }
     }
 
@@ -404,7 +484,7 @@ export default function ProviderAliases() {
             {/* Provider List */}
             {selectedPanel && (
                 <>
-                    {/* Search */}
+                    {/* Search + Add Manual */}
                     <div className="filter-bar" style={{ display: 'flex', gap: 'var(--spacing-sm)', marginBottom: 'var(--spacing-lg)', alignItems: 'center' }}>
                         <div style={{ position: 'relative', flex: '1 1 250px', minWidth: '200px' }}>
                             <Search size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none' }} />
@@ -420,7 +500,70 @@ export default function ProviderAliases() {
                         <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
                             {filteredProviders.length} provider{filteredProviders.length !== 1 ? 's' : ''}
                         </span>
+                        <button
+                            className="btn btn-primary"
+                            onClick={() => setShowManualAdd(true)}
+                            style={{ whiteSpace: 'nowrap' }}
+                        >
+                            <Plus size={16} />
+                            Add Provider
+                        </button>
                     </div>
+
+                    {/* Manual Add Provider Modal */}
+                    {showManualAdd && (
+                        <div className="card" style={{
+                            padding: 'var(--spacing-lg)',
+                            marginBottom: 'var(--spacing-lg)',
+                            border: '2px solid var(--primary)',
+                            background: 'var(--bg-secondary)'
+                        }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--spacing-md)' }}>
+                                <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '8px', fontSize: '1rem' }}>
+                                    <UserPlus size={18} />
+                                    Add Provider Manually
+                                </h3>
+                                <button className="btn btn-ghost" onClick={() => { setShowManualAdd(false); setManualProviderName(''); setManualProviderAlias('') }} style={{ padding: '4px' }}>
+                                    <X size={18} />
+                                </button>
+                            </div>
+                            <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', marginBottom: 'var(--spacing-md)', marginTop: 0 }}>
+                                Add a provider that cannot be auto-detected via Admin API. The provider name must match exactly how it appears in orders.
+                            </p>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: 'var(--spacing-sm)', alignItems: 'end' }}>
+                                <div>
+                                    <label className="form-label">Provider Name *</label>
+                                    <input
+                                        type="text"
+                                        placeholder="e.g., smmnepal, main_provider"
+                                        value={manualProviderName}
+                                        onChange={e => setManualProviderName(e.target.value)}
+                                        className="form-input"
+                                        autoFocus
+                                    />
+                                </div>
+                                <div>
+                                    <label className="form-label">Alias (display name)</label>
+                                    <input
+                                        type="text"
+                                        placeholder="e.g., Provider A"
+                                        value={manualProviderAlias}
+                                        onChange={e => setManualProviderAlias(e.target.value)}
+                                        className="form-input"
+                                    />
+                                </div>
+                                <button
+                                    className="btn btn-primary"
+                                    onClick={handleManualAdd}
+                                    disabled={addingManual || !manualProviderName.trim()}
+                                    style={{ height: '38px' }}
+                                >
+                                    {addingManual ? <Loader2 size={16} className="animate-spin" /> : <Plus size={16} />}
+                                    Add
+                                </button>
+                            </div>
+                        </div>
+                    )}
 
                     {loadingProviders ? (
                         <div className="loading-container">
@@ -433,9 +576,17 @@ export default function ProviderAliases() {
                             <div className="empty-state-title">No providers found</div>
                             <div className="empty-state-description">
                                 {selectedPanelObj?.supportsAdminApi
-                                    ? 'Click "Re-catch Providers" to fetch from Admin API.'
-                                    : 'Admin API is not configured for this panel. Enable it in Panel settings first.'}
+                                    ? 'Click "Re-catch Providers" to fetch from Admin API, or add providers manually.'
+                                    : 'Admin API is not configured for this panel. You can still add providers manually.'}
                             </div>
+                            <button
+                                className="btn btn-primary"
+                                onClick={() => setShowManualAdd(true)}
+                                style={{ marginTop: 'var(--spacing-md)' }}
+                            >
+                                <Plus size={16} />
+                                Add Provider Manually
+                            </button>
                         </div>
                     ) : (
                         <div style={{ display: 'grid', gap: 'var(--spacing-sm)' }}>
@@ -475,8 +626,10 @@ export default function ProviderAliases() {
                                                         <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Provider: {pName}</div>
                                                     )}
                                                     <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', opacity: 0.7 }}>
-                                                        {selectedPanelObj?.url?.replace(/https?:\/\//, '').split('/')[0] || 'Unknown panel'}
-                                                        {provider.orderCount !== undefined && ` · ${provider.orderCount} orders`}
+                                                        {provider.isManual
+                                                            ? <span style={{ color: 'var(--primary)' }}>✦ Manually added</span>
+                                                            : <>{selectedPanelObj?.url?.replace(/https?:\/\//, '').split('/')[0] || 'Unknown panel'}
+                                                                {provider.orderCount !== undefined && ` · ${provider.orderCount} orders`}</>}
                                                     </div>
                                                 </div>
                                             </div>
