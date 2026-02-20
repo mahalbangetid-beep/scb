@@ -263,6 +263,7 @@ router.get('/', async (req, res, next) => {
                     isActive: true,
                     isPrimary: true,
                     lastSyncAt: true,
+                    lastProviderSyncAt: true,
                     createdAt: true,
                     supportsAdminApi: true,
                     capabilities: true,
