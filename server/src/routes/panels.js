@@ -192,7 +192,7 @@ router.post('/detect-and-add', async (req, res, next) => {
                 endpointOrderStatus: config.endpoint || defaultEndpoint,
                 endpointRefill: config.endpoint || defaultEndpoint,
                 endpointCancel: config.endpoint || defaultEndpoint,
-                adminApiBaseUrl: `${url.trim()}${config.endpoint || defaultEndpoint}`,
+                adminApiBaseUrl: `${url.trim().replace(/\/+$/, '')}${config.endpoint || defaultEndpoint}`,
                 currency: 'USD',
                 isPrimary: isPrimary || false,
                 isActive: true,
