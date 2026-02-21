@@ -41,7 +41,7 @@ class CommandHandlerService {
      * @returns {Object} - { success, responses[], summary }
      */
     async processCommand(params) {
-        const { userId, panelId, panelIds, deviceId, message, senderNumber, platform = 'WHATSAPP', isGroup = false, isStaffOverride = false } = params;
+        const { userId, panelId, panelIds, deviceId, message, senderNumber, platform = 'WHATSAPP', isGroup = false, isStaffOverride = false, groupJid } = params;
 
         // Build scope for per-device/per-panel settings
         const scope = {};
@@ -143,6 +143,7 @@ class CommandHandlerService {
                     senderNumber,
                     platform,
                     isGroup,
+                    groupJid,   // Pass groupJid for group-based ownership check
                     isStaffOverride,  // Staff Override Group bypass (Section 5)
                     skipIndividualForward: orderIds.length > 1
                 });
@@ -217,7 +218,7 @@ class CommandHandlerService {
      * Process a single order command
      */
     async processOrderCommand(params) {
-        const { userId, panelId, panelIds, deviceId, orderId, command, senderNumber, platform = 'WHATSAPP', isGroup = false } = params;
+        const { userId, panelId, panelIds, deviceId, orderId, command, senderNumber, platform = 'WHATSAPP', isGroup = false, groupJid } = params;
 
         // Build order query - filter by panelId(s) if provided
         const whereClause = {
@@ -520,6 +521,7 @@ class CommandHandlerService {
             order,
             senderNumber,
             isGroup,
+            groupJid,
             userId,
             command,
             isStaffOverride: params.isStaffOverride || false  // Staff Override Group bypass (Section 5)

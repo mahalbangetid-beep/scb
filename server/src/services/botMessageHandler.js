@@ -560,6 +560,7 @@ class BotMessageHandler {
                 panelIds,   // Pass panelIds for multi-panel lookup
                 platform,
                 isGroup,
+                groupJid: params.groupJid,  // Pass groupJid for group-based ownership check
                 isStaffOverride: params.isStaffOverride || false  // Staff Override Group bypass (Section 5)
             });
             // Increment system bot usage for SMM commands
@@ -758,7 +759,7 @@ class BotMessageHandler {
      * Handle SMM command
      */
     async handleSmmCommand(params) {
-        const { userId, user, message, senderNumber, deviceId, panelId, panelIds, platform = 'WHATSAPP', isGroup = false, isStaffOverride = false } = params;
+        const { userId, user, message, senderNumber, deviceId, panelId, panelIds, platform = 'WHATSAPP', isGroup = false, isStaffOverride = false, groupJid } = params;
 
         // Check billing mode
         const isCreditsMode = await billingModeService.isCreditsMode();
@@ -806,6 +807,7 @@ class BotMessageHandler {
             senderNumber,
             platform,
             isGroup,
+            groupJid,   // Pass groupJid for group-based ownership check
             isStaffOverride  // Staff Override Group bypass (Section 5)
         });
 

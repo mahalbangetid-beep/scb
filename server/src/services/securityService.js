@@ -467,11 +467,11 @@ class SecurityService {
 
     /**
      * Perform all security checks for a command
-     * @param {Object} params - { order, senderNumber, isGroup, userId, command, isStaffOverride }
+     * @param {Object} params - { order, senderNumber, isGroup, userId, command, isStaffOverride, groupJid }
      * @returns {Object} { allowed, message, shouldClaim, needsUsernameVerification, settings }
      */
     async performSecurityChecks(params) {
-        const { order, senderNumber, isGroup, userId, command, isStaffOverride = false } = params;
+        const { order, senderNumber, isGroup, userId, command, isStaffOverride = false, groupJid } = params;
 
         // Get user settings
         const settings = await this.getUserSettings(userId);
@@ -513,7 +513,7 @@ class SecurityService {
         // This allows mapped users to use commands in groups without needing to claim first
         let mappingVerified = false;
         if (settings.userMappingEnabled !== false) { // Default enabled
-            const userMappingCheck = await this.checkUserMappingOwnership(order, senderNumber, userId, isGroup);
+            const userMappingCheck = await this.checkUserMappingOwnership(order, senderNumber, userId, isGroup, groupJid);
             if (userMappingCheck.allowed) {
                 mappingVerified = true;
                 console.log(`[Security] User mapping verified (case: ${userMappingCheck.case}) — skipping claim & username checks`);
@@ -576,9 +576,10 @@ class SecurityService {
      * @param {string} senderNumber - Sender's WhatsApp number  
      * @param {string} userId - Panel owner's user ID
      * @param {boolean} isGroup - Whether message is from a group
+     * @param {string} groupJid - Group JID (if from a group)
      * @returns {Object} { allowed, message, case }
      */
-    async checkUserMappingOwnership(order, senderNumber, userId, isGroup) {
+    async checkUserMappingOwnership(order, senderNumber, userId, isGroup, groupJid = null) {
         try {
             const userMappingService = require('./userMappingService');
 
@@ -723,9 +724,21 @@ class SecurityService {
             console.log(`[Security] Mapped WA numbers: ${JSON.stringify(normalizedMappedNumbers)}`);
             console.log(`[Security] Sender WA number: ${normalizedSender}`);
 
-            // Case 2: Username in mapping but WA number doesn't match
-            if (!normalizedMappedNumbers.includes(normalizedSender)) {
-                console.log(`[Security] CASE 2: WA number ${normalizedSender} NOT in mapped numbers`);
+            // Case 2: Check WA number OR group JID
+            const waMatches = normalizedMappedNumbers.includes(normalizedSender);
+
+            // Also check if group JID is in mapped groups
+            let groupMatches = false;
+            if (!waMatches && isGroup && groupJid) {
+                const mappedGroups = mapping.groupIds || [];
+                groupMatches = mappedGroups.includes(groupJid);
+                if (groupMatches) {
+                    console.log(`[Security] WA number didn't match, but group JID ${groupJid} IS in mapped groups`);
+                }
+            }
+
+            if (!waMatches && !groupMatches) {
+                console.log(`[Security] CASE 2: WA number ${normalizedSender} NOT in mapped numbers${isGroup && groupJid ? `, group ${groupJid} NOT in mapped groups` : ''}`);
                 return {
                     allowed: false,
                     message: '❌ Order ID does not belong to you.',
