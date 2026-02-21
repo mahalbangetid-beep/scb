@@ -455,148 +455,38 @@ class BotMessageHandler {
             }
         }
 
-        // ==================== DIRECT USERNAME REGISTRATION ====================
-        // If DM (not group), not a command, and sender has no mapping yet,
-        // check if the message is a panel username → auto-create mapping
-        if (!isGroup && senderNumber && !commandParser.isCommandMessage(message)) {
-            const trimmedMsg = (message || '').trim();
-            // Username-like: 1-50 chars, no newlines, no spaces (single word), alphanumeric with _ . -
-            const looksLikeUsername = trimmedMsg.length > 0 && trimmedMsg.length <= 50
-                && !trimmedMsg.includes('\n') && !trimmedMsg.includes(' ')
-                && /^[a-zA-Z0-9._-]+$/.test(trimmedMsg);
+        // ==================== UNREGISTERED USER CHECK ====================
+        // If DM (not group) and sender has no mapping → start registration flow
+        // Any message from unregistered user triggers "send your username" prompt
+        if (!isGroup && senderNumber) {
+            try {
+                const userMappingService = require('./userMappingService');
+                const existingMapping = await userMappingService.findByPhone(userId, senderNumber);
 
-            if (looksLikeUsername) {
-                try {
-                    const userMappingService = require('./userMappingService');
-                    const existingMapping = await userMappingService.findByPhone(userId, senderNumber);
+                if (!existingMapping) {
+                    console.log(`[BotHandler] Unregistered user ${senderNumber} — starting registration flow`);
 
-                    if (!existingMapping) {
-                        console.log(`[BotHandler] New user ${senderNumber} sent potential username: "${trimmedMsg}"`);
+                    const conversationStateService = require('./conversationStateService');
+                    const targetPanelIds = (panelIds && panelIds.length > 0) ? panelIds : (panelId ? [panelId] : []);
 
-                        // Verify username exists on panel via Admin API
-                        const adminApiService = require('./adminApiService');
-                        const targetPanelIds = (panelIds && panelIds.length > 0) ? panelIds : (panelId ? [panelId] : []);
+                    // Start registration conversation (creates AWAITING_USERNAME state)
+                    const regStart = await conversationStateService.startRegistration({
+                        senderPhone: senderNumber,
+                        userId,
+                        platform,
+                        deviceId,
+                        panelIds: targetPanelIds
+                    });
 
-                        let usernameVerified = false;
-                        let verifiedPanelId = null;
-
-                        if (targetPanelIds.length > 0) {
-                            for (const pId of targetPanelIds) {
-                                try {
-                                    const panel = await prisma.smmPanel.findUnique({ where: { id: pId } });
-                                    if (panel && panel.supportsAdminApi && panel.adminApiKey) {
-                                        // Try to find user on this panel
-                                        const userCheck = await adminApiService.makeAdminRequest(panel, 'GET', '', {
-                                            action: 'getUsers',
-                                            search: trimmedMsg
-                                        });
-
-                                        // Check if username exists in response
-                                        const userData = userCheck.data || userCheck;
-                                        if (userData && !userData.error) {
-                                            // getUsers may return array or object — check if username matches
-                                            let found = false;
-                                            if (Array.isArray(userData)) {
-                                                found = userData.some(u => (u.username || '').toLowerCase() === trimmedMsg.toLowerCase());
-                                            } else if (userData.users && Array.isArray(userData.users)) {
-                                                found = userData.users.some(u => (u.username || '').toLowerCase() === trimmedMsg.toLowerCase());
-                                            } else if (typeof userData === 'object') {
-                                                // Some panels return single user object
-                                                found = (userData.username || '').toLowerCase() === trimmedMsg.toLowerCase();
-                                            }
-
-                                            if (found) {
-                                                usernameVerified = true;
-                                                verifiedPanelId = pId;
-                                                break;
-                                            }
-                                        }
-                                    }
-                                } catch (e) {
-                                    console.log(`[BotHandler] Username check on panel ${pId} failed:`, e.message);
-                                }
-                            }
-                        }
-
-                        if (usernameVerified) {
-                            // Create mapping
-                            try {
-                                const newMapping = await userMappingService.createMapping(userId, {
-                                    panelUsername: trimmedMsg,
-                                    panelId: verifiedPanelId,
-                                    whatsappNumbers: [senderNumber],
-                                    whatsappName: senderName || null,
-                                    isBotEnabled: true,
-                                    isVerified: false,
-                                    adminNotes: `Self-registered via DM`
-                                });
-
-                                console.log(`[BotHandler] Auto-created mapping for "${trimmedMsg}" + WA ${senderNumber}`);
-
-                                return {
-                                    handled: true,
-                                    type: 'username_registration',
-                                    response: `✅ *Account Linked Successfully!*\n\n` +
-                                        `👤 Username: \`${trimmedMsg}\`\n` +
-                                        `📱 WhatsApp: ${senderNumber}\n\n` +
-                                        `You can now use bot commands:\n` +
-                                        `• \`[order_id] status\` — Check order status\n` +
-                                        `• \`[order_id] refill\` — Request refill\n` +
-                                        `• \`[order_id] cancel\` — Cancel order\n\n` +
-                                        `Example: \`12345 status\``
-                                };
-                            } catch (createErr) {
-                                console.error(`[BotHandler] Failed to create mapping:`, createErr.message);
-                                if (createErr.message.includes('already exists')) {
-                                    return {
-                                        handled: true,
-                                        type: 'username_registration',
-                                        response: `⚠️ Username \`${trimmedMsg}\` is already registered. If this is your account, please contact support.`
-                                    };
-                                }
-                            }
-                        } else if (targetPanelIds.length > 0) {
-                            // Username not found on any panel — prompt user
-                            console.log(`[BotHandler] Username "${trimmedMsg}" not found on any panel`);
-                            return {
-                                handled: true,
-                                type: 'username_registration',
-                                response: `❌ Username \`${trimmedMsg}\` was not found on the panel.\n\n` +
-                                    `Please make sure you entered your *exact panel username* (case-sensitive).\n\n` +
-                                    `If you want to use a bot command instead, send:\n` +
-                                    `\`[order_id] status\` — Example: \`12345 status\``
-                            };
-                        }
-                    }
-                } catch (regErr) {
-                    console.error('[BotHandler] Direct username registration error:', regErr.message);
-                    // Fall through to normal processing
+                    return {
+                        handled: true,
+                        type: 'registration_prompt',
+                        response: regStart.message
+                    };
                 }
-            } else {
-                // Message doesn't look like a username — tell unregistered user to send username
-                try {
-                    const userMappingService = require('./userMappingService');
-                    const existingMapping = await userMappingService.findByPhone(userId, senderNumber);
-
-                    if (!existingMapping) {
-                        console.log(`[BotHandler] Unregistered user ${senderNumber} sent non-username message: "${trimmedMsg}"`);
-
-                        // Load custom prompt message
-                        const conversationStateService = require('./conversationStateService');
-                        const msgs = await conversationStateService._getRegistrationMessages(userId);
-                        const promptMsg = msgs.prompt
-                            ? conversationStateService._replaceVars(msgs.prompt, {})
-                            : `📝 *Registration Required*\n\nYour WhatsApp number is not registered yet.\n\nPlease send your *panel username* to register.\n\nExample: If your username is "john123", just reply:\njohn123`;
-
-                        return {
-                            handled: true,
-                            type: 'registration_required',
-                            response: promptMsg
-                        };
-                    }
-                } catch (regCheckErr) {
-                    console.error('[BotHandler] Unregistered user check error:', regCheckErr.message);
-                }
+            } catch (regErr) {
+                console.error('[BotHandler] Unregistered user check error:', regErr.message);
+                // Fall through to normal processing
             }
         }
 
