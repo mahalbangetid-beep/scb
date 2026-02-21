@@ -797,6 +797,89 @@ class BotMessageHandler {
             }
         }
 
+        // ==================== DETECT BULK + V1/RENTAL FOR ASYNC PROCESSING ====================
+        // Parse message to check if it's a bulk command targeting V1/Rental panel
+        const parsedCmd = commandParser.parseCommand(message);
+        const isBulkCommand = parsedCmd && parsedCmd.orderIds && parsedCmd.orderIds.length > 1;
+
+        let asyncBulk = false;
+        if (isBulkCommand) {
+            try {
+                const targetPanelIds = (panelIds && panelIds.length > 0) ? panelIds : (panelId ? [panelId] : []);
+                if (targetPanelIds.length > 0) {
+                    const firstPanel = await prisma.smmPanel.findUnique({
+                        where: { id: targetPanelIds[0] },
+                        select: { panelType: true }
+                    });
+                    const pType = (firstPanel?.panelType || '').toUpperCase();
+                    if (pType === 'V1' || pType === 'RENTAL') {
+                        asyncBulk = true;
+                    }
+                }
+            } catch (e) { /* non-critical */ }
+        }
+
+        if (asyncBulk) {
+            // ==================== ASYNC BULK MODE ====================
+            // Send instant acknowledgment, process in background
+            const orderCount = parsedCmd.orderIds.length;
+            const commandDisplay = commandParser.getDisplayCommand(parsedCmd.command);
+
+            console.log(`[BotHandler] Async bulk mode: ${orderCount} orders for ${commandDisplay}`);
+
+            // Charge upfront
+            let creditResult = { charged: false };
+            try {
+                if (isCreditsMode) {
+                    creditResult = await messageCreditService.chargeMessage(userId, platform, isGroup, user);
+                } else {
+                    creditResult = await creditService.chargeMessage(userId, platform, isGroup, user);
+                }
+            } catch (error) {
+                console.error(`[BotHandler] Charge error:`, error);
+            }
+
+            // Process in background (fire-and-forget)
+            const bgParams = { userId, panelId, panelIds, deviceId, message, senderNumber, platform, isGroup, groupJid, isStaffOverride };
+            setImmediate(async () => {
+                try {
+                    const result = await commandHandler.processCommand(bgParams);
+
+                    // Send results via WhatsApp
+                    if (result.formattedResponse && this.whatsappService) {
+                        const replyJid = groupJid || `${senderNumber}@s.whatsapp.net`;
+                        await this.whatsappService.sendMessage(deviceId, replyJid, result.formattedResponse);
+                        console.log(`[BotHandler] Async bulk results sent for ${orderCount} orders`);
+                    }
+
+                    // Log the message
+                    await this.logMessage({
+                        deviceId, userId, senderNumber,
+                        content: message, type: 'smm_command', platform,
+                        creditCharged: creditResult.amount || 0,
+                        metadata: {
+                            command: result.command,
+                            orderCount: result.summary?.total || 0,
+                            success: result.summary?.success || 0,
+                            failed: result.summary?.failed || 0
+                        }
+                    });
+                } catch (bgErr) {
+                    console.error(`[BotHandler] Async bulk processing error:`, bgErr.message);
+                }
+            });
+
+            // Return instant acknowledgment
+            return {
+                handled: true,
+                type: 'smm_command',
+                response: `⏳ Processing ${orderCount} orders for *${commandDisplay}*...\n\n_Results will be sent shortly. Please wait._`,
+                creditCharged: creditResult.charged,
+                creditAmount: creditResult.amount
+            };
+        }
+
+        // ==================== SYNC MODE (single order or V2/Perfect panel) ====================
         // Process the command with panelId(s) for panel-specific order lookup
         const result = await commandHandler.processCommand({
             userId,
