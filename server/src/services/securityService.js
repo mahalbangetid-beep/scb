@@ -509,34 +509,45 @@ class SecurityService {
             return { allowed: false, message: groupCheck.message, settings };
         }
 
-        // 4. Check claim status
-        const claimCheck = await this.checkClaimStatus(order, senderNumber, isGroup, settings);
-        if (!claimCheck.allowed) {
-            return { allowed: false, message: claimCheck.message, settings };
-        }
-
-        // 5. Check username validation
-        const usernameCheck = await this.checkUsernameValidation(order, senderNumber, isGroup, settings);
-        if (usernameCheck.required && !usernameCheck.verified) {
-            if (usernameCheck.needsVerification) {
-                // Need to start username verification flow
-                return {
-                    allowed: false,
-                    needsUsernameVerification: true,
-                    orderUsername: usernameCheck.orderUsername,
-                    settings
-                };
+        // 4. Check User Mapping FIRST - if mapping validates ownership, skip claim & username checks
+        // This allows mapped users to use commands in groups without needing to claim first
+        let mappingVerified = false;
+        if (settings.userMappingEnabled !== false) { // Default enabled
+            const userMappingCheck = await this.checkUserMappingOwnership(order, senderNumber, userId, isGroup);
+            if (userMappingCheck.allowed) {
+                mappingVerified = true;
+                console.log(`[Security] User mapping verified (case: ${userMappingCheck.case}) — skipping claim & username checks`);
             } else {
-                // Can't verify (e.g., in group)
-                return { allowed: false, message: usernameCheck.message, settings };
+                // Mapping check failed — return error directly
+                return { allowed: false, message: userMappingCheck.message, settings };
             }
         }
 
-        // 6. Check User Mapping - verify order belongs to sender's panel username
-        if (settings.userMappingEnabled !== false) { // Default enabled
-            const userMappingCheck = await this.checkUserMappingOwnership(order, senderNumber, userId, isGroup);
-            if (!userMappingCheck.allowed) {
-                return { allowed: false, message: userMappingCheck.message, settings };
+        // 5. Check claim status (only if mapping didn't verify)
+        let claimCheck = { allowed: true };
+        if (!mappingVerified) {
+            claimCheck = await this.checkClaimStatus(order, senderNumber, isGroup, settings);
+            if (!claimCheck.allowed) {
+                return { allowed: false, message: claimCheck.message, settings };
+            }
+        }
+
+        // 6. Check username validation (only if mapping didn't verify)
+        if (!mappingVerified) {
+            const usernameCheck = await this.checkUsernameValidation(order, senderNumber, isGroup, settings);
+            if (usernameCheck.required && !usernameCheck.verified) {
+                if (usernameCheck.needsVerification) {
+                    // Need to start username verification flow
+                    return {
+                        allowed: false,
+                        needsUsernameVerification: true,
+                        orderUsername: usernameCheck.orderUsername,
+                        settings
+                    };
+                } else {
+                    // Can't verify (e.g., in group)
+                    return { allowed: false, message: usernameCheck.message, settings };
+                }
             }
         }
 
