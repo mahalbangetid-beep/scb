@@ -442,6 +442,41 @@ class AdminApiService {
      * V1 (Rental Panel) provider fetching — multi-strategy
      */
     async _getProvidersV1(panel) {
+        // ── Strategy 0: action=getProviders (direct provider list — most complete) ──
+        console.log(`[AdminApiService] V1 Strategy 0: action=getProviders`);
+        const res0 = await this.makeAdminRequest(panel, 'GET', '', {
+            action: 'getProviders'
+        });
+
+        if (res0.success) {
+            const rawData = res0.data?.data || res0.data || [];
+            let providers = [];
+
+            if (Array.isArray(rawData)) {
+                // Array format: [{ id, name, ... }]
+                providers = rawData.map(p => ({
+                    name: p.name || p.provider_name || p.title || `Provider ${p.id}`,
+                    orderCount: p.order_count || p.orders_count || p.total_orders || 0,
+                    id: p.id || null
+                })).filter(p => p.name);
+            } else if (typeof rawData === 'object') {
+                // Object format: { "1": { name: "X", ... }, "2": ... }
+                providers = Object.entries(rawData).map(([key, val]) => ({
+                    name: val.name || val.provider_name || val.title || `Provider ${key}`,
+                    orderCount: val.order_count || val.orders_count || val.total_orders || 0,
+                    id: val.id || key
+                })).filter(p => p.name);
+            }
+
+            if (providers.length > 0) {
+                console.log(`[AdminApiService] V1 Strategy 0 OK (getProviders): ${providers.length} providers`);
+                return { success: true, data: providers };
+            }
+            console.log(`[AdminApiService] V1 Strategy 0: getProviders returned empty or unparseable`);
+        } else {
+            console.log(`[AdminApiService] V1 Strategy 0: getProviders failed: ${res0.error}`);
+        }
+
         // ── Strategy 1: getOrders with provider=1 (includes provider column) ──
         console.log(`[AdminApiService] V1 Strategy 1: getOrders&provider=1`);
         const res1 = await this.makeAdminRequest(panel, 'GET', '', {
