@@ -518,8 +518,13 @@ class SecurityService {
                 mappingVerified = true;
                 console.log(`[Security] User mapping verified (case: ${userMappingCheck.case}) — skipping claim & username checks`);
             } else {
-                // Mapping check failed — return error directly
-                return { allowed: false, message: userMappingCheck.message, settings };
+                // Forward needsRegistration flag so command handler can trigger registration flow
+                return {
+                    allowed: false,
+                    message: userMappingCheck.message,
+                    needsRegistration: userMappingCheck.needsRegistration || false,
+                    settings
+                };
             }
         }
 
@@ -559,25 +564,27 @@ class SecurityService {
     }
 
     /**
-     * STRICT MODE: Check order ownership via Order → Username → Mapping → WA Number
+     * WA-FIRST MODE: Check order ownership via WA Number → Mapping → Username → Order
      * 
      * Flow:
-     * 1. Get username from order (customerUsername)
-     * 2. Find mapping by username
-     * 3. Check if sender's WA number matches mapped WA numbers
+     * 1. Find mapping by sender's WA number (or group JID)
+     * 2. If not found → return needsRegistration (user must register first)
+     * 3. If found → get mapped username
+     * 4. Get order's customerUsername (from DB or Admin API)
+     * 5. Check if order's username matches mapped username
      * 
      * Cases:
-     * - Case 1: Username in mapping + WA matches → ALLOWED
-     * - Case 2: Username in mapping + WA doesn't match → BLOCKED
-     * - Case 3: Username NOT in mapping → BLOCKED (not registered)
-     * - Case 4: Order not found (handled elsewhere)
+     * - Case 1: WA registered + order belongs to mapped username → ALLOWED
+     * - Case 2: WA registered + order does NOT belong → BLOCKED ("not yours")
+     * - Case 3: WA NOT registered → BLOCKED (needsRegistration)
+     * - Case 4: Order has no customerUsername → FALLBACK (allow with warning)
      * 
      * @param {Object} order - Order object with customerUsername
      * @param {string} senderNumber - Sender's WhatsApp number  
      * @param {string} userId - Panel owner's user ID
      * @param {boolean} isGroup - Whether message is from a group
      * @param {string} groupJid - Group JID (if from a group)
-     * @returns {Object} { allowed, message, case }
+     * @returns {Object} { allowed, message, case, needsRegistration }
      */
     async checkUserMappingOwnership(order, senderNumber, userId, isGroup, groupJid = null) {
         try {
@@ -586,118 +593,42 @@ class SecurityService {
             // Normalize sender's phone number
             const normalizedSender = userMappingService.normalizePhone(senderNumber);
 
-            console.log(`[Security] STRICT MODE - Checking order ownership for sender: ${normalizedSender}`);
+            console.log(`[Security] WA-FIRST MODE - Checking registration for sender: ${normalizedSender}`);
 
-            // Step 1: Get username from order
-            let orderUsername = order.customerUsername;
+            // ==================== STEP 1: Find mapping by WA number ====================
+            let mapping = await userMappingService.findByPhone(userId, normalizedSender);
 
-            // If customerUsername is missing, try to fetch from Admin API
-            if (!orderUsername) {
-                console.log(`[Security] Order ${order.externalOrderId} has no customerUsername, attempting to fetch from Admin API...`);
-
-                try {
-                    const adminApiService = require('./adminApiService');
-
-                    // Get panel info - make sure to include adminApiKey
-                    let panel = order.panel;
-                    if (!panel || !panel.adminApiKey) {
-                        panel = await prisma.smmPanel.findUnique({
-                            where: { id: order.panelId }
-                        });
-                        console.log(`[Security] Loaded panel: ${panel?.alias || panel?.name}, hasAdminApiKey: ${!!panel?.adminApiKey}`);
-                    }
-
-                    if (panel && panel.adminApiKey) {
-                        console.log(`[Security] Fetching from Admin API for order ${order.externalOrderId}...`);
-                        const orderData = await adminApiService.getOrderWithProvider(panel, order.externalOrderId);
-                        console.log(`[Security] Admin API response: success=${orderData.success}, customerUsername=${orderData.data?.customerUsername}`);
-
-                        if (orderData.success && orderData.data?.customerUsername) {
-                            orderUsername = orderData.data.customerUsername;
-
-                            // Update order in database with customerUsername
-                            await prisma.order.update({
-                                where: { id: order.id },
-                                data: { customerUsername: orderUsername }
-                            });
-
-                            console.log(`[Security] Fetched and saved customerUsername: ${orderUsername}`);
-                        } else {
-                            console.log(`[Security] Admin API did not return customerUsername. Response:`, JSON.stringify(orderData).substring(0, 200));
-                        }
-                    } else {
-                        console.log(`[Security] Panel has no Admin API key configured, cannot fetch customerUsername`);
-                    }
-                } catch (fetchError) {
-                    console.error(`[Security] Failed to fetch customerUsername:`, fetchError.message);
+            // If not found by phone and in a group, try by group JID
+            if (!mapping && isGroup && groupJid) {
+                mapping = await userMappingService.findByGroup(userId, groupJid);
+                if (mapping) {
+                    console.log(`[Security] Found mapping via group JID ${groupJid}: username="${mapping.panelUsername}"`);
                 }
             }
 
-            // If still no username after fetch attempt
-            if (!orderUsername) {
-                console.log(`[Security] Order ${order.externalOrderId} still has no customerUsername after fetch attempt`);
+            // ==================== CASE 3: WA NOT registered ====================
+            if (!mapping) {
+                console.log(`[Security] CASE 3: WA ${normalizedSender} NOT registered in any mapping`);
 
-                // FALLBACK: Allow command but log warning (temporary until Admin API is configured)
-                // This can be changed to block if strict mode is required
-                console.warn(`[Security] WARNING: Allowing command without customerUsername validation (fallback mode)`);
+                if (isGroup) {
+                    // In group: don't trigger registration, just block
+                    return {
+                        allowed: false,
+                        message: '❌ Your number is not registered. Please DM the bot to register first.',
+                        case: 'NOT_REGISTERED_GROUP'
+                    };
+                }
+
+                // In DM: trigger registration flow
                 return {
-                    allowed: true,
-                    case: 'FALLBACK_NO_USERNAME',
-                    warning: 'customerUsername not available for validation'
+                    allowed: false,
+                    needsRegistration: true,
+                    message: '📝 Your number is not registered.\n\nPlease send your *panel username* to register.',
+                    case: 'NOT_REGISTERED'
                 };
             }
 
-            console.log(`[Security] Order ${order.externalOrderId} belongs to username: ${orderUsername}`);
-
-            // Step 2: Find mapping by username (not by phone!)
-            const mapping = await userMappingService.findByUsername(userId, orderUsername);
-
-            // Case 3: Username NOT in mapping → AUTO-CREATE mapping (Bug 4.2)
-            if (!mapping) {
-                console.log(`[Security] CASE 3: Username "${orderUsername}" not found in User Mapping — auto-creating...`);
-
-                try {
-                    // Auto-create mapping: link username + sender's WA number
-                    const newMapping = await userMappingService.createMapping(userId, {
-                        panelUsername: orderUsername,
-                        panelId: order.panelId || null,
-                        whatsappNumbers: [normalizedSender],
-                        whatsappName: null, // Will be captured on next message via auto-capture
-                        isBotEnabled: true,
-                        isVerified: false, // Unverified — admin can verify later
-                        adminNotes: `Auto-created on first interaction (Order #${order.externalOrderId})`
-                    });
-
-                    console.log(`[Security] Auto-created mapping ID ${newMapping.id} for username "${orderUsername}" + WA ${normalizedSender}`);
-
-                    // Record activity on the new mapping
-                    await userMappingService.recordActivity(newMapping.id);
-
-                    return {
-                        allowed: true,
-                        mapping: userMappingService.parseMapping(newMapping),
-                        case: 'AUTO_CREATED'
-                    };
-                } catch (createError) {
-                    // If creation fails (e.g., race condition where mapping was just created),
-                    // try to find the mapping again
-                    console.error(`[Security] Auto-create mapping failed:`, createError.message);
-
-                    const retryMapping = await userMappingService.findByUsername(userId, orderUsername);
-                    if (retryMapping) {
-                        console.log(`[Security] Found mapping on retry — proceeding`);
-                        return { allowed: true, mapping: retryMapping, case: 'RETRY_FOUND' };
-                    }
-
-                    return {
-                        allowed: false,
-                        message: '❌ Your account is not registered with the bot.\nPlease contact WhatsApp support team to register.',
-                        case: 'USER_NOT_REGISTERED'
-                    };
-                }
-            }
-
-            console.log(`[Security] Found mapping for username "${orderUsername}", ID: ${mapping.id}`);
+            console.log(`[Security] Found mapping for WA ${normalizedSender}: username="${mapping.panelUsername}", ID: ${mapping.id}`);
 
             // Check if bot is enabled for this mapping
             if (!mapping.isBotEnabled) {
@@ -717,47 +648,81 @@ class SecurityService {
                 };
             }
 
-            // Step 3: Check if sender's WA number is in the mapped WA numbers
-            const mappedNumbers = mapping.whatsappNumbers || [];
-            const normalizedMappedNumbers = mappedNumbers.map(n => userMappingService.normalizePhone(n));
+            // ==================== STEP 2: Get order's customerUsername ====================
+            let orderUsername = order.customerUsername;
 
-            console.log(`[Security] Mapped WA numbers: ${JSON.stringify(normalizedMappedNumbers)}`);
-            console.log(`[Security] Sender WA number: ${normalizedSender}`);
+            // If customerUsername is missing, try to fetch from Admin API
+            if (!orderUsername) {
+                console.log(`[Security] Order ${order.externalOrderId} has no customerUsername, fetching from Admin API...`);
 
-            // Case 2: Check WA number OR group JID
-            const waMatches = normalizedMappedNumbers.includes(normalizedSender);
+                try {
+                    const adminApiService = require('./adminApiService');
 
-            // Also check if group JID is in mapped groups
-            let groupMatches = false;
-            if (!waMatches && isGroup && groupJid) {
-                const mappedGroups = mapping.groupIds || [];
-                groupMatches = mappedGroups.includes(groupJid);
-                if (groupMatches) {
-                    console.log(`[Security] WA number didn't match, but group JID ${groupJid} IS in mapped groups`);
+                    let panel = order.panel;
+                    if (!panel || !panel.adminApiKey) {
+                        panel = await prisma.smmPanel.findUnique({
+                            where: { id: order.panelId }
+                        });
+                    }
+
+                    if (panel && panel.adminApiKey) {
+                        const orderData = await adminApiService.getOrderWithProvider(panel, order.externalOrderId);
+                        if (orderData.success && orderData.data?.customerUsername) {
+                            orderUsername = orderData.data.customerUsername;
+
+                            // Save to DB for future lookups
+                            await prisma.order.update({
+                                where: { id: order.id },
+                                data: { customerUsername: orderUsername }
+                            });
+                            console.log(`[Security] Fetched and saved customerUsername: ${orderUsername}`);
+                        }
+                    }
+                } catch (fetchError) {
+                    console.error(`[Security] Failed to fetch customerUsername:`, fetchError.message);
                 }
             }
 
-            if (!waMatches && !groupMatches) {
-                console.log(`[Security] CASE 2: WA number ${normalizedSender} NOT in mapped numbers${isGroup && groupJid ? `, group ${groupJid} NOT in mapped groups` : ''}`);
+            // ==================== CASE 4: No customerUsername available ====================
+            if (!orderUsername) {
+                console.log(`[Security] Order ${order.externalOrderId} has no customerUsername — fallback allow for registered user`);
+                // User IS registered, but order has no username to verify against
+                // Allow with warning (better UX than blocking registered users)
                 return {
-                    allowed: false,
-                    message: '❌ Order ID does not belong to you.',
-                    case: 'WA_NOT_MATCH'
+                    allowed: true,
+                    mapping,
+                    case: 'FALLBACK_NO_USERNAME',
+                    warning: 'customerUsername not available for ownership check'
                 };
             }
 
-            // Case 1: Username in mapping AND WA matches - ALLOWED!
-            console.log(`[Security] CASE 1: Order ownership VERIFIED - Username: ${orderUsername}, WA: ${normalizedSender}`);
+            // ==================== STEP 3: Check ownership ====================
+            // Compare order's username with mapped username
+            const mappedUsername = (mapping.panelUsername || '').trim().toLowerCase();
+            const orderUser = (orderUsername || '').trim().toLowerCase();
 
-            // Auto-verify mapping on first successful WhatsApp validation (Section 10)
-            // This triggers the auto-note "Validated via WhatsApp"
+            console.log(`[Security] Ownership check: mapped="${mappedUsername}" vs order="${orderUser}"`);
+
+            if (mappedUsername !== orderUser) {
+                // ==================== CASE 2: Order doesn't belong to this user ====================
+                console.log(`[Security] CASE 2: Order ${order.externalOrderId} belongs to "${orderUsername}", not "${mapping.panelUsername}"`);
+                return {
+                    allowed: false,
+                    message: '❌ This order does not belong to you.',
+                    case: 'ORDER_NOT_YOURS'
+                };
+            }
+
+            // ==================== CASE 1: Verified — WA registered + order matches ====================
+            console.log(`[Security] CASE 1: Order ownership VERIFIED — Username: ${orderUsername}, WA: ${normalizedSender}`);
+
+            // Auto-verify mapping on first successful validation
             if (!mapping.isVerified) {
                 try {
                     await userMappingService.verifyMapping(mapping.id, userId, 'WHATSAPP');
                     console.log(`[Security] Auto-verified mapping ${mapping.id} via WhatsApp`);
                 } catch (verifyErr) {
                     console.error(`[Security] Auto-verify failed:`, verifyErr.message);
-                    // Non-blocking — continue even if auto-verify fails
                 }
             }
 

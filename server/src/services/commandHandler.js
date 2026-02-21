@@ -528,6 +528,16 @@ class CommandHandlerService {
         });
 
         if (!securityCheck.allowed) {
+            // Check if registration is needed (WA number not in mapping)
+            if (securityCheck.needsRegistration) {
+                console.log(`[CommandHandler] Registration needed for ${senderNumber}`);
+                return {
+                    success: false,
+                    message: securityCheck.message,
+                    details: { reason: 'needs_registration' }
+                };
+            }
+
             // Check if username verification is needed
             if (securityCheck.needsUsernameVerification) {
                 // Start username verification flow
@@ -1327,7 +1337,7 @@ class CommandHandlerService {
                 queued.push(r);
             } else {
                 const reason = r.details?.reason || '';
-                if (reason === 'not_found' || reason === 'security_check_failed') {
+                if (reason === 'not_found' || reason === 'security_check_failed' || reason === 'needs_registration') {
                     notFound.push(r);
                 } else if (reason === 'status' || reason === 'cooldown' || reason === 'disabled' ||
                     reason === 'panel_cancel_not_available' || reason === 'panel_refill_not_available') {
