@@ -104,13 +104,32 @@ class CommandHandlerService {
         // Track successful orders with their provider order IDs for batch forwarding
         const successfulOrders = [];
 
+        // Determine bulk delay based on panel type (V1/Rental needs delay to avoid 429)
+        let bulkDelayMs = 0;
+        if (orderIds.length > 1) {
+            try {
+                const targetPanelIds = (panelIds && panelIds.length > 0) ? panelIds : (panelId ? [panelId] : []);
+                if (targetPanelIds.length > 0) {
+                    const firstPanel = await prisma.smmPanel.findUnique({
+                        where: { id: targetPanelIds[0] },
+                        select: { panelType: true }
+                    });
+                    const pType = (firstPanel?.panelType || '').toUpperCase();
+                    if (pType === 'V1' || pType === 'RENTAL') {
+                        bulkDelayMs = 5000; // 5s for V1/Rental to avoid rate limiting
+                        console.log(`[CommandHandler] Bulk mode: V1/Rental panel detected, using ${bulkDelayMs}ms delay between orders`);
+                    }
+                }
+            } catch (e) { /* non-critical */ }
+        }
+
         // Process each order ID
         for (let i = 0; i < orderIds.length; i++) {
             const orderId = orderIds[i];
 
-            // Add delay between orders in bulk to prevent rate limiting (429)
-            if (i > 0) {
-                await new Promise(resolve => setTimeout(resolve, 2000));
+            // Add delay between orders for V1/Rental panels to prevent rate limiting (429)
+            if (i > 0 && bulkDelayMs > 0) {
+                await new Promise(resolve => setTimeout(resolve, bulkDelayMs));
             }
 
             try {
