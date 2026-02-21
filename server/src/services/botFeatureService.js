@@ -73,7 +73,10 @@ class BotFeatureService {
             // Mass/Bulk templates (Section 18)
             massCommandReplyTemplate: null,
             massForwardingTemplate: null,
-            massSupportReplyTemplate: null
+            massSupportReplyTemplate: null,
+
+            // Support contact (3.1)
+            supportContactNumber: null
         };
 
         // Fields that should NOT be inherited from parent scope

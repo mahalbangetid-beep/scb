@@ -1281,6 +1281,10 @@ model BotFeatureToggles {
   // Variables: {order_ids}, {command}, {results}, {total}, {success_count}, {failed_count}
   massSupportReplyTemplate   String? @db.Text
 
+  // ==================== SUPPORT CONTACT (3.1) ====================
+  // Contact number shown in "contact support" messages (e.g. duplicate username)
+  supportContactNumber       String? // e.g. "+6281285159091"
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
