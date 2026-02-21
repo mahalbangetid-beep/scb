@@ -143,7 +143,8 @@ class UserMappingService {
             where: {
                 userId,
                 whatsappNumbers: { contains: normalizedPhone }
-            }
+            },
+            orderBy: { updatedAt: 'desc' }
         });
 
         // Double-check the match (since contains might match partial)
