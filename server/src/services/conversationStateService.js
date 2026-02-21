@@ -420,6 +420,7 @@ john123
 
         // Step 2: Validate username exists in panel via Admin API
         let usernameValid = false;
+        let matchedPanelId = null;  // Track which panel the username belongs to
         const panelIds = context.panelIds || [];
 
         if (panelIds.length > 0) {
@@ -427,13 +428,14 @@ john123
                 const adminApiService = require('./adminApiService');
                 const prismaClient = require('../utils/prisma');
 
-                for (const panelId of panelIds) {
-                    const panel = await prismaClient.smmPanel.findUnique({ where: { id: panelId } });
+                for (const pId of panelIds) {
+                    const panel = await prismaClient.smmPanel.findUnique({ where: { id: pId } });
                     if (panel && panel.adminApiKey) {
                         const result = await adminApiService.validateUsername(panel, normalizedUsername);
                         if (result.exists) {
                             usernameValid = true;
-                            console.log(`[Registration] Username "${normalizedUsername}" validated on panel ${panel.alias || panel.name}`);
+                            matchedPanelId = pId;  // Save the panel where username was found
+                            console.log(`[Registration] Username "${normalizedUsername}" validated on panel ${panel.alias || panel.name} (${pId})`);
                             break;
                         }
                     }
@@ -442,6 +444,7 @@ john123
                 console.error(`[Registration] Username validation error:`, err.message);
                 // If Admin API fails, allow registration anyway (graceful degradation)
                 usernameValid = true;
+                matchedPanelId = panelIds[0];  // Fallback to first panel
                 console.log(`[Registration] Admin API validation failed — allowing registration as fallback`);
             }
         } else {
@@ -483,7 +486,7 @@ john123
             const normalizedSender = userMappingService.normalizePhone(senderPhone);
             const newMapping = await userMappingService.createMapping(userId, {
                 panelUsername: normalizedUsername,
-                panelId: panelIds.length > 0 ? panelIds[0] : null,
+                panelId: matchedPanelId || (panelIds.length > 0 ? panelIds[0] : null),
                 whatsappNumbers: [normalizedSender],
                 whatsappName: null,
                 isBotEnabled: true,
