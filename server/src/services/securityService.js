@@ -651,10 +651,8 @@ class SecurityService {
             // ==================== STEP 2: Get order's customerUsername ====================
             let orderUsername = order.customerUsername;
 
-            // If customerUsername is missing, try to fetch from Admin API
-            if (!orderUsername) {
-                console.log(`[Security] Order ${order.externalOrderId} has no customerUsername, fetching from Admin API...`);
-
+            // Helper: fetch customerUsername from Admin API
+            const fetchCustomerUsername = async () => {
                 try {
                     const adminApiService = require('./adminApiService');
 
@@ -668,19 +666,27 @@ class SecurityService {
                     if (panel && panel.adminApiKey) {
                         const orderData = await adminApiService.getOrderWithProvider(panel, order.externalOrderId);
                         if (orderData.success && orderData.data?.customerUsername) {
-                            orderUsername = orderData.data.customerUsername;
+                            const freshUsername = orderData.data.customerUsername;
 
                             // Save to DB for future lookups
                             await prisma.order.update({
                                 where: { id: order.id },
-                                data: { customerUsername: orderUsername }
+                                data: { customerUsername: freshUsername }
                             });
-                            console.log(`[Security] Fetched and saved customerUsername: ${orderUsername}`);
+                            console.log(`[Security] Fetched and saved customerUsername: ${freshUsername}`);
+                            return freshUsername;
                         }
                     }
                 } catch (fetchError) {
                     console.error(`[Security] Failed to fetch customerUsername:`, fetchError.message);
                 }
+                return null;
+            };
+
+            // If customerUsername is missing, try to fetch from Admin API
+            if (!orderUsername) {
+                console.log(`[Security] Order ${order.externalOrderId} has no customerUsername, fetching from Admin API...`);
+                orderUsername = await fetchCustomerUsername();
             }
 
             // ==================== CASE 4: No customerUsername available ====================
@@ -699,9 +705,19 @@ class SecurityService {
             // ==================== STEP 3: Check ownership ====================
             // Compare order's username with mapped username
             const mappedUsername = (mapping.panelUsername || '').trim().toLowerCase();
-            const orderUser = (orderUsername || '').trim().toLowerCase();
+            let orderUser = (orderUsername || '').trim().toLowerCase();
 
             console.log(`[Security] Ownership check: mapped="${mappedUsername}" vs order="${orderUser}"`);
+
+            if (mappedUsername !== orderUser) {
+                // Cached customerUsername might be stale — re-fetch from Admin API
+                console.log(`[Security] Mismatch — re-fetching customerUsername from Admin API to verify...`);
+                const freshUsername = await fetchCustomerUsername();
+                if (freshUsername) {
+                    orderUser = freshUsername.trim().toLowerCase();
+                    console.log(`[Security] Re-fetched customerUsername: "${freshUsername}" vs mapped="${mappedUsername}"`);
+                }
+            }
 
             if (mappedUsername !== orderUser) {
                 // ==================== CASE 2: Order doesn't belong to this user ====================
