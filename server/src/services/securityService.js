@@ -471,7 +471,7 @@ class SecurityService {
      * @returns {Object} { allowed, message, shouldClaim, needsUsernameVerification, settings }
      */
     async performSecurityChecks(params) {
-        const { order, senderNumber, isGroup, userId, command, isStaffOverride = false, groupJid } = params;
+        const { order, senderNumber, isGroup, userId, command, isStaffOverride = false, groupJid, panelId = null } = params;
 
         // Get user settings
         const settings = await this.getUserSettings(userId);
@@ -513,7 +513,7 @@ class SecurityService {
         // This allows mapped users to use commands in groups without needing to claim first
         let mappingVerified = false;
         if (settings.userMappingEnabled !== false) { // Default enabled
-            const userMappingCheck = await this.checkUserMappingOwnership(order, senderNumber, userId, isGroup, groupJid);
+            const userMappingCheck = await this.checkUserMappingOwnership(order, senderNumber, userId, isGroup, groupJid, panelId);
             if (userMappingCheck.allowed) {
                 mappingVerified = true;
                 console.log(`[Security] User mapping verified (case: ${userMappingCheck.case}) — skipping claim & username checks`);
@@ -586,19 +586,29 @@ class SecurityService {
      * @param {string} groupJid - Group JID (if from a group)
      * @returns {Object} { allowed, message, case, needsRegistration }
      */
-    async checkUserMappingOwnership(order, senderNumber, userId, isGroup, groupJid = null) {
+    async checkUserMappingOwnership(order, senderNumber, userId, isGroup, groupJid = null, panelId = null) {
         try {
             const userMappingService = require('./userMappingService');
 
             // Normalize sender's phone number
             const normalizedSender = userMappingService.normalizePhone(senderNumber);
 
-            console.log(`[Security] WA-FIRST MODE - Checking registration for sender: ${normalizedSender}`);
+            console.log(`[Security] WA-FIRST MODE - Checking registration for sender: ${normalizedSender}${panelId ? ` (panelId: ${panelId})` : ''}`);
 
             // ==================== STEP 1: Find mapping by WA number ====================
             // Get ALL mappings for this phone (there may be duplicates)
             const allMappings = await userMappingService.findAllByPhone(userId, normalizedSender);
-            let mapping = allMappings.length > 0 ? allMappings[0] : null;
+
+            // If panelId is specified (multi-panel routing), prefer mapping for that panel
+            let mapping = null;
+            if (panelId && allMappings.length > 0) {
+                mapping = allMappings.find(m => m.panelId === panelId) || allMappings[0];
+                if (mapping.panelId === panelId) {
+                    console.log(`[Security] Panel-specific mapping found for panelId ${panelId}: username="${mapping.panelUsername}"`);
+                }
+            } else {
+                mapping = allMappings.length > 0 ? allMappings[0] : null;
+            }
 
             if (allMappings.length > 1) {
                 console.log(`[Security] WARNING: ${allMappings.length} mappings found for WA ${normalizedSender}: ${allMappings.map(m => `"${m.panelUsername}"`).join(', ')}`);

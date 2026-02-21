@@ -524,6 +524,7 @@ class CommandHandlerService {
             groupJid,
             userId,
             command,
+            panelId,
             isStaffOverride: params.isStaffOverride || false  // Staff Override Group bypass (Section 5)
         });
 
