@@ -454,6 +454,17 @@ class BotMessageHandler {
                 // Fall through to normal command processing
             }
         }
+        // ==================== MULTI-PANEL DM WARNING ====================
+        // If DM (not group) and device has multiple panels but no default panel set,
+        // warn the user that a default panel must be configured by admin
+        if (!isGroup && panelIds && panelIds.length > 1 && !panelId) {
+            console.log(`[BotHandler] Multi-panel DM warning: device has ${panelIds.length} panels but no default panelId set`);
+            return {
+                handled: true,
+                type: 'multi_panel_warning',
+                response: '⚠️ This bot is connected to multiple panels but no default panel is set for DM support.\n\nPlease ask the admin to set a *Default Panel for DM* in Device Settings, or use group commands instead.'
+            };
+        }
 
         // ==================== UNREGISTERED USER CHECK ====================
         // If DM (not group) and sender has no mapping → start registration flow
