@@ -486,7 +486,8 @@ class BotMessageHandler {
                         userId,
                         platform,
                         deviceId,
-                        panelIds: targetPanelIds
+                        panelIds: targetPanelIds,
+                        defaultPanelId: panelId || null  // Device's default panel for mapping
                     });
 
                     return {

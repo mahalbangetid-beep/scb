@@ -334,11 +334,12 @@ john123
      * Called when WA-first lookup finds no mapping for sender's number
      */
     async startRegistration(params) {
-        const { senderPhone, userId, platform = 'WHATSAPP', deviceId, panelIds } = params;
+        const { senderPhone, userId, platform = 'WHATSAPP', deviceId, panelIds, defaultPanelId } = params;
 
         const context = {
             deviceId,
             panelIds: panelIds || [],
+            defaultPanelId: defaultPanelId || null,  // Device's default panel for DM
             attempts: 0,
             maxAttempts: 3
         };
@@ -484,9 +485,12 @@ john123
         // Step 3: Create mapping
         try {
             const normalizedSender = userMappingService.normalizePhone(senderPhone);
+            // Use defaultPanelId (from device settings) > matchedPanelId (from validation) > first panel
+            const targetPanelId = context.defaultPanelId || matchedPanelId || (panelIds.length > 0 ? panelIds[0] : null);
+            console.log(`[Registration] Creating mapping with panelId: ${targetPanelId} (default: ${context.defaultPanelId}, matched: ${matchedPanelId}, first: ${panelIds[0] || 'none'})`);
             const newMapping = await userMappingService.createMapping(userId, {
                 panelUsername: normalizedUsername,
-                panelId: matchedPanelId || (panelIds.length > 0 ? panelIds[0] : null),
+                panelId: targetPanelId,
                 whatsappNumbers: [normalizedSender],
                 whatsappName: null,
                 isBotEnabled: true,

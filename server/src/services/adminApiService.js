@@ -1446,18 +1446,12 @@ class AdminApiService {
                         }
                     }
 
-                    // Got successful response with order data = user exists
-                    if (response && response.success && response.data) {
-                        return { exists: true };
-                    }
-
-                    // Ambiguous response — cannot confirm user exists
-                    console.log(`[AdminAPI] V1 getOrders-by-user ambiguous for "${username}" — returning false`);
-                    return { exists: false };
+                    // Got some response without explicit "not found" = user likely exists
+                    return { exists: true };
                 } catch (e) {
-                    // Both methods failed — cannot confirm on this panel
-                    console.log(`[AdminAPI] V1 orders fallback also failed for "${username}" — returning false`);
-                    return { exists: false };
+                    // Both methods failed — allow as fallback
+                    console.log(`[AdminAPI] V1 orders fallback also failed for "${username}" — allowing as fallback`);
+                    return { exists: true };
                 }
             } else {
                 // V2/Perfect Panel: Try user lookup endpoint
@@ -1499,14 +1493,14 @@ class AdminApiService {
                     // Ignore
                 }
 
-                // Can't determine — return false so loop tries next panel
-                console.log(`[AdminAPI] Cannot validate username "${username}" on V2 panel — returning false`);
-                return { exists: false };
+                // Can't determine — allow as fallback
+                console.log(`[AdminAPI] Cannot validate username "${username}" on V2 panel — allowing as fallback`);
+                return { exists: true };
             }
         } catch (error) {
             console.error(`[AdminAPI] validateUsername error for "${username}":`, error.message);
-            // On error, return false so loop tries next panel
-            return { exists: false };
+            // On error, allow registration (graceful degradation)
+            return { exists: true };
         }
     }
 
