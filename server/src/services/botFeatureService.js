@@ -76,7 +76,13 @@ class BotFeatureService {
             massSupportReplyTemplate: null,
 
             // Support contact (3.1)
-            supportContactNumber: null
+            supportContactNumber: null,
+
+            // Registration messages (3.2)
+            registrationPromptMsg: null,
+            registrationSuccessMsg: null,
+            registrationNotFoundMsg: null,
+            registrationAlreadyLinkedMsg: null
         };
 
         // Fields that should NOT be inherited from parent scope

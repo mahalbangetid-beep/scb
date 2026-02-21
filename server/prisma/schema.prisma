@@ -1285,6 +1285,14 @@ model BotFeatureToggles {
   // Contact number shown in "contact support" messages (e.g. duplicate username)
   supportContactNumber       String? // e.g. "+6281285159091"
 
+  // ==================== REGISTRATION MESSAGES (3.2) ====================
+  // Customizable messages for user registration flow. If null, defaults are used.
+  // Variables: {username}, {support_number}, {remaining}, {max_attempts}
+  registrationPromptMsg      String? @db.Text  // "Your number is not registered..."
+  registrationSuccessMsg     String? @db.Text  // "Registration successful! Username {username} linked."
+  registrationNotFoundMsg    String? @db.Text  // "Username {username} not found..."
+  registrationAlreadyLinkedMsg String? @db.Text // "Username already linked. Contact {support_number}."
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

@@ -300,6 +300,36 @@ john123
     // ==================== REGISTRATION FLOW ====================
 
     /**
+     * Load custom registration messages from BotFeatureToggles
+     * Falls back to defaults if not set
+     */
+    async _getRegistrationMessages(userId) {
+        let toggles = {};
+        try {
+            const botFeatureService = require('./botFeatureService');
+            toggles = await botFeatureService.getToggles(userId, {});
+        } catch (e) { /* use defaults */ }
+        return {
+            prompt: toggles?.registrationPromptMsg || null,
+            success: toggles?.registrationSuccessMsg || null,
+            notFound: toggles?.registrationNotFoundMsg || null,
+            alreadyLinked: toggles?.registrationAlreadyLinkedMsg || null,
+            supportNumber: toggles?.supportContactNumber || ''
+        };
+    }
+
+    /**
+     * Replace template variables in a message
+     */
+    _replaceVars(template, vars = {}) {
+        let msg = template;
+        for (const [key, value] of Object.entries(vars)) {
+            msg = msg.replace(new RegExp(`\\{${key}\\}`, 'g'), value || '');
+        }
+        return msg;
+    }
+
+    /**
      * Start registration flow for unregistered users
      * Called when WA-first lookup finds no mapping for sender's number
      */
@@ -322,9 +352,15 @@ john123
             context
         });
 
+        // Load custom prompt message
+        const msgs = await this._getRegistrationMessages(userId);
+        const promptMsg = msgs.prompt
+            ? this._replaceVars(msgs.prompt, {})
+            : this.getRegistrationPromptMessage();
+
         return {
             conversation,
-            message: this.getRegistrationPromptMessage()
+            message: promptMsg
         };
     }
 
@@ -366,21 +402,19 @@ john123
             // Linked to another number
             await this.completeConversation(conversation.id);
 
-            // Get support number from settings
-            let supportNumber = '';
-            try {
-                const botFeatureService = require('./botFeatureService');
-                const toggles = await botFeatureService.getToggles(userId, {});
-                supportNumber = toggles?.supportContactNumber || '';
-            } catch (e) { /* non-critical */ }
-
-            const supportMsg = supportNumber
-                ? `Please contact WhatsApp support team at ${supportNumber}.`
+            // Load custom messages
+            const msgs = await this._getRegistrationMessages(userId);
+            const supportMsg = msgs.supportNumber
+                ? `Please contact WhatsApp support team at ${msgs.supportNumber}.`
                 : 'Please contact the support team.';
+
+            const alreadyLinkedMsg = msgs.alreadyLinked
+                ? this._replaceVars(msgs.alreadyLinked, { username: normalizedUsername, support_number: msgs.supportNumber })
+                : `❌ This username is already linked with another WhatsApp number.\n\n${supportMsg}`;
 
             return {
                 success: false,
-                message: `❌ This username is already linked with another WhatsApp number.\n\n${supportMsg}`
+                message: alreadyLinkedMsg
             };
         }
 
@@ -418,6 +452,9 @@ john123
 
         if (!usernameValid) {
             // Username not found in any panel
+            // Load custom messages
+            const msgs = await this._getRegistrationMessages(userId);
+
             if (context.attempts >= context.maxAttempts) {
                 await this.completeConversation(conversation.id);
                 return {
@@ -432,9 +469,12 @@ john123
             });
 
             const remaining = context.maxAttempts - context.attempts;
+            const notFoundMsg = msgs.notFound
+                ? this._replaceVars(msgs.notFound, { username: normalizedUsername, remaining: String(remaining), max_attempts: String(context.maxAttempts) })
+                : `❌ Username "${normalizedUsername}" not found in the panel.\n\nPlease check and send your correct username.\n\n⚠️ Attempts remaining: ${remaining}`;
             return {
                 success: false,
-                message: `❌ Username "${normalizedUsername}" not found in the panel.\n\nPlease check and send your correct username.\n\n⚠️ Attempts remaining: ${remaining}`
+                message: notFoundMsg
             };
         }
 
@@ -455,9 +495,15 @@ john123
 
             await this.completeConversation(conversation.id);
 
+            // Load custom success message
+            const msgs2 = await this._getRegistrationMessages(userId);
+            const successMsg = msgs2.success
+                ? this._replaceVars(msgs2.success, { username: normalizedUsername })
+                : `✅ Registration successful!\n\nYour username *${normalizedUsername}* is now linked with your WhatsApp number.\n\nYou can now use bot commands.`;
+
             return {
                 success: true,
-                message: `✅ Registration successful!\n\nYour username *${normalizedUsername}* is now linked with your WhatsApp number.\n\nYou can now use bot commands.`,
+                message: successMsg,
                 mapping: newMapping
             };
         } catch (createErr) {
