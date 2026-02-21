@@ -452,24 +452,39 @@ class AdminApiService {
             const rawData = res0.data?.data || res0.data || [];
             let providers = [];
 
+            // Log raw response for debugging
+            const rawType = Array.isArray(rawData) ? 'array' : typeof rawData;
+            const rawSample = JSON.stringify(rawData).substring(0, 500);
+            console.log(`[AdminApiService] V1 Strategy 0: raw response type=${rawType}, sample=${rawSample}`);
+
             if (Array.isArray(rawData)) {
-                // Array format: [{ id, name, ... }]
-                providers = rawData.map(p => ({
-                    name: p.name || p.provider_name || p.title || `Provider ${p.id}`,
-                    orderCount: p.order_count || p.orders_count || p.total_orders || 0,
-                    id: p.id || null
-                })).filter(p => p.name);
+                // Array format: [{ id, name, ... }] or ["ProviderName", ...]
+                providers = rawData.map((p, idx) => {
+                    if (typeof p === 'string') {
+                        return { name: p, orderCount: 0, id: null };
+                    }
+                    return {
+                        name: p.name || p.provider_name || p.title || `Provider ${p.id || idx}`,
+                        orderCount: p.order_count || p.orders_count || p.total_orders || 0,
+                        id: p.id || null
+                    };
+                }).filter(p => p.name);
             } else if (typeof rawData === 'object') {
-                // Object format: { "1": { name: "X", ... }, "2": ... }
-                providers = Object.entries(rawData).map(([key, val]) => ({
-                    name: val.name || val.provider_name || val.title || `Provider ${key}`,
-                    orderCount: val.order_count || val.orders_count || val.total_orders || 0,
-                    id: val.id || key
-                })).filter(p => p.name);
+                // Object format: { "1": { name: "X" } } or { "1": "ProviderName" }
+                providers = Object.entries(rawData).map(([key, val]) => {
+                    if (typeof val === 'string') {
+                        return { name: val, orderCount: 0, id: key };
+                    }
+                    return {
+                        name: val.name || val.provider_name || val.title || `Provider ${key}`,
+                        orderCount: val.order_count || val.orders_count || val.total_orders || 0,
+                        id: val.id || key
+                    };
+                }).filter(p => p.name);
             }
 
             if (providers.length > 0) {
-                console.log(`[AdminApiService] V1 Strategy 0 OK (getProviders): ${providers.length} providers`);
+                console.log(`[AdminApiService] V1 Strategy 0 OK (getProviders): ${providers.length} providers: ${providers.map(p => p.name).join(', ')}`);
                 return { success: true, data: providers };
             }
             console.log(`[AdminApiService] V1 Strategy 0: getProviders returned empty or unparseable`);
