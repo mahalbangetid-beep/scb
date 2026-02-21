@@ -716,12 +716,22 @@ class SecurityService {
                 if (freshUsername) {
                     orderUser = freshUsername.trim().toLowerCase();
                     console.log(`[Security] Re-fetched customerUsername: "${freshUsername}" vs mapped="${mappedUsername}"`);
+                } else {
+                    // Admin API unavailable — trust the mapping set by admin
+                    console.log(`[Security] Admin API unavailable for re-fetch — allowing based on admin mapping`);
+                    return {
+                        allowed: true,
+                        mapping,
+                        case: 'ADMIN_API_UNAVAILABLE',
+                        warning: `Could not verify ownership via Admin API. Trusting admin mapping for "${mapping.panelUsername}".`
+                    };
                 }
             }
 
             if (mappedUsername !== orderUser) {
                 // ==================== CASE 2: Order doesn't belong to this user ====================
-                console.log(`[Security] CASE 2: Order ${order.externalOrderId} belongs to "${orderUsername}", not "${mapping.panelUsername}"`);
+                // Fresh data from Admin API confirms mismatch
+                console.log(`[Security] CASE 2: Order ${order.externalOrderId} belongs to "${orderUsername}", not "${mapping.panelUsername}" (confirmed by Admin API)`);
                 return {
                     allowed: false,
                     message: '❌ This order does not belong to you.',
