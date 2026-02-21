@@ -512,70 +512,81 @@ class AdminApiService {
             }
         }
 
-        // ── Strategy 2: getMassProviderData with sample order IDs ──
-        // This works INDEPENDENTLY of getOrders (proven by testing)
-        // Generate a range of order IDs to sample (1-50)
-        console.log(`[AdminApiService] V1 Strategy 2: getMassProviderData (sample IDs 1-50)`);
-        const sampleOrderIds = Array.from({ length: 50 }, (_, i) => String(i + 1));
-
-        const provRes = await this.makeAdminRequest(panel, 'GET', '', {
-            action: 'getMassProviderData',
-            orders: sampleOrderIds.join(',')
+        // ── Strategy 2: getOrders (basic) → then getMassProviderData with REAL order IDs ──
+        console.log(`[AdminApiService] V1 Strategy 2: getOrders (to get real order IDs)`);
+        const res2 = await this.makeAdminRequest(panel, 'GET', '', {
+            action: 'getOrders',
+            limit: 1000
         });
 
-        if (provRes.success) {
-            const providers = this._parseMassProviderData(provRes.data);
-            if (providers.length > 0) {
-                console.log(`[AdminApiService] V1 Strategy 2 OK (getMassProviderData): ${providers.length} providers`);
-                return { success: true, data: providers };
+        let realOrderIds = [];
+        if (res2.success) {
+            const orders = res2.data?.orders || res2.data?.data || res2.data || [];
+            const list = Array.isArray(orders) ? orders : [];
+
+            // Extract provider info directly if available
+            const directProviders = this._extractProvidersFromOrders(list);
+            if (directProviders.length > 0) {
+                console.log(`[AdminApiService] V1 Strategy 2 OK: ${directProviders.length} providers from ${list.length} orders`);
+                return { success: true, data: directProviders };
             }
-            console.log(`[AdminApiService] V1 Strategy 2: getMassProviderData returned no providers`);
-        } else {
-            console.log(`[AdminApiService] V1 Strategy 2: getMassProviderData failed: ${provRes.error}`);
+
+            // Collect real order IDs for getMassProviderData
+            realOrderIds = list
+                .map(o => String(o.id || o.order_id || o.order || ''))
+                .filter(Boolean);
+            console.log(`[AdminApiService] V1 Strategy 2: got ${realOrderIds.length} real order IDs`);
         }
 
-        // ── Strategy 3: Try getMassProviderData with higher order IDs ──
-        // Some panels start order IDs much higher
-        if (provRes.success || !provRes.error?.includes('bad_action')) {
-            console.log(`[AdminApiService] V1 Strategy 3: getMassProviderData (sample IDs 100-500)`);
-            const higherIds = [];
-            for (let i = 100; i <= 500; i += 10) higherIds.push(String(i));
+        // ── Strategy 3: getMassProviderData with real order IDs (best coverage) ──
+        if (realOrderIds.length > 0) {
+            // Use up to 100 real order IDs spread across the range for max coverage
+            const sampleIds = realOrderIds.length <= 100
+                ? realOrderIds
+                : realOrderIds.filter((_, i) => i % Math.ceil(realOrderIds.length / 100) === 0);
 
-            const provRes2 = await this.makeAdminRequest(panel, 'GET', '', {
+            console.log(`[AdminApiService] V1 Strategy 3: getMassProviderData with ${sampleIds.length} real order IDs (range: ${sampleIds[0]}-${sampleIds[sampleIds.length - 1]})`);
+
+            const provRes = await this.makeAdminRequest(panel, 'GET', '', {
                 action: 'getMassProviderData',
-                orders: higherIds.join(',')
+                orders: sampleIds.join(',')
             });
 
-            if (provRes2.success) {
-                const providers = this._parseMassProviderData(provRes2.data);
+            if (provRes.success) {
+                const providers = this._parseMassProviderData(provRes.data);
                 if (providers.length > 0) {
-                    console.log(`[AdminApiService] V1 Strategy 3 OK (getMassProviderData higher IDs): ${providers.length} providers`);
+                    console.log(`[AdminApiService] V1 Strategy 3 OK (getMassProviderData real IDs): ${providers.length} providers`);
+                    return { success: true, data: providers };
+                }
+            } else {
+                console.log(`[AdminApiService] V1 Strategy 3: getMassProviderData failed: ${provRes.error}`);
+            }
+        }
+
+        // ── Strategy 4: getMassProviderData with sample IDs (fallback when getOrders fails) ──
+        if (realOrderIds.length === 0) {
+            console.log(`[AdminApiService] V1 Strategy 4: getMassProviderData (sample IDs 1-50)`);
+            const sampleOrderIds = Array.from({ length: 50 }, (_, i) => String(i + 1));
+            const provRes = await this.makeAdminRequest(panel, 'GET', '', {
+                action: 'getMassProviderData',
+                orders: sampleOrderIds.join(',')
+            });
+
+            if (provRes.success) {
+                const providers = this._parseMassProviderData(provRes.data);
+                if (providers.length > 0) {
+                    console.log(`[AdminApiService] V1 Strategy 4 OK: ${providers.length} providers`);
                     return { success: true, data: providers };
                 }
             }
         }
 
-        // ── Strategy 4: Fallback — try extracting from getOrders (basic) ──
-        console.log(`[AdminApiService] V1 Strategy 4: getOrders (basic fallback)`);
-        const res4 = await this.makeAdminRequest(panel, 'GET', '', {
-            action: 'getOrders',
-            limit: 200
-        });
-
-        if (res4.success) {
-            const orders = res4.data?.orders || res4.data?.data || res4.data || [];
-            const list = Array.isArray(orders) ? orders : [];
-            const providers = this._extractProvidersFromOrders(list);
-            console.log(`[AdminApiService] V1 Strategy 4: ${providers.length} providers from ${list.length} orders`);
-            return { success: true, data: providers };
-        }
-
-        if (this._isEmptyDataError(res4.error)) {
+        if (this._isEmptyDataError(res2?.error)) {
             console.log(`[AdminApiService] V1: All strategies exhausted, panel has no accessible order/provider data`);
             return { success: true, data: [] };
         }
 
-        return { success: false, error: res4.error || res1.error || 'Failed to fetch providers' };
+        return { success: false, error: res2?.error || res1.error || 'Failed to fetch providers' };
     }
 
     /**
