@@ -371,6 +371,33 @@ class BotMessageHandler {
             // If not a verification response, continue to check if it's a new command
         }
 
+        // Priority 0.1: Check for pending registration conversation
+        const pendingRegistration = await conversationStateService.getActiveConversation(
+            senderNumber,
+            userId,
+            'REGISTRATION'
+        );
+
+        if (pendingRegistration && !isGroup) {
+            // User is in registration flow — process their message as username
+            if (conversationStateService.isVerificationResponse(message)) {
+                console.log(`[BotHandler] Processing registration response from ${senderNumber}: "${message}"`);
+                const regResult = await conversationStateService.processRegistration(
+                    pendingRegistration,
+                    message,
+                    userId
+                );
+
+                return {
+                    handled: true,
+                    type: 'registration',
+                    response: regResult.message,
+                    registered: regResult.success
+                };
+            }
+            // If it looks like a command, let it fall through (but it'll fail with needs_registration again)
+        }
+
         // Priority 0.5: Handle utility commands (.groupid, .ping, .help)
         const utilityResult = await this.handleUtilityCommand({
             message,
@@ -901,6 +928,27 @@ class BotMessageHandler {
                 type: 'smm_command',
                 reason: 'parse_error',
                 error: result.error
+            };
+        }
+
+        // Check if registration is needed (all orders returned needs_registration)
+        const allNeedRegistration = !isGroup && result.responses?.length > 0 &&
+            result.responses.every(r => r.details?.reason === 'needs_registration');
+        if (allNeedRegistration) {
+            // Start registration conversation
+            const conversationStateService = require('./conversationStateService');
+            const regStart = await conversationStateService.startRegistration({
+                senderPhone: senderNumber,
+                userId,
+                platform,
+                deviceId,
+                panelIds
+            });
+            console.log(`[BotHandler] Registration flow started for ${senderNumber}`);
+            return {
+                handled: true,
+                type: 'registration_prompt',
+                response: regStart.message
             };
         }
 

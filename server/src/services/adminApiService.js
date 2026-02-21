@@ -1261,6 +1261,86 @@ class AdminApiService {
         }
     }
 
+    /**
+     * Validate if username exists in panel via Admin API
+     * @param {Object} panel - Panel object
+     * @param {string} username - Username to validate
+     * @returns {Object} { exists: boolean }
+     */
+    async validateUsername(panel, username) {
+        try {
+            const isV1 = this.isRentalPanel(panel);
+
+            if (isV1) {
+                // V1/Rental: Try getting orders by user — if returns data, user exists
+                const response = await this.makeAdminRequest(panel, 'GET', '/adminapi/v1', {
+                    action: 'getOrders-by-user',
+                    username: username,
+                    limit: 1
+                });
+
+                // If we got a valid response (even empty array), user likely exists
+                // If error says "user not found" or similar, user doesn't exist
+                if (response && response.error) {
+                    const errStr = (response.error || '').toLowerCase();
+                    if (errStr.includes('not found') || errStr.includes('invalid user') || errStr.includes('no user')) {
+                        return { exists: false };
+                    }
+                }
+
+                // Got some response = user exists
+                return { exists: true };
+            } else {
+                // V2/Perfect Panel: Try user lookup endpoint
+                try {
+                    const response = await this.makeAdminRequest(panel, 'GET', '/adminapi/users', {
+                        search: username
+                    });
+
+                    if (response && Array.isArray(response.data)) {
+                        const found = response.data.some(u =>
+                            (u.username || '').toLowerCase() === username.toLowerCase()
+                        );
+                        return { exists: found };
+                    }
+
+                    // If response has users directly
+                    if (response && Array.isArray(response)) {
+                        const found = response.some(u =>
+                            (u.username || '').toLowerCase() === username.toLowerCase()
+                        );
+                        return { exists: found };
+                    }
+                } catch (v2Err) {
+                    // V2 user lookup not available — try orders fallback
+                    console.log(`[AdminAPI] V2 user lookup failed, trying orders fallback: ${v2Err.message}`);
+                }
+
+                // Fallback: Try getting orders by user
+                try {
+                    const response = await this.makeAdminRequest(panel, 'GET', '/adminapi/orders', {
+                        user: username,
+                        limit: 1
+                    });
+
+                    if (response && !response.error) {
+                        return { exists: true };
+                    }
+                } catch (e) {
+                    // Ignore
+                }
+
+                // Can't determine — assume exists (graceful fallback)
+                console.log(`[AdminAPI] Cannot validate username "${username}" — allowing as fallback`);
+                return { exists: true };
+            }
+        } catch (error) {
+            console.error(`[AdminAPI] validateUsername error:`, error.message);
+            // On error, allow registration (graceful degradation)
+            return { exists: true };
+        }
+    }
+
     // ==================== HELPER METHODS ====================
 
 

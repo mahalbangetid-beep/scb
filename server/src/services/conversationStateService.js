@@ -10,7 +10,8 @@ const prisma = require('../utils/prisma');
 // Conversation state types
 const STATE_TYPES = {
     USERNAME_VERIFICATION: 'USERNAME_VERIFICATION',
-    EMAIL_VERIFICATION: 'EMAIL_VERIFICATION'
+    EMAIL_VERIFICATION: 'EMAIL_VERIFICATION',
+    REGISTRATION: 'REGISTRATION'
 };
 
 // Conversation steps
@@ -294,6 +295,195 @@ john123
         }
 
         return false;
+    }
+
+    // ==================== REGISTRATION FLOW ====================
+
+    /**
+     * Start registration flow for unregistered users
+     * Called when WA-first lookup finds no mapping for sender's number
+     */
+    async startRegistration(params) {
+        const { senderPhone, userId, platform = 'WHATSAPP', deviceId, panelIds } = params;
+
+        const context = {
+            deviceId,
+            panelIds: panelIds || [],
+            attempts: 0,
+            maxAttempts: 3
+        };
+
+        const conversation = await this.createConversation({
+            senderPhone,
+            userId,
+            platform,
+            stateType: STATE_TYPES.REGISTRATION,
+            currentStep: STEPS.AWAITING_USERNAME,
+            context
+        });
+
+        return {
+            conversation,
+            message: this.getRegistrationPromptMessage()
+        };
+    }
+
+    /**
+     * Process registration response (user sends their panel username)
+     */
+    async processRegistration(conversation, providedUsername, userId) {
+        const context = conversation.context;
+        context.attempts = (context.attempts || 0) + 1;
+        const senderPhone = conversation.senderPhone;
+
+        const normalizedUsername = (providedUsername || '').trim();
+        if (!normalizedUsername) {
+            return {
+                success: false,
+                message: '❌ Please send a valid username.'
+            };
+        }
+
+        console.log(`[Registration] Processing registration for WA ${senderPhone}: username="${normalizedUsername}"`);
+
+        const userMappingService = require('./userMappingService');
+
+        // Step 1: Check if username already linked to another WA number
+        const existingMapping = await userMappingService.findByUsername(userId, normalizedUsername);
+        if (existingMapping) {
+            const existingNumbers = existingMapping.whatsappNumbers || [];
+            const normalizedSender = userMappingService.normalizePhone(senderPhone);
+
+            // If already linked to THIS number, just complete
+            if (existingNumbers.includes(normalizedSender)) {
+                await this.completeConversation(conversation.id);
+                return {
+                    success: true,
+                    message: '✅ Your number is already registered with this username. You can now use commands.'
+                };
+            }
+
+            // Linked to another number
+            await this.completeConversation(conversation.id);
+
+            // Get support number from settings
+            let supportNumber = '';
+            try {
+                const botFeatureService = require('./botFeatureService');
+                const toggles = await botFeatureService.getToggles(userId, {});
+                supportNumber = toggles?.supportContactNumber || '';
+            } catch (e) { /* non-critical */ }
+
+            const supportMsg = supportNumber
+                ? `Please contact WhatsApp support team at ${supportNumber}.`
+                : 'Please contact the support team.';
+
+            return {
+                success: false,
+                message: `❌ This username is already linked with another WhatsApp number.\n\n${supportMsg}`
+            };
+        }
+
+        // Step 2: Validate username exists in panel via Admin API
+        let usernameValid = false;
+        const panelIds = context.panelIds || [];
+
+        if (panelIds.length > 0) {
+            try {
+                const adminApiService = require('./adminApiService');
+                const prismaClient = require('../utils/prisma');
+
+                for (const panelId of panelIds) {
+                    const panel = await prismaClient.smmPanel.findUnique({ where: { id: panelId } });
+                    if (panel && panel.adminApiKey) {
+                        const result = await adminApiService.validateUsername(panel, normalizedUsername);
+                        if (result.exists) {
+                            usernameValid = true;
+                            console.log(`[Registration] Username "${normalizedUsername}" validated on panel ${panel.alias || panel.name}`);
+                            break;
+                        }
+                    }
+                }
+            } catch (err) {
+                console.error(`[Registration] Username validation error:`, err.message);
+                // If Admin API fails, allow registration anyway (graceful degradation)
+                usernameValid = true;
+                console.log(`[Registration] Admin API validation failed — allowing registration as fallback`);
+            }
+        } else {
+            // No panels configured — skip validation
+            usernameValid = true;
+            console.log(`[Registration] No panel IDs available — skipping username validation`);
+        }
+
+        if (!usernameValid) {
+            // Username not found in any panel
+            if (context.attempts >= context.maxAttempts) {
+                await this.completeConversation(conversation.id);
+                return {
+                    success: false,
+                    message: `❌ Username not found. Maximum attempts (${context.maxAttempts}) reached.\n\nPlease contact support if you need help.`
+                };
+            }
+
+            await this.updateConversation(conversation.id, {
+                context,
+                extendExpiry: true
+            });
+
+            const remaining = context.maxAttempts - context.attempts;
+            return {
+                success: false,
+                message: `❌ Username "${normalizedUsername}" not found in the panel.\n\nPlease check and send your correct username.\n\n⚠️ Attempts remaining: ${remaining}`
+            };
+        }
+
+        // Step 3: Create mapping
+        try {
+            const normalizedSender = userMappingService.normalizePhone(senderPhone);
+            const newMapping = await userMappingService.createMapping(userId, {
+                panelUsername: normalizedUsername,
+                panelId: panelIds.length > 0 ? panelIds[0] : null,
+                whatsappNumbers: [normalizedSender],
+                whatsappName: null,
+                isBotEnabled: true,
+                isVerified: false,
+                adminNotes: `Self-registered via WhatsApp DM`
+            });
+
+            console.log(`[Registration] Created mapping ID ${newMapping.id}: username="${normalizedUsername}", WA=${normalizedSender}`);
+
+            await this.completeConversation(conversation.id);
+
+            return {
+                success: true,
+                message: `✅ Registration successful!\n\nYour username *${normalizedUsername}* is now linked with your WhatsApp number.\n\nYou can now use bot commands.`,
+                mapping: newMapping
+            };
+        } catch (createErr) {
+            console.error(`[Registration] Failed to create mapping:`, createErr.message);
+            await this.completeConversation(conversation.id);
+            return {
+                success: false,
+                message: '❌ Registration failed. Please try again later or contact support.'
+            };
+        }
+    }
+
+    /**
+     * Get registration prompt message
+     */
+    getRegistrationPromptMessage() {
+        return `📝 *Registration Required*
+
+Your WhatsApp number is not registered yet.
+
+Please send your *panel username* to register:
+
+Example: If your username is "john123", just reply:
+john123
+
+⏱️ This registration expires in 5 minutes.`;
     }
 }
 
