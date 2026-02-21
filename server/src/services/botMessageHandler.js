@@ -572,6 +572,31 @@ class BotMessageHandler {
                     console.error('[BotHandler] Direct username registration error:', regErr.message);
                     // Fall through to normal processing
                 }
+            } else {
+                // Message doesn't look like a username — tell unregistered user to send username
+                try {
+                    const userMappingService = require('./userMappingService');
+                    const existingMapping = await userMappingService.findByPhone(userId, senderNumber);
+
+                    if (!existingMapping) {
+                        console.log(`[BotHandler] Unregistered user ${senderNumber} sent non-username message: "${trimmedMsg}"`);
+
+                        // Load custom prompt message
+                        const conversationStateService = require('./conversationStateService');
+                        const msgs = await conversationStateService._getRegistrationMessages(userId);
+                        const promptMsg = msgs.prompt
+                            ? conversationStateService._replaceVars(msgs.prompt, {})
+                            : `📝 *Registration Required*\n\nYour WhatsApp number is not registered yet.\n\nPlease send your *panel username* to register.\n\nExample: If your username is "john123", just reply:\njohn123`;
+
+                        return {
+                            handled: true,
+                            type: 'registration_required',
+                            response: promptMsg
+                        };
+                    }
+                } catch (regCheckErr) {
+                    console.error('[BotHandler] Unregistered user check error:', regCheckErr.message);
+                }
             }
         }
 
