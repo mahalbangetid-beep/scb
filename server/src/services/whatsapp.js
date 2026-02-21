@@ -422,7 +422,8 @@ class WhatsAppService {
                     if (device?.userId) {
                         // Determine effective panelIds: use multi-panel bindings if available, fallback to single panelId
                         const boundPanelIds = (device.panelBindings || []).map(b => b.panelId);
-                        const effectivePanelId = boundPanelIds.length > 0 ? boundPanelIds[0] : device.panelId;
+                        // device.panelId (admin-set default) takes priority over first binding
+                        const effectivePanelId = device.panelId || (boundPanelIds.length > 0 ? boundPanelIds[0] : null);
 
                         try {
                             const handlerResult = await botMessageHandler.handleMessage({
