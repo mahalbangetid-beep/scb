@@ -596,7 +596,13 @@ class SecurityService {
             console.log(`[Security] WA-FIRST MODE - Checking registration for sender: ${normalizedSender}`);
 
             // ==================== STEP 1: Find mapping by WA number ====================
-            let mapping = await userMappingService.findByPhone(userId, normalizedSender);
+            // Get ALL mappings for this phone (there may be duplicates)
+            const allMappings = await userMappingService.findAllByPhone(userId, normalizedSender);
+            let mapping = allMappings.length > 0 ? allMappings[0] : null;
+
+            if (allMappings.length > 1) {
+                console.log(`[Security] WARNING: ${allMappings.length} mappings found for WA ${normalizedSender}: ${allMappings.map(m => `"${m.panelUsername}"`).join(', ')}`);
+            }
 
             // If not found by phone and in a group, try by group JID
             if (!mapping && isGroup && groupJid) {
@@ -710,12 +716,40 @@ class SecurityService {
             console.log(`[Security] Ownership check: mapped="${mappedUsername}" vs order="${orderUser}"`);
 
             if (mappedUsername !== orderUser) {
+                // First: try ALL other mappings for this phone number
+                if (allMappings.length > 1) {
+                    const matchingMapping = allMappings.find(m =>
+                        (m.panelUsername || '').trim().toLowerCase() === orderUser
+                    );
+                    if (matchingMapping) {
+                        console.log(`[Security] Found matching mapping via alternate: username="${matchingMapping.panelUsername}"`);
+                        mapping = matchingMapping;
+                        // Skip to CASE 1 — order matches this mapping
+                    }
+                }
+            }
+
+            // Re-check after trying alternate mappings
+            const finalMappedUsername = (mapping.panelUsername || '').trim().toLowerCase();
+
+            if (finalMappedUsername !== orderUser) {
                 // Cached customerUsername might be stale — re-fetch from Admin API
                 console.log(`[Security] Mismatch — re-fetching customerUsername from Admin API to verify...`);
                 const freshUsername = await fetchCustomerUsername();
                 if (freshUsername) {
                     orderUser = freshUsername.trim().toLowerCase();
-                    console.log(`[Security] Re-fetched customerUsername: "${freshUsername}" vs mapped="${mappedUsername}"`);
+                    console.log(`[Security] Re-fetched customerUsername: "${freshUsername}" vs mapped="${finalMappedUsername}"`);
+
+                    // Try all mappings again with fresh username
+                    if (finalMappedUsername !== orderUser && allMappings.length > 1) {
+                        const matchingMapping = allMappings.find(m =>
+                            (m.panelUsername || '').trim().toLowerCase() === orderUser
+                        );
+                        if (matchingMapping) {
+                            console.log(`[Security] Found matching mapping via alternate (fresh): username="${matchingMapping.panelUsername}"`);
+                            mapping = matchingMapping;
+                        }
+                    }
                 } else {
                     // Admin API unavailable — trust the mapping set by admin
                     console.log(`[Security] Admin API unavailable for re-fetch — allowing based on admin mapping`);
@@ -728,9 +762,10 @@ class SecurityService {
                 }
             }
 
-            if (mappedUsername !== orderUser) {
+            const checkedMappedUsername = (mapping.panelUsername || '').trim().toLowerCase();
+            if (checkedMappedUsername !== orderUser) {
                 // ==================== CASE 2: Order doesn't belong to this user ====================
-                // Fresh data from Admin API confirms mismatch
+                // Fresh data from Admin API confirms mismatch, no alternate mapping matches
                 console.log(`[Security] CASE 2: Order ${order.externalOrderId} belongs to "${orderUsername}", not "${mapping.panelUsername}" (confirmed by Admin API)`);
                 return {
                     allowed: false,

@@ -159,6 +159,30 @@ class UserMappingService {
     }
 
     /**
+     * Find ALL mappings by WhatsApp number (for multi-mapping support)
+     */
+    async findAllByPhone(userId, phone) {
+        const normalizedPhone = this.normalizePhone(phone);
+
+        const mappings = await prisma.userPanelMapping.findMany({
+            where: {
+                userId,
+                whatsappNumbers: { contains: normalizedPhone }
+            },
+            orderBy: { updatedAt: 'desc' }
+        });
+
+        const results = [];
+        for (const mapping of mappings) {
+            const parsed = this.parseMapping(mapping);
+            if (parsed.whatsappNumbers.includes(normalizedPhone)) {
+                results.push(parsed);
+            }
+        }
+        return results;
+    }
+
+    /**
      * Find mapping by panel username
      */
     async findByUsername(userId, panelUsername) {
