@@ -563,21 +563,51 @@ class AdminApiService {
             }
         }
 
-        // ── Strategy 4: getMassProviderData with sample IDs (fallback when getOrders fails) ──
+        // ── Strategy 4: getMassProviderData with WIDE range sampling (fallback when getOrders fails) ──
         if (realOrderIds.length === 0) {
-            console.log(`[AdminApiService] V1 Strategy 4: getMassProviderData (sample IDs 1-50)`);
-            const sampleOrderIds = Array.from({ length: 50 }, (_, i) => String(i + 1));
-            const provRes = await this.makeAdminRequest(panel, 'GET', '', {
-                action: 'getMassProviderData',
-                orders: sampleOrderIds.join(',')
-            });
+            const allProviders = new Map();
 
-            if (provRes.success) {
-                const providers = this._parseMassProviderData(provRes.data);
-                if (providers.length > 0) {
-                    console.log(`[AdminApiService] V1 Strategy 4 OK: ${providers.length} providers`);
-                    return { success: true, data: providers };
+            // Sample multiple ranges to catch providers at any ID level
+            const ranges = [
+                [1, 100],
+                [500, 600],
+                [1000, 1100],
+                [2000, 2100],
+                [5000, 5100],
+                [10000, 10100],
+                [20000, 20100],
+                [50000, 50100]
+            ];
+
+            for (const [start, end] of ranges) {
+                const ids = [];
+                for (let i = start; i <= end; i += 2) ids.push(String(i));
+
+                const provRes = await this.makeAdminRequest(panel, 'GET', '', {
+                    action: 'getMassProviderData',
+                    orders: ids.join(',')
+                });
+
+                if (provRes.success) {
+                    const providers = this._parseMassProviderData(provRes.data);
+                    for (const p of providers) {
+                        if (allProviders.has(p.name)) {
+                            allProviders.get(p.name).orderCount += p.orderCount;
+                        } else {
+                            allProviders.set(p.name, { ...p });
+                        }
+                    }
+                } else if (provRes.error?.includes('bad_action')) {
+                    // getMassProviderData not supported at all, stop trying
+                    console.log(`[AdminApiService] V1 Strategy 4: getMassProviderData not supported`);
+                    break;
                 }
+            }
+
+            const merged = Array.from(allProviders.values()).sort((a, b) => b.orderCount - a.orderCount);
+            console.log(`[AdminApiService] V1 Strategy 4: ${merged.length} providers from wide-range sampling`);
+            if (merged.length > 0) {
+                return { success: true, data: merged };
             }
         }
 
