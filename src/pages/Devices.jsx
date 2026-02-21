@@ -50,6 +50,7 @@ export default function Devices() {
     const [showEditModal, setShowEditModal] = useState(false)
     const [editDevice, setEditDevice] = useState(null)
     const [editPanelIds, setEditPanelIds] = useState([])
+    const [editDefaultPanelId, setEditDefaultPanelId] = useState('')  // Default panel for DM routing
     const [editReplyScope, setEditReplyScope] = useState('all')
     const [editForwardOnly, setEditForwardOnly] = useState(false)
     const [editLoading, setEditLoading] = useState(false)
@@ -280,6 +281,7 @@ export default function Devices() {
         } else {
             setEditPanelIds([])
         }
+        setEditDefaultPanelId(device.panelId || '')
         setEditReplyScope(device.replyScope || 'all')
         setEditForwardOnly(device.forwardOnly || false)
         setShowEditModal(true)
@@ -296,6 +298,7 @@ export default function Devices() {
         setShowEditModal(false)
         setEditDevice(null)
         setEditPanelIds([])
+        setEditDefaultPanelId('')
         setEditReplyScope('all')
         setEditForwardOnly(false)
         setDeviceGroups([])
@@ -415,8 +418,15 @@ export default function Devices() {
 
         setEditLoading(true)
         try {
+            // Determine default panelId for DM routing
+            const defaultPanelId = editPanelIds.length === 1
+                ? editPanelIds[0]
+                : (editDefaultPanelId && editPanelIds.includes(editDefaultPanelId))
+                    ? editDefaultPanelId
+                    : (editPanelIds.length > 0 ? editPanelIds[0] : null)
+
             await api.put(`/devices/${editDevice.id}`, {
-                panelId: editPanelIds.length === 1 ? editPanelIds[0] : null,
+                panelId: defaultPanelId,
                 panelIds: editPanelIds,
                 replyScope: editReplyScope,
                 forwardOnly: editForwardOnly
@@ -1167,6 +1177,34 @@ export default function Devices() {
                                         }
                                     </p>
                                 </div>
+
+                                {/* Default Panel for DM — only shown when multiple panels selected */}
+                                {editPanelIds.length > 1 && (
+                                    <div className="form-group">
+                                        <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                            <Link2 size={14} />
+                                            Default Panel for DM
+                                        </label>
+                                        <select
+                                            className="form-input"
+                                            value={editDefaultPanelId}
+                                            onChange={(e) => setEditDefaultPanelId(e.target.value)}
+                                            style={{ fontSize: '0.9rem' }}
+                                        >
+                                            {editPanelIds.map(pid => {
+                                                const p = panels.find(panel => panel.id === pid)
+                                                return (
+                                                    <option key={pid} value={pid}>
+                                                        {p?.alias || p?.name || pid}
+                                                    </option>
+                                                )
+                                            })}
+                                        </select>
+                                        <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '6px' }}>
+                                            When a user sends a DM, the bot will use this panel's username mapping for registration and command routing.
+                                        </p>
+                                    </div>
+                                )}
 
                                 {/* Group Reply Blocking */}
                                 {editDevice?.status === 'connected' && (
