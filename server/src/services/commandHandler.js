@@ -1313,53 +1313,59 @@ class CommandHandlerService {
                 .replace(/\{results\}/g, resultsText.trim());
         }
 
-        // Default format using response templates
-        const defaults = responseTemplateService.defaultTemplates;
+        // Default format: Group by category (provider panel style)
+        const commandDisplay = commandParser.getDisplayCommand(command);
 
-        // Format header
-        const headerTemplate = defaults['BULK_HEADER']?.template || '📋 {command} Results\n━━━━━━━━━━━━━━━━';
-        const successItemTemplate = defaults['BULK_SUCCESS_ITEM']?.template || '• {order_id}';
-        const failedItemTemplate = defaults['BULK_FAILED_ITEM']?.template || '• {order_id}: {error}';
-        const summaryTemplate = defaults['BULK_SUMMARY']?.template || '━━━━━━━━━━━━━━━━\nTotal: {total} | ✅ {success_count} | ❌ {failed_count}';
+        // Categorize responses
+        const queued = [];      // Successfully processed
+        const notFound = [];    // not_found or security_check_failed
+        const inProgress = [];  // status issue (already completed, in progress, cooldown)
+        const otherFailed = []; // other errors
 
-        let message = responseTemplateService.formatTemplate(headerTemplate, {
-            command: commandParser.getDisplayCommand(command)
-        });
-        message += '\n';
-
-        if (successful.length > 0) {
-            message += `\n✅ Successful (${successful.length}):\n`;
-            for (const r of successful.slice(0, 20)) { // Limit display
-                message += responseTemplateService.formatTemplate(successItemTemplate, {
-                    order_id: r.orderId,
-                    status: r.details?.status || '',
-                    service: r.details?.service || ''
-                }) + '\n';
-            }
-            if (successful.length > 20) {
-                message += `... and ${successful.length - 20} more\n`;
+        for (const r of responses) {
+            if (r.success) {
+                queued.push(r);
+            } else {
+                const reason = r.details?.reason || '';
+                if (reason === 'not_found' || reason === 'security_check_failed') {
+                    notFound.push(r);
+                } else if (reason === 'status' || reason === 'cooldown' || reason === 'disabled' ||
+                    reason === 'panel_cancel_not_available' || reason === 'panel_refill_not_available') {
+                    inProgress.push(r);
+                } else {
+                    otherFailed.push(r);
+                }
             }
         }
 
-        if (failed.length > 0) {
-            message += `\n❌ Failed (${failed.length}):\n`;
-            for (const r of failed.slice(0, 10)) {
-                message += responseTemplateService.formatTemplate(failedItemTemplate, {
-                    order_id: r.orderId,
-                    error: r.details?.error || r.details?.reason || 'Error',
-                    reason: r.details?.reason || ''
-                }) + '\n';
-            }
-            if (failed.length > 10) {
-                message += `... and ${failed.length - 10} more\n`;
-            }
+        let message = `📋 *${commandDisplay} Results*\n━━━━━━━━━━━━━━━━\n`;
+
+        // ✅ Successfully queued
+        if (queued.length > 0) {
+            const orderList = queued.map(r => r.orderId).join(',');
+            message += `\n✅ *These orders are added to ${commandDisplay.toLowerCase()} support queue:*\n${orderList}\n`;
         }
 
-        message += '\n' + responseTemplateService.formatTemplate(summaryTemplate, {
-            total: responses.length.toString(),
-            success_count: successful.length.toString(),
-            failed_count: failed.length.toString()
-        });
+        // ⏳ Already in progress / status issue
+        if (inProgress.length > 0) {
+            const orderList = inProgress.map(r => r.orderId).join(',');
+            message += `\n⏳ *These support requests are already in progress:*\n${orderList}\n`;
+            message += `_For each order you can request support per 12 hour. If support request is already in queue you can't create a new support request with same order._\n`;
+        }
+
+        // ❌ Not found / not yours
+        if (notFound.length > 0) {
+            const orderList = notFound.map(r => r.orderId).join(',');
+            message += `\n❌ *These orders are not found or not belong to you:*\n${orderList}\n`;
+        }
+
+        // ⚠️ Other errors
+        if (otherFailed.length > 0) {
+            const orderList = otherFailed.map(r => `${r.orderId}: ${r.details?.error || 'Error'}`).join('\n');
+            message += `\n⚠️ *Other errors:*\n${orderList}\n`;
+        }
+
+        message += `\n━━━━━━━━━━━━━━━━\nTotal: ${responses.length} | ✅ ${queued.length} | ❌ ${notFound.length + inProgress.length + otherFailed.length}`;
 
         return message;
     }
