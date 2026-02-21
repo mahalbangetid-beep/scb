@@ -132,7 +132,7 @@ router.post('/bulk-delete', async (req, res, next) => {
         }
 
         const prisma = require('../utils/prisma');
-        const result = await prisma.userMapping.deleteMany({
+        const result = await prisma.userPanelMapping.deleteMany({
             where: {
                 id: { in: ids },
                 userId: req.user.id
