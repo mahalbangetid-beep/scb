@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Users, Plus, Edit2, Trash2, UserCheck, Phone, AlertTriangle, Zap, X, RefreshCw, Search, ToggleRight, ToggleLeft, MessageSquare, StickyNote, Ban, CheckCircle, Hash, Send } from 'lucide-react';
+import { Users, Plus, Edit2, Trash2, UserCheck, Phone, AlertTriangle, Zap, X, RefreshCw, Search, ToggleRight, ToggleLeft, MessageSquare, StickyNote, Ban, CheckCircle, Hash, Send, CheckSquare, Square } from 'lucide-react';
 import api from '../services/api';
 
 const UserMappings = () => {
@@ -13,6 +13,10 @@ const UserMappings = () => {
     const [selectedPanel, setSelectedPanel] = useState('all');
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
+
+    // Bulk select
+    const [selectedIds, setSelectedIds] = useState(new Set());
+    const [bulkDeleting, setBulkDeleting] = useState(false);
 
     // Notes modal
     const [showNotesModal, setShowNotesModal] = useState(false);
@@ -144,6 +148,42 @@ const UserMappings = () => {
             fetchData();
         } catch (err) {
             setError('Failed to delete');
+        }
+    };
+
+    const handleSelectAll = () => {
+        if (selectedIds.size === filteredMappings.length) {
+            setSelectedIds(new Set());
+        } else {
+            setSelectedIds(new Set(filteredMappings.map(m => m.id)));
+        }
+    };
+
+    const handleSelectOne = (id) => {
+        setSelectedIds(prev => {
+            const next = new Set(prev);
+            if (next.has(id)) {
+                next.delete(id);
+            } else {
+                next.add(id);
+            }
+            return next;
+        });
+    };
+
+    const handleBulkDelete = async () => {
+        if (selectedIds.size === 0) return;
+        if (!window.confirm(`Delete ${selectedIds.size} selected mapping(s)?`)) return;
+        setBulkDeleting(true);
+        try {
+            await api.post('/user-mappings/bulk-delete', { ids: Array.from(selectedIds) });
+            setSuccess(`Deleted ${selectedIds.size} mappings`);
+            setSelectedIds(new Set());
+            fetchData();
+        } catch (err) {
+            setError('Failed to delete selected mappings');
+        } finally {
+            setBulkDeleting(false);
         }
     };
 
@@ -339,6 +379,30 @@ const UserMappings = () => {
                 </div>
             </div>
 
+            {/* Bulk Actions Bar */}
+            {selectedIds.size > 0 && (
+                <div className="bulk-actions-bar">
+                    <span className="bulk-count">
+                        <CheckSquare size={16} />
+                        {selectedIds.size} selected
+                    </span>
+                    <button
+                        className="btn btn-danger btn-sm"
+                        onClick={handleBulkDelete}
+                        disabled={bulkDeleting}
+                    >
+                        <Trash2 size={14} />
+                        {bulkDeleting ? 'Deleting...' : `Delete ${selectedIds.size}`}
+                    </button>
+                    <button
+                        className="btn btn-secondary btn-sm"
+                        onClick={() => setSelectedIds(new Set())}
+                    >
+                        Clear
+                    </button>
+                </div>
+            )}
+
             {/* User List (Table Format) */}
             <div className="mapping-table-wrap">
                 {filteredMappings.length === 0 ? (
@@ -356,6 +420,15 @@ const UserMappings = () => {
                     <table className="mapping-table">
                         <thead>
                             <tr>
+                                <th style={{ width: '40px', textAlign: 'center' }}>
+                                    <input
+                                        type="checkbox"
+                                        className="row-checkbox"
+                                        checked={filteredMappings.length > 0 && selectedIds.size === filteredMappings.length}
+                                        onChange={handleSelectAll}
+                                        title="Select all"
+                                    />
+                                </th>
                                 <th>Username</th>
                                 <th>WhatsApp</th>
                                 <th>Telegram ID</th>
@@ -368,7 +441,16 @@ const UserMappings = () => {
                         </thead>
                         <tbody>
                             {filteredMappings.map(user => (
-                                <tr key={user.id} className={`${user.isAutoSuspended ? 'row-blocked' : ''} ${!user.isBotEnabled ? 'row-disabled' : ''}`}>
+                                <tr key={user.id} className={`${user.isAutoSuspended ? 'row-blocked' : ''} ${!user.isBotEnabled ? 'row-disabled' : ''} ${selectedIds.has(user.id) ? 'row-selected' : ''}`}>
+                                    {/* Checkbox */}
+                                    <td style={{ textAlign: 'center' }}>
+                                        <input
+                                            type="checkbox"
+                                            className="row-checkbox"
+                                            checked={selectedIds.has(user.id)}
+                                            onChange={() => handleSelectOne(user.id)}
+                                        />
+                                    </td>
                                     {/* Username */}
                                     <td>
                                         <div className="user-cell">
@@ -1039,6 +1121,48 @@ const UserMappings = () => {
                 .text-success { color: #22c55e !important; }
                 .text-warning { color: #f59e0b !important; }
                 .text-danger { color: #ef4444 !important; }
+
+                /* Bulk Select */
+                .row-checkbox {
+                    width: 16px;
+                    height: 16px;
+                    accent-color: var(--primary-color);
+                    cursor: pointer;
+                }
+                .mapping-table tbody tr.row-selected {
+                    background: rgba(59, 130, 246, 0.08);
+                }
+                .bulk-actions-bar {
+                    display: flex;
+                    align-items: center;
+                    gap: 0.75rem;
+                    padding: 0.75rem 1rem;
+                    margin-bottom: 0.75rem;
+                    background: linear-gradient(135deg, rgba(59, 130, 246, 0.1), rgba(99, 102, 241, 0.08));
+                    border: 1px solid rgba(59, 130, 246, 0.2);
+                    border-radius: 10px;
+                    animation: toastSlideIn 0.2s ease-out;
+                }
+                .bulk-count {
+                    display: flex;
+                    align-items: center;
+                    gap: 0.5rem;
+                    font-weight: 600;
+                    font-size: 0.9rem;
+                    color: var(--primary-color);
+                }
+                .btn-sm {
+                    padding: 0.4rem 0.75rem !important;
+                    font-size: 0.8rem !important;
+                }
+                .btn-danger {
+                    background: linear-gradient(135deg, #ef4444, #dc2626) !important;
+                    color: white !important;
+                    border: none !important;
+                }
+                .btn-danger:hover {
+                    background: linear-gradient(135deg, #dc2626, #b91c1c) !important;
+                }
 
                 /* Responsive */
                 @media (max-width: 900px) {

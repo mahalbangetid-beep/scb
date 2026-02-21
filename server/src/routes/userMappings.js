@@ -115,6 +115,37 @@ router.post('/bulk-import', async (req, res, next) => {
 });
 
 /**
+ * POST /api/user-mappings/bulk-delete
+ * Delete multiple mappings at once
+ * NOTE: Must be before /:id route
+ */
+router.post('/bulk-delete', async (req, res, next) => {
+    try {
+        const { ids } = req.body;
+
+        if (!Array.isArray(ids) || ids.length === 0) {
+            throw new AppError('IDs array is required', 400);
+        }
+
+        if (ids.length > 100) {
+            throw new AppError('Maximum 100 deletions per request', 400);
+        }
+
+        const prisma = require('../utils/prisma');
+        const result = await prisma.userMapping.deleteMany({
+            where: {
+                id: { in: ids },
+                userId: req.user.id
+            }
+        });
+
+        successResponse(res, { deleted: result.count }, `Deleted ${result.count} mappings`);
+    } catch (error) {
+        next(error);
+    }
+});
+
+/**
  * POST /api/user-mappings/check-sender
  * Check if a sender is allowed to use bot
  * NOTE: Must be before /:id route
