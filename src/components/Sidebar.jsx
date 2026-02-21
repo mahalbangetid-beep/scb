@@ -55,7 +55,7 @@ const smmNavigation = [
     { name: 'SMM Panels', icon: Globe, path: '/smm-panels' },
     { name: 'Panel Connections', icon: Plug, path: '/panel-connections' },
     { name: 'Orders', icon: Package, path: '/orders' },
-    { name: 'Provider Groups', icon: Radio, path: '/provider-groups' },
+    // { name: 'Provider Groups', icon: Radio, path: '/provider-groups' }, // Hidden per client request
     { name: 'Support Groups', icon: UsersRound, path: '/support-groups' },
     { name: 'Tickets', icon: Ticket, path: '/tickets' },
 ]
