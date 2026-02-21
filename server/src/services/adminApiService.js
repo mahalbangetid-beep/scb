@@ -619,6 +619,49 @@ class AdminApiService {
      * V2 (Perfect Panel) provider fetching — multi-strategy
      */
     async _getProvidersV2(panel) {
+        // ── Strategy 0: GET /providers (direct provider list — if supported) ──
+        console.log(`[AdminApiService] V2 Strategy 0: GET /providers`);
+        try {
+            const res0 = await this.makeAdminRequest(panel, 'GET', '/providers');
+
+            if (res0.success) {
+                const rawData = res0.data?.providers || res0.data?.data || res0.data || [];
+                const rawType = Array.isArray(rawData) ? 'array' : typeof rawData;
+                console.log(`[AdminApiService] V2 Strategy 0: response type=${rawType}, count=${Array.isArray(rawData) ? rawData.length : (typeof rawData === 'object' ? Object.keys(rawData).length : 0)}`);
+
+                let providers = [];
+                if (Array.isArray(rawData)) {
+                    providers = rawData.map((p, idx) => {
+                        if (typeof p === 'string') return { name: p, orderCount: 0, id: null };
+                        return {
+                            name: p.alias || p.name || p.provider_name || p.title || `Provider ${p.provider_id || p.id || idx}`,
+                            orderCount: p.order_count || p.orders_count || 0,
+                            id: p.provider_id || p.id || null
+                        };
+                    }).filter(p => p.name);
+                } else if (typeof rawData === 'object') {
+                    providers = Object.entries(rawData).map(([key, val]) => {
+                        if (typeof val === 'string') return { name: val, orderCount: 0, id: key };
+                        return {
+                            name: val.alias || val.name || val.provider_name || `Provider ${key}`,
+                            orderCount: val.order_count || val.orders_count || 0,
+                            id: val.provider_id || val.id || key
+                        };
+                    }).filter(p => p.name);
+                }
+
+                if (providers.length > 0) {
+                    console.log(`[AdminApiService] V2 Strategy 0 OK (/providers): ${providers.length} providers: ${providers.map(p => p.name).join(', ')}`);
+                    return { success: true, data: providers };
+                }
+                console.log(`[AdminApiService] V2 Strategy 0: /providers returned empty`);
+            } else {
+                console.log(`[AdminApiService] V2 Strategy 0: /providers not supported: ${res0.error}`);
+            }
+        } catch (e) {
+            console.log(`[AdminApiService] V2 Strategy 0: /providers failed: ${e.message}`);
+        }
+
         // ── Strategy 1: /orders bulk fetch ──
         console.log(`[AdminApiService] V2 Strategy 1: /orders?limit=1000`);
         const res1 = await this.makeAdminRequest(panel, 'GET', '/orders', {
