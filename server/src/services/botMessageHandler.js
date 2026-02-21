@@ -826,7 +826,7 @@ class BotMessageHandler {
 
         // ==================== DETECT BULK + V1/RENTAL FOR ASYNC PROCESSING ====================
         // Parse message to check if it's a bulk command targeting V1/Rental panel
-        const parsedCmd = commandParser.parseCommand(message);
+        const parsedCmd = commandParser.parse(message);
         const isBulkCommand = parsedCmd && parsedCmd.orderIds && parsedCmd.orderIds.length > 1;
 
         let asyncBulk = false;
