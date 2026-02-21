@@ -1272,24 +1272,54 @@ class AdminApiService {
             const isV1 = this.isRentalPanel(panel);
 
             if (isV1) {
-                // V1/Rental: Try getting orders by user — if returns data, user exists
-                const response = await this.makeAdminRequest(panel, 'GET', '/adminapi/v1', {
-                    action: 'getOrders-by-user',
-                    username: username,
-                    limit: 1
-                });
+                // V1/Rental: Use action=getuser to check if user exists
+                try {
+                    const response = await this.makeAdminRequest(panel, 'GET', '', {
+                        action: 'getuser',
+                        username: username
+                    });
 
-                // If we got a valid response (even empty array), user likely exists
-                // If error says "user not found" or similar, user doesn't exist
-                if (response && response.error) {
-                    const errStr = (response.error || '').toLowerCase();
-                    if (errStr.includes('not found') || errStr.includes('invalid user') || errStr.includes('no user')) {
-                        return { exists: false };
+                    // If success response with user data → user exists
+                    if (response && response.success && response.data) {
+                        console.log(`[AdminAPI] V1 getuser: username "${username}" found`);
+                        return { exists: true };
                     }
+
+                    // Check for explicit "not found" errors
+                    if (response && (response.error || !response.success)) {
+                        const errStr = (response.error || '').toLowerCase();
+                        if (errStr.includes('not found') || errStr.includes('invalid user') ||
+                            errStr.includes('no user') || errStr.includes('bad_username')) {
+                            console.log(`[AdminAPI] V1 getuser: username "${username}" NOT found`);
+                            return { exists: false };
+                        }
+                    }
+                } catch (getUserErr) {
+                    console.log(`[AdminAPI] V1 getuser failed, trying orders fallback: ${getUserErr.message}`);
                 }
 
-                // Got some response = user exists
-                return { exists: true };
+                // Fallback: Try getOrders-by-user (works if user has orders)
+                try {
+                    const response = await this.makeAdminRequest(panel, 'GET', '', {
+                        action: 'getOrders-by-user',
+                        username: username,
+                        limit: 1
+                    });
+
+                    if (response && response.error) {
+                        const errStr = (response.error || '').toLowerCase();
+                        if (errStr.includes('not found') || errStr.includes('invalid user') || errStr.includes('no user')) {
+                            return { exists: false };
+                        }
+                    }
+
+                    // Got some response = user exists
+                    return { exists: true };
+                } catch (e) {
+                    // Both methods failed — graceful fallback
+                    console.log(`[AdminAPI] V1 orders fallback also failed — allowing as fallback`);
+                    return { exists: true };
+                }
             } else {
                 // V2/Perfect Panel: Try user lookup endpoint
                 try {
