@@ -449,24 +449,23 @@ class AdminApiService {
         });
 
         if (res0.success) {
-            const rawData = res0.data?.data || res0.data || [];
+            const rawData = res0.data?.providers || res0.data?.data || res0.data || [];
             let providers = [];
 
             // Log raw response for debugging
             const rawType = Array.isArray(rawData) ? 'array' : typeof rawData;
-            const rawSample = JSON.stringify(rawData).substring(0, 500);
-            console.log(`[AdminApiService] V1 Strategy 0: raw response type=${rawType}, sample=${rawSample}`);
+            console.log(`[AdminApiService] V1 Strategy 0: raw response type=${rawType}, count=${Array.isArray(rawData) ? rawData.length : Object.keys(rawData).length}`);
 
             if (Array.isArray(rawData)) {
-                // Array format: [{ id, name, ... }] or ["ProviderName", ...]
+                // Array format: [{ provider_id, alias, ... }] or [{ id, name }] or ["ProviderName"]
                 providers = rawData.map((p, idx) => {
                     if (typeof p === 'string') {
                         return { name: p, orderCount: 0, id: null };
                     }
                     return {
-                        name: p.name || p.provider_name || p.title || `Provider ${p.id || idx}`,
+                        name: p.alias || p.name || p.provider_name || p.title || `Provider ${p.provider_id || p.id || idx}`,
                         orderCount: p.order_count || p.orders_count || p.total_orders || 0,
-                        id: p.id || null
+                        id: p.provider_id || p.id || null
                     };
                 }).filter(p => p.name);
             } else if (typeof rawData === 'object') {
