@@ -64,6 +64,7 @@ router.get('/logs', authenticate, async (req, res, next) => {
  */
 router.get('/manual-destination', authenticate, async (req, res, next) => {
     try {
+        console.log(`[ManualDest] GET - userId=${req.user.id}, panelId=${req.query.panelId}`);
         const config = await prisma.providerConfig.findFirst({
             where: {
                 userId: req.user.id,
@@ -71,8 +72,10 @@ router.get('/manual-destination', authenticate, async (req, res, next) => {
                 isActive: true
             }
         });
+        console.log(`[ManualDest] GET result:`, config ? `found (id=${config.id}, wa=${config.whatsappNumber}, device=${config.deviceId})` : 'null');
         successResponse(res, config || null);
     } catch (error) {
+        console.error(`[ManualDest] GET error:`, error.message);
         next(error);
     }
 });
@@ -88,6 +91,8 @@ router.post('/manual-destination', authenticate, async (req, res, next) => {
             refillTemplate, cancelTemplate, speedupTemplate,
             errorGroupJid, errorWhatsappNumber, errorChatId, errorDeviceId, errorTemplate
         } = req.body;
+
+        console.log(`[ManualDest] POST - userId=${req.user.id}, wa=${whatsappNumber}, device=${deviceId}`);
 
         const config = await prisma.providerConfig.upsert({
             where: {
@@ -129,8 +134,10 @@ router.post('/manual-destination', authenticate, async (req, res, next) => {
             }
         });
 
+        console.log(`[ManualDest] POST saved - id=${config.id}, wa=${config.whatsappNumber}`);
         successResponse(res, config, 'Manual destination saved');
     } catch (error) {
+        console.error(`[ManualDest] POST error:`, error.message);
         next(error);
     }
 });
