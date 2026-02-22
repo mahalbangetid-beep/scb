@@ -258,8 +258,8 @@ model Order {
 
   // ==================== AVAILABLE ACTIONS (from Admin API) ====================
   // Indicates what actions are available for this order based on panel settings
-  canRefill        Boolean   @default(false) // Whether refill button is available
-  canCancel        Boolean   @default(false) // Whether cancel button is available
+  canRefill        Boolean?  // null=unknown (triggers guarantee check), true=available, false=not available
+  canCancel        Boolean?  // null=unknown, true=available, false=not available
   actionsUpdatedAt DateTime? // Last time actions were synced from panel
 
   // ==================== GUARANTEE TRACKING ====================
