@@ -378,7 +378,7 @@ class CommandHandlerService {
                             actionsUpdatedAt: new Date(),
                             // Order mode and service ID from panel
                             mode: orderData.mode || null,
-                            serviceId: orderData.serviceId || null
+                            serviceId: orderData.serviceId ? String(orderData.serviceId) : null
                         };
 
                         // Set completedAt if order is already COMPLETED

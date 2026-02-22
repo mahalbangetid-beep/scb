@@ -11,9 +11,8 @@ export default function ManualServiceDestination({ panelId }) {
         whatsappNumber: '',
         whatsappGroupJid: '',
         telegramChatId: '',
-        errorWhatsappNumber: '',
         errorGroupJid: '',
-        errorTelegramChatId: ''
+        errorChatId: ''
     })
 
     useEffect(() => { if (panelId) fetchConfig() }, [panelId])
@@ -30,9 +29,8 @@ export default function ManualServiceDestination({ panelId }) {
                     whatsappNumber: cfg.whatsappNumber || '',
                     whatsappGroupJid: cfg.whatsappGroupJid || '',
                     telegramChatId: cfg.telegramChatId || '',
-                    errorWhatsappNumber: cfg.errorWhatsappNumber || '',
                     errorGroupJid: cfg.errorGroupJid || '',
-                    errorTelegramChatId: cfg.errorChatId || ''
+                    errorChatId: cfg.errorChatId || ''
                 })
             }
         } catch (e) { /* No config yet, that's fine */ }
@@ -48,6 +46,7 @@ export default function ManualServiceDestination({ panelId }) {
                 ...form
             })
             setSuccess('Destination saved successfully!')
+            await fetchConfig()
         } catch (e) { setError(e.response?.data?.message || 'Failed to save') }
         setSaving(false)
     }
@@ -106,16 +105,12 @@ export default function ManualServiceDestination({ panelId }) {
                         </p>
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--spacing-sm)' }}>
                             <div>
-                                <label className="form-label">Error WA DM Number(s)</label>
-                                <input className="form-input" placeholder="e.g. 628123456789" value={form.errorWhatsappNumber} onChange={e => setForm({ ...form, errorWhatsappNumber: e.target.value })} />
-                            </div>
-                            <div>
                                 <label className="form-label">Error WA Group JID</label>
                                 <input className="form-input" placeholder="e.g. 120363xxx@g.us" value={form.errorGroupJid} onChange={e => setForm({ ...form, errorGroupJid: e.target.value })} />
                             </div>
                             <div>
                                 <label className="form-label">Error Telegram Chat ID</label>
-                                <input className="form-input" placeholder="e.g. -1001234567890" value={form.errorTelegramChatId} onChange={e => setForm({ ...form, errorTelegramChatId: e.target.value })} />
+                                <input className="form-input" placeholder="e.g. -1001234567890" value={form.errorChatId} onChange={e => setForm({ ...form, errorChatId: e.target.value })} />
                             </div>
                         </div>
                     </div>
