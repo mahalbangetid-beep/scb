@@ -1358,7 +1358,7 @@ model GuaranteeConfig {
 
   // What to do when no guarantee found
   // ALLOW = allow refill anyway, DENY = deny refill, ASK = ask user
-  noGuaranteeAction String @default("DENY")
+  noGuaranteeAction String @default("ALLOW")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

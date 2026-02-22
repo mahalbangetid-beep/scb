@@ -61,7 +61,7 @@ class GuaranteeService {
                     emojis: '♻️,🔄,✅',
                     defaultDays: 30,
                     isEnabled: true,
-                    noGuaranteeAction: 'DENY'
+                    noGuaranteeAction: 'ALLOW'
                 }
             });
         }
