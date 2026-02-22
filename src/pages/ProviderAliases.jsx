@@ -6,7 +6,7 @@ import {
     ChevronRight, Settings2, Layers, Zap, Shield, Plus, UserPlus
 } from 'lucide-react'
 import api from '../services/api'
-import ManualServices from '../components/ManualServices'
+import ManualServiceDestination from '../components/ManualServiceDestination'
 import FailedOrders from '../components/FailedOrders'
 import ServiceForwardRules from '../components/ServiceForwardRules'
 
@@ -568,10 +568,10 @@ export default function ProviderAliases() {
                 </div>
             )}
 
-            {/* Tab: Manual Services */}
+            {/* Tab: Manual Service Destination */}
             {selectedPanel && activeTab === 'manual-services' && (
                 <div className="card" style={{ padding: 'var(--spacing-lg)' }}>
-                    <ManualServices panelId={selectedPanel} />
+                    <ManualServiceDestination panelId={selectedPanel} />
                 </div>
             )}
 

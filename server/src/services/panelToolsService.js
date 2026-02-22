@@ -11,58 +11,6 @@ const prisma = require('../utils/prisma');
 
 class PanelToolsService {
 
-    // ==================== MANUAL SERVICES ====================
-
-    async getManualServices(userId, panelId) {
-        return prisma.manualService.findMany({
-            where: { userId, panelId },
-            orderBy: { createdAt: 'desc' }
-        });
-    }
-
-    async createManualService(userId, panelId, data) {
-        return prisma.manualService.create({
-            data: {
-                userId,
-                panelId,
-                serviceId: data.serviceId,
-                serviceName: data.serviceName,
-                category: data.category || null,
-                rate: data.rate ? parseFloat(data.rate) : null,
-                minOrder: data.minOrder ? parseInt(data.minOrder) : null,
-                maxOrder: data.maxOrder ? parseInt(data.maxOrder) : null,
-                refillable: data.refillable || false,
-                notes: data.notes || null,
-                isActive: true
-            }
-        });
-    }
-
-    async updateManualService(id, userId, data) {
-        const existing = await prisma.manualService.findFirst({ where: { id, userId } });
-        if (!existing) throw new Error('Manual service not found');
-
-        return prisma.manualService.update({
-            where: { id },
-            data: {
-                serviceId: data.serviceId !== undefined ? data.serviceId : existing.serviceId,
-                serviceName: data.serviceName !== undefined ? data.serviceName : existing.serviceName,
-                category: data.category !== undefined ? data.category : existing.category,
-                rate: data.rate !== undefined ? parseFloat(data.rate) : existing.rate,
-                minOrder: data.minOrder !== undefined ? parseInt(data.minOrder) : existing.minOrder,
-                maxOrder: data.maxOrder !== undefined ? parseInt(data.maxOrder) : existing.maxOrder,
-                refillable: data.refillable !== undefined ? data.refillable : existing.refillable,
-                notes: data.notes !== undefined ? data.notes : existing.notes,
-                isActive: data.isActive !== undefined ? data.isActive : existing.isActive
-            }
-        });
-    }
-
-    async deleteManualService(id, userId) {
-        const existing = await prisma.manualService.findFirst({ where: { id, userId } });
-        if (!existing) throw new Error('Manual service not found');
-        return prisma.manualService.delete({ where: { id } });
-    }
 
     // ==================== FAILED ORDERS ====================
 

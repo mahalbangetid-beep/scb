@@ -59,6 +59,68 @@ router.get('/logs', authenticate, async (req, res, next) => {
 });
 
 /**
+ * GET /api/provider-config/manual-destination
+ * Get the manual service destination config for a panel
+ */
+router.get('/manual-destination', authenticate, async (req, res, next) => {
+    try {
+        const config = await prisma.providerConfig.findFirst({
+            where: {
+                userId: req.user.id,
+                providerName: 'MANUAL',
+                isActive: true
+            }
+        });
+        successResponse(res, config || null);
+    } catch (error) {
+        next(error);
+    }
+});
+
+/**
+ * POST /api/provider-config/manual-destination
+ * Create or update the manual service destination config
+ */
+router.post('/manual-destination', authenticate, async (req, res, next) => {
+    try {
+        const {
+            whatsappNumber, whatsappGroupJid, telegramChatId,
+            errorWhatsappNumber, errorGroupJid, errorTelegramChatId
+        } = req.body;
+
+        const config = await prisma.providerConfig.upsert({
+            where: {
+                userId_providerName: { userId: req.user.id, providerName: 'MANUAL' }
+            },
+            update: {
+                whatsappNumber: whatsappNumber || null,
+                whatsappGroupJid: whatsappGroupJid || null,
+                telegramChatId: telegramChatId || null,
+                errorGroupJid: errorGroupJid || null,
+                errorChatId: errorTelegramChatId || null,
+                isActive: true
+            },
+            create: {
+                userId: req.user.id,
+                providerName: 'MANUAL',
+                alias: 'Manual Service Destination',
+                whatsappNumber: whatsappNumber || null,
+                whatsappGroupJid: whatsappGroupJid || null,
+                telegramChatId: telegramChatId || null,
+                errorGroupJid: errorGroupJid || null,
+                errorChatId: errorTelegramChatId || null,
+                errorNotifyEnabled: true,
+                isActive: true
+            }
+        });
+
+        successResponse(res, config, 'Manual destination saved');
+    } catch (error) {
+        next(error);
+    }
+});
+
+/**
  * GET /api/provider-config/:id
  * Get a specific provider configuration
  */

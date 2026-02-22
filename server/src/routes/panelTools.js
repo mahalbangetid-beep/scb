@@ -16,37 +16,6 @@ const { AppError } = require('../middleware/errorHandler');
 
 router.use(authenticate);
 
-// ==================== MANUAL SERVICES ====================
-
-router.get('/:panelId/manual-services', async (req, res, next) => {
-    try {
-        const services = await panelToolsService.getManualServices(req.user.id, req.params.panelId);
-        successResponse(res, services);
-    } catch (error) { next(error); }
-});
-
-router.post('/:panelId/manual-services', async (req, res, next) => {
-    try {
-        const { serviceId, serviceName } = req.body;
-        if (!serviceId || !serviceName) throw new AppError('serviceId and serviceName are required', 400);
-        const service = await panelToolsService.createManualService(req.user.id, req.params.panelId, req.body);
-        successResponse(res, service, 'Manual service created');
-    } catch (error) { next(error); }
-});
-
-router.put('/:panelId/manual-services/:id', async (req, res, next) => {
-    try {
-        const service = await panelToolsService.updateManualService(req.params.id, req.user.id, req.body);
-        successResponse(res, service, 'Manual service updated');
-    } catch (error) { next(error); }
-});
-
-router.delete('/:panelId/manual-services/:id', async (req, res, next) => {
-    try {
-        await panelToolsService.deleteManualService(req.params.id, req.user.id);
-        successResponse(res, null, 'Manual service deleted');
-    } catch (error) { next(error); }
-});
 
 // ==================== FAILED ORDERS ====================
 

@@ -1813,29 +1813,6 @@ model ProviderConfig {
 }
 
 // ==================== MANUAL SERVICES ====================
-// Admin can manually add services per panel (not from API)
-
-model ManualService {
-  id        String  @id @default(cuid())
-  userId    String
-  panelId   String
-
-  serviceId   String   // Service ID (e.g. "1234")
-  serviceName String   // Service name
-  category    String?  // Category
-  rate        Float?   // Price per 1000
-  minOrder    Int?     // Minimum order
-  maxOrder    Int?     // Maximum order
-  refillable  Boolean  @default(false) // Has refill
-  notes       String?  // Admin notes
-
-  isActive  Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@unique([userId, panelId, serviceId])
-  @@index([userId, panelId])
-}
 
 // ==================== SERVICE FORWARD RULES ====================
 // Per-service-ID rules: forward to support instead of API
