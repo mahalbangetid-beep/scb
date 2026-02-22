@@ -822,7 +822,19 @@ class CommandHandlerService {
             if (actionMode === 'auto' || actionMode === 'both') {
                 // Send refill request to panel Admin API
                 try {
+                    const _refillStart = Date.now();
                     apiResult = await adminApiService.createRefill(order.panel, order.externalOrderId);
+                    // Log API action
+                    try {
+                        const apiActionLogService = require('./apiActionLogService');
+                        await apiActionLogService.log({
+                            userId: order.userId, orderId: order.id, panelId: order.panelId,
+                            action: 'REFILL', provider: order.providerName,
+                            requestData: { orderId: order.externalOrderId },
+                            responseData: apiResult, success: apiResult?.success || false,
+                            errorMessage: apiResult?.error || null, duration: Date.now() - _refillStart
+                        });
+                    } catch (logErr) { /* logging failure must not break flow */ }
                 } catch (apiError) {
                     console.log(`[CommandHandler] API refill failed:`, apiError.message);
                     // If mode is 'auto' only and API fails, return error
@@ -1009,7 +1021,19 @@ class CommandHandlerService {
             if (actionMode === 'auto' || actionMode === 'both') {
                 // Send cancel request to panel Admin API
                 try {
+                    const _cancelStart = Date.now();
                     apiResult = await adminApiService.createCancel(order.panel, order.externalOrderId);
+                    // Log API action
+                    try {
+                        const apiActionLogService = require('./apiActionLogService');
+                        await apiActionLogService.log({
+                            userId: order.userId, orderId: order.id, panelId: order.panelId,
+                            action: 'CANCEL', provider: order.providerName,
+                            requestData: { orderId: order.externalOrderId },
+                            responseData: apiResult, success: apiResult?.success || false,
+                            errorMessage: apiResult?.error || null, duration: Date.now() - _cancelStart
+                        });
+                    } catch (logErr) { /* logging failure must not break flow */ }
 
                     // Update order status if API succeeded
                     await prisma.order.update({

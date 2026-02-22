@@ -299,6 +299,30 @@ model OrderCommand {
   order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
 }
 
+// ==================== API ACTION LOGS ====================
+// Detailed logging of API requests to providers (refill, cancel, status)
+
+model ApiActionLog {
+  id          String   @id @default(cuid())
+  userId      String
+  orderId     String?  // Our internal order ID
+  panelId     String?
+  action      String   // REFILL, CANCEL, STATUS, SPEED_UP
+  provider    String?  // Provider name
+  endpoint    String?  // API endpoint called
+  requestData String?  // JSON: request payload sent
+  responseData String? // JSON: response received
+  statusCode  Int?     // HTTP status code
+  success     Boolean  @default(false)
+  errorMessage String? // Error message if failed
+  duration    Int?     // Request duration in ms
+  createdAt   DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@index([orderId])
+  @@index([action])
+}
+
 // ==================== CREDIT SYSTEM ====================
 
 model CreditTransaction {

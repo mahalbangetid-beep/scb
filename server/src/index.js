@@ -225,6 +225,7 @@ app.use('/api/fonepay', require('./routes/fonepay'));
 app.use('/api/marketing-intervals', require('./routes/marketingIntervals'));
 app.use('/api/marketing', require('./routes/marketing'));
 app.use('/api/support-groups', require('./routes/supportGroups')); // Section 7
+app.use('/api/action-logs', require('./routes/actionLogs'));
 
 
 // Socket.IO authentication middleware

@@ -182,6 +182,91 @@ class GuaranteeService {
             };
         }
 
+        // ==================== METHOD 1: API-Based Detection ====================
+        // If config says "api" or "both", check order.canRefill field from Admin API
+        if (config.detectionMethod === 'api' || config.detectionMethod === 'both') {
+            if (order.canRefill === false) {
+                // API says no refill available
+                return {
+                    valid: false,
+                    reason: 'API_NO_REFILL',
+                    details: {
+                        message: `❌ Refill not available. Provider API indicates this order cannot be refilled.`,
+                        source: 'api'
+                    }
+                };
+            }
+            // If detectionMethod is "api" only (not "both"), and canRefill is true, allow it
+            if (config.detectionMethod === 'api' && order.canRefill === true) {
+                return {
+                    valid: true,
+                    reason: 'API_REFILL_ALLOWED',
+                    details: {
+                        message: '✅ Refill allowed (API confirmed)',
+                        source: 'api'
+                    }
+                };
+            }
+        }
+
+        // ==================== METHOD 2 Enhanced: Rules-Based Detection ====================
+        // Check user's custom keyword rules before falling back to pattern matching
+        try {
+            const rulesResult = await this.checkGuaranteeByRules(order.serviceName, userId, order.panelId);
+            if (rulesResult.source === 'rule') {
+                if (!rulesResult.hasGuarantee) {
+                    // Rule says no guarantee
+                    switch (config.noGuaranteeAction) {
+                        case 'ALLOW':
+                            return { valid: true, reason: 'NO_GUARANTEE_ALLOW', details: { message: 'No guarantee found by rules, but refill allowed', source: 'rule', matchedRule: rulesResult.matchedRule } };
+                        case 'ASK':
+                            return { valid: false, reason: 'NO_GUARANTEE_ASK', details: { message: 'This service does not have a guarantee. Are you sure you want to request a refill?', requiresConfirmation: true, source: 'rule', matchedRule: rulesResult.matchedRule } };
+                        case 'DENY':
+                        default:
+                            return { valid: false, reason: 'NO_GUARANTEE', details: { message: `❌ Refill not available. Service matched rule: "${rulesResult.matchedRule}".`, source: 'rule', matchedRule: rulesResult.matchedRule } };
+                    }
+                }
+                // Rule says has guarantee — use rule's days for expiry check
+                const ruleDays = rulesResult.days;
+                if (ruleDays) {
+                    const completedAt = order.completedAt || order.updatedAt;
+                    if (completedAt) {
+                        const expiryDate = new Date(completedAt);
+                        expiryDate.setDate(expiryDate.getDate() + ruleDays);
+                        const now = new Date();
+                        const daysRemaining = Math.ceil((expiryDate - now) / (1000 * 60 * 60 * 24));
+
+                        if (now > expiryDate) {
+                            return {
+                                valid: false,
+                                reason: 'EXPIRED',
+                                details: {
+                                    message: `❌ Guarantee expired. The ${ruleDays}-day guarantee period ended on ${expiryDate.toLocaleDateString()}.`,
+                                    guaranteeDays: ruleDays, completedAt, expiredAt: expiryDate,
+                                    daysOverdue: Math.abs(daysRemaining), source: 'rule', matchedRule: rulesResult.matchedRule
+                                }
+                            };
+                        }
+                        return {
+                            valid: true,
+                            reason: 'VALID',
+                            details: {
+                                message: `✅ Guarantee valid (${daysRemaining} days remaining)`,
+                                guaranteeDays: ruleDays, completedAt, expiresAt: expiryDate,
+                                daysRemaining, source: 'rule', matchedRule: rulesResult.matchedRule
+                            }
+                        };
+                    }
+                    // No completion date — allow as fallback
+                    return { valid: true, reason: 'NO_COMPLETION_DATE', details: { message: 'Completion date not recorded, refill allowed', guaranteeDays: ruleDays, source: 'rule' } };
+                }
+            }
+        } catch (e) {
+            // Rules check failed — fall through to original pattern-based logic
+            console.log('[GuaranteeService] Rules check failed, using pattern fallback:', e.message);
+        }
+
+        // ==================== ORIGINAL: Pattern-Based Detection (fallback) ====================
         // Extract guarantee days
         const guaranteeDays = this.extractGuaranteeDays(order.serviceName, config);
 
