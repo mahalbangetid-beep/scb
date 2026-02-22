@@ -9,7 +9,7 @@ export default function ServiceForwardRules({ panelId }) {
     const [editingId, setEditingId] = useState(null)
     const [saving, setSaving] = useState(false)
     const [error, setError] = useState(null)
-    const [form, setForm] = useState({ serviceId: '', serviceName: '', forwardRefill: true, forwardCancel: true, forwardToGroup: '', forwardToChat: '', reason: '' })
+    const [form, setForm] = useState({ serviceId: '', serviceName: '', forwardRefill: true, forwardCancel: true, forwardToGroup: '', forwardToNumber: '', forwardToChat: '', reason: '' })
 
     useEffect(() => { if (panelId) fetchRules() }, [panelId])
     useEffect(() => { if (error) { const t = setTimeout(() => setError(null), 5000); return () => clearTimeout(t) } }, [error])
@@ -48,7 +48,7 @@ export default function ServiceForwardRules({ panelId }) {
 
     const handleEdit = (r) => {
         setEditingId(r.id)
-        setForm({ serviceId: r.serviceId, serviceName: r.serviceName || '', forwardRefill: r.forwardRefill, forwardCancel: r.forwardCancel, forwardToGroup: r.forwardToGroup || '', forwardToChat: r.forwardToChat || '', reason: r.reason || '' })
+        setForm({ serviceId: r.serviceId, serviceName: r.serviceName || '', forwardRefill: r.forwardRefill, forwardCancel: r.forwardCancel, forwardToGroup: r.forwardToGroup || '', forwardToNumber: r.forwardToNumber || '', forwardToChat: r.forwardToChat || '', reason: r.reason || '' })
         setShowForm(true)
     }
 
@@ -62,7 +62,7 @@ export default function ServiceForwardRules({ panelId }) {
     const resetForm = () => {
         setShowForm(false)
         setEditingId(null)
-        setForm({ serviceId: '', serviceName: '', forwardRefill: true, forwardCancel: true, forwardToGroup: '', forwardToChat: '', reason: '' })
+        setForm({ serviceId: '', serviceName: '', forwardRefill: true, forwardCancel: true, forwardToGroup: '', forwardToNumber: '', forwardToChat: '', reason: '' })
     }
 
     if (!panelId) return <div className="empty-state"><p>Select a panel first</p></div>
@@ -104,6 +104,10 @@ export default function ServiceForwardRules({ panelId }) {
                         <div>
                             <label className="form-label">Forward to Telegram Chat ID</label>
                             <input className="form-input" placeholder="e.g. -1001234567890" value={form.forwardToChat} onChange={e => setForm({ ...form, forwardToChat: e.target.value })} />
+                        </div>
+                        <div>
+                            <label className="form-label">Forward to WA DM Number</label>
+                            <input className="form-input" placeholder="e.g. 628123456789" value={form.forwardToNumber} onChange={e => setForm({ ...form, forwardToNumber: e.target.value })} />
                         </div>
                         <div style={{ gridColumn: '1 / -1' }}>
                             <label className="form-label">Reason / Notes</label>
@@ -156,9 +160,10 @@ export default function ServiceForwardRules({ panelId }) {
                                     <td>{r.forwardRefill ? '✅' : '❌'}</td>
                                     <td>{r.forwardCancel ? '✅' : '❌'}</td>
                                     <td style={{ fontSize: 12 }}>
-                                        {r.forwardToGroup && <div>WA: <code>{r.forwardToGroup}</code></div>}
+                                        {r.forwardToGroup && <div>WA Group: <code>{r.forwardToGroup}</code></div>}
+                                        {r.forwardToNumber && <div>WA DM: <code>{r.forwardToNumber}</code></div>}
                                         {r.forwardToChat && <div>TG: <code>{r.forwardToChat}</code></div>}
-                                        {!r.forwardToGroup && !r.forwardToChat && <span style={{ color: 'var(--text-tertiary)' }}>Default</span>}
+                                        {!r.forwardToGroup && !r.forwardToNumber && !r.forwardToChat && <span style={{ color: 'var(--text-tertiary)' }}>Default</span>}
                                     </td>
                                     <td style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{r.reason || '—'}</td>
                                     <td>

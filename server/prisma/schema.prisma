@@ -1852,8 +1852,9 @@ model ServiceForwardRule {
   forwardCancel  Boolean @default(true)
 
   // Where to forward
-  forwardToGroup String?  // WhatsApp group JID
-  forwardToChat  String?  // Telegram chat ID
+  forwardToGroup  String?  // WhatsApp group JID
+  forwardToNumber String?  // WhatsApp DM number (e.g. "628xxx")
+  forwardToChat   String?  // Telegram chat ID
 
   // Notes
   reason    String?  // Why this service is forwarded (e.g. "Provider requested manual handling")

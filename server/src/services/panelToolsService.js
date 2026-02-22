@@ -119,6 +119,7 @@ class PanelToolsService {
                 forwardRefill: data.forwardRefill !== undefined ? data.forwardRefill : true,
                 forwardCancel: data.forwardCancel !== undefined ? data.forwardCancel : true,
                 forwardToGroup: data.forwardToGroup || null,
+                forwardToNumber: data.forwardToNumber || null,
                 forwardToChat: data.forwardToChat || null,
                 reason: data.reason || null,
                 isActive: true
@@ -138,6 +139,7 @@ class PanelToolsService {
                 forwardRefill: data.forwardRefill !== undefined ? data.forwardRefill : existing.forwardRefill,
                 forwardCancel: data.forwardCancel !== undefined ? data.forwardCancel : existing.forwardCancel,
                 forwardToGroup: data.forwardToGroup !== undefined ? data.forwardToGroup : existing.forwardToGroup,
+                forwardToNumber: data.forwardToNumber !== undefined ? data.forwardToNumber : existing.forwardToNumber,
                 forwardToChat: data.forwardToChat !== undefined ? data.forwardToChat : existing.forwardToChat,
                 reason: data.reason !== undefined ? data.reason : existing.reason,
                 isActive: data.isActive !== undefined ? data.isActive : existing.isActive

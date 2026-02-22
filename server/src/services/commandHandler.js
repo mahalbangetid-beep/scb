@@ -875,17 +875,16 @@ class CommandHandlerService {
                 }
             });
 
-            // Build response message based on mode
-            let message;
-            if (actionMode === 'auto') {
-                message = `✅ Refill submitted via API for Order #${orderId}${forwardResult?.success ? ` and forwarded to ${forwardResult.groupName || 'provider'}` : ''}`;
-            } else if (actionMode === 'forward') {
-                message = forwardResult?.success
-                    ? `✅ Refill request forwarded to ${forwardResult.groupName || 'provider'}`
-                    : `⚠️ Refill request queued for Order #${orderId}`;
-            } else { // both
-                message = `✅ Refill submitted${apiResult ? ' via API' : ''}${forwardResult?.success ? ` and forwarded to ${forwardResult.groupName}` : ''}`;
-            }
+            // Build response message — simple confirmation format
+            let message = `✅ ${orderId} added for refill request.`;
+            try {
+                const responseTemplateService = require('./responseTemplateService');
+                const tpl = await responseTemplateService.getResponse(order.userId, 'REFILL_SUCCESS', {
+                    order_id: orderId,
+                    provider: forwardResult?.groupName || order.providerName || ''
+                });
+                if (tpl) message = tpl;
+            } catch (e) { /* use fallback */ }
 
             return {
                 success: true,
@@ -1078,17 +1077,16 @@ class CommandHandlerService {
                 }
             });
 
-            // Build response message based on mode
-            let message;
-            if (actionMode === 'auto') {
-                message = `✅ Cancel submitted via API for Order #${orderId}${forwardResult?.success ? ` and forwarded to ${forwardResult.groupName || 'provider'}` : ''}`;
-            } else if (actionMode === 'forward') {
-                message = forwardResult?.success
-                    ? `✅ Cancel request forwarded to ${forwardResult.groupName || 'provider'}`
-                    : `⚠️ Cancel request queued for Order #${orderId}`;
-            } else { // both
-                message = `✅ Cancel submitted${apiResult ? ' via API' : ''}${forwardResult?.success ? ` and forwarded to ${forwardResult.groupName}` : ''}`;
-            }
+            // Build response message — simple confirmation format
+            let message = `✅ ${orderId} added for cancel request.`;
+            try {
+                const responseTemplateService = require('./responseTemplateService');
+                const tpl = await responseTemplateService.getResponse(order.userId, 'CANCEL_SUCCESS', {
+                    order_id: orderId,
+                    provider: forwardResult?.groupName || order.providerName || ''
+                });
+                if (tpl) message = tpl;
+            } catch (e) { /* use fallback */ }
 
             return {
                 success: true,
@@ -1186,9 +1184,15 @@ class CommandHandlerService {
             }
         });
 
-        const message = forwardResult?.success
-            ? `⚡ Speed-up request forwarded to ${forwardResult.groupName || 'provider'}`
-            : `⚡ Speed-up request queued for Order #${orderId}`;
+        let message = `✅ ${orderId} added for speed up request.`;
+        try {
+            const responseTemplateService = require('./responseTemplateService');
+            const tpl = await responseTemplateService.getResponse(order.userId, 'SPEEDUP_SUCCESS', {
+                order_id: orderId,
+                provider: forwardResult?.groupName || order.providerName || ''
+            });
+            if (tpl) message = tpl;
+        } catch (e) { /* use fallback */ }
 
         return {
             success: true,
@@ -2028,31 +2032,37 @@ class CommandHandlerService {
 
                     // Fallback: check ProviderConfig (Provider Aliases page)
                     try {
+                        // For manual services (no provider), also try 'MANUAL' and 'default' configs
+                        const searchNames = providerData.providerName
+                            ? [providerData.providerName]
+                            : ['MANUAL', 'manual', 'default', 'Default'];
+
                         const providerConfig = await prisma.providerConfig.findFirst({
                             where: {
                                 userId,
-                                providerName: providerData.providerName,
+                                providerName: { in: searchNames },
                                 isActive: true
                             }
                         });
 
-                        if (providerConfig && (providerConfig.whatsappGroupJid || providerConfig.whatsappNumber)) {
+                        if (providerConfig && (providerConfig.whatsappGroupJid || providerConfig.whatsappNumber || providerConfig.telegramChatId)) {
                             console.log(`[CommandHandler] Found ProviderConfig for ${providerKey}, using for batch forward`);
 
                             // Build batch message
-                            const providerOrderIds = providerData.orders
-                                .map(o => o.providerOrderId)
+                            // Use providerOrderId if available, fallback to panelOrderId (for manual services)
+                            const batchOrderIds = providerData.orders
+                                .map(o => o.providerOrderId || o.panelOrderId)
                                 .filter(id => id)
                                 .join(',');
 
-                            if (!providerOrderIds) {
+                            if (!batchOrderIds) {
                                 results.push({ provider: providerKey, success: false, reason: 'no_provider_ids' });
                                 continue;
                             }
 
                             const commandMap = { 'refill': 'refill', 'cancel': 'cancel', 'speedup': 'speed up', 'speed_up': 'speed up' };
                             const cmdText = commandMap[command.toLowerCase()] || command.toLowerCase();
-                            const batchMessage = `${providerOrderIds} ${cmdText}`;
+                            const batchMessage = `${batchOrderIds} ${cmdText}`;
 
                             // Resolve device
                             let cfgDeviceId = providerConfig.deviceId;
