@@ -1154,8 +1154,10 @@ class AdminApiService {
                 const orderStatus = orderData.order_status || orderData.status;
                 const customerUser = orderData.username || orderData.user;
                 const serviceName = orderData.service || orderData.service_name || orderData.service?.name;
+                const orderMode = orderData.mode || null; // "Auto" or "Manual"
+                const serviceId = orderData.service_id || orderData.serviceId || null;
 
-                console.log(`[AdminAPI] V1 order data for ${orderId}: status=${orderStatus}, user=${customerUser}, provider=${orderData.provider}, service=${serviceName}`);
+                console.log(`[AdminAPI] V1 order data for ${orderId}: status=${orderStatus}, user=${customerUser}, provider=${orderData.provider}, service=${serviceName}, mode=${orderMode}`);
 
                 let chargeValue = null;
                 if (orderData.charge) {
@@ -1183,7 +1185,10 @@ class AdminApiService {
                     canRefill: orderData.actions?.refill ?? orderData.actions?.resend ?? null,
                     canCancel: orderData.actions?.cancel_and_refund ?? orderData.actions?.request_cancel ?? null,
                     // Order dates from panel (critical for accurate guarantee expiry)
-                    createdAt: orderData.created || orderData.created_at || orderData.date || null
+                    createdAt: orderData.created || orderData.created_at || orderData.date || null,
+                    // Order mode and service ID (for manual service detection)
+                    mode: orderMode,
+                    serviceId: serviceId
                 };
 
             } else {

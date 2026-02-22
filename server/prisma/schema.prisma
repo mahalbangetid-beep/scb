@@ -234,6 +234,7 @@ model Order {
   status          String    @default("PENDING") // PENDING, IN_PROGRESS, COMPLETED, PARTIAL, CANCELLED, REFUNDED
   startCount      Int?
   remains         Int?
+  mode            String?   // Order mode from panel: "Auto", "Manual" (affects forwarding logic)
   lastCheckedAt   DateTime?
 
   // ==================== PROVIDER-LEVEL DATA (from Admin API) ====================

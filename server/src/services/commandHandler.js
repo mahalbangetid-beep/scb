@@ -375,7 +375,10 @@ class CommandHandlerService {
                             // Available actions from Admin API (null = unknown, triggers guarantee check)
                             canRefill: orderData.canRefill ?? null,
                             canCancel: orderData.canCancel ?? null,
-                            actionsUpdatedAt: new Date()
+                            actionsUpdatedAt: new Date(),
+                            // Order mode and service ID from panel
+                            mode: orderData.mode || null,
+                            serviceId: orderData.serviceId || null
                         };
 
                         // Set completedAt if order is already COMPLETED
@@ -682,6 +685,36 @@ class CommandHandlerService {
                 );
             } catch (cooldownError) {
                 console.log(`[CommandHandler] Failed to create cooldown:`, cooldownError.message);
+            }
+        }
+
+        // ==================== POST-PROCESSING: Error/Failed Auto-Forward ====================
+        // If order status is Error or Failed, auto-forward to error destination
+        if (['ERROR', 'FAILED'].includes(order.status?.toUpperCase())) {
+            try {
+                console.log(`[CommandHandler] Order ${orderId} has error/failed status, checking error forwarding...`);
+                const providerConfig = await prisma.providerConfig.findFirst({
+                    where: {
+                        userId,
+                        providerName: order.providerName || 'MANUAL',
+                        isActive: true,
+                        errorNotifyEnabled: true
+                    }
+                });
+                if (providerConfig && (providerConfig.errorGroupJid || providerConfig.errorChatId || providerConfig.whatsappNumber)) {
+                    const errorMsg = `⚠️ Error Order: #${orderId}\nStatus: ${order.status}\nService: ${order.serviceName || 'N/A'}`;
+                    const targetJid = providerConfig.errorGroupJid
+                        ? (providerConfig.errorGroupJid.includes('@') ? providerConfig.errorGroupJid : `${providerConfig.errorGroupJid}@g.us`)
+                        : providerConfig.whatsappNumber
+                            ? `${providerConfig.whatsappNumber.replace(/\D/g, '')}@s.whatsapp.net`
+                            : null;
+                    if (targetJid && deviceId) {
+                        await groupForwardingService.whatsappService.sendMessage(deviceId, targetJid, errorMsg);
+                        console.log(`[CommandHandler] ✅ Error order ${orderId} forwarded to error destination`);
+                    }
+                }
+            } catch (errFwd) {
+                console.log(`[CommandHandler] Error forwarding failed:`, errFwd.message);
             }
         }
 
@@ -1979,13 +2012,16 @@ class CommandHandlerService {
         const ordersByProvider = new Map();
 
         for (const order of successfulOrders) {
-            const providerKey = order.providerName || 'default';
+            // Detect manual mode: either mode='Manual' from panel or no provider name
+            const isManual = order.order?.mode?.toLowerCase() === 'manual' || !order.providerName;
+            const providerKey = isManual ? 'MANUAL' : (order.providerName || 'default');
             if (!ordersByProvider.has(providerKey)) {
                 ordersByProvider.set(providerKey, {
-                    providerName: order.providerName,
+                    providerName: isManual ? null : order.providerName,
                     panelId: order.panelId,
                     orders: [],
-                    sampleOrder: order.order
+                    sampleOrder: order.order,
+                    isManual
                 });
             }
             ordersByProvider.get(providerKey).orders.push({
