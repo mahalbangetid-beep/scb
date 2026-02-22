@@ -128,11 +128,25 @@ class GuaranteeService {
             }
         }
 
+        // Check for lifetime guarantee patterns first
+        const lowerName = serviceName.toLowerCase();
+        if (/life\s*time\s*(guarantee|refill|replacement|support)/i.test(serviceName) ||
+            /\blifetime\b/i.test(serviceName)) {
+            return 99999; // Lifetime = effectively unlimited
+        }
+
+        // Check for NEGATIVE patterns first (No Refill, No Guarantee, etc.)
+        // These should NOT be treated as having a guarantee
+        if (/\bno\s*(refill|guarantee|warranty|replacement)\b/i.test(serviceName) ||
+            /\bnon[- ]?refill(able)?\b/i.test(serviceName) ||
+            /\bwithout\s*(refill|guarantee)\b/i.test(serviceName)) {
+            return null; // Explicitly no guarantee
+        }
+
         // Check for keywords (might indicate guarantee without specific days)
         const keywords = userConfig?.keywords?.split(',').map(k => k.trim().toLowerCase())
             || this.defaultKeywords;
 
-        const lowerName = serviceName.toLowerCase();
         for (const keyword of keywords) {
             if (keyword && lowerName.includes(keyword)) {
                 // Found keyword, use default days
@@ -610,7 +624,7 @@ class GuaranteeService {
         return {
             hasGuarantee: days !== null,
             days,
-            isLifetime: false,
+            isLifetime: days === 99999,
             matchedRule: null,
             source: days !== null ? 'pattern' : null
         };
