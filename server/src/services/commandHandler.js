@@ -372,9 +372,9 @@ class CommandHandlerService {
                             providerOrderId: orderData.providerOrderId || null,
                             providerStatus: orderData.providerStatus || null,
                             providerSyncedAt: orderData.providerName ? new Date() : null,
-                            // Available actions from Admin API
-                            canRefill: orderData.canRefill || false,
-                            canCancel: orderData.canCancel || false,
+                            // Available actions from Admin API (null = unknown, triggers guarantee check)
+                            canRefill: orderData.canRefill ?? null,
+                            canCancel: orderData.canCancel ?? null,
                             actionsUpdatedAt: new Date()
                         };
 
