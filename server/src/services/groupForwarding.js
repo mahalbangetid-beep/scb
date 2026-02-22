@@ -208,18 +208,23 @@ class GroupForwardingService {
         // ==================== 6. PROVIDER CONFIG FALLBACK (Provider Aliases page) ====================
         // If no ProviderGroup found, check ProviderConfig table (set via Provider Aliases page)
         let providerConfigFallback = null;
-        if (!providerGroup && providerName) {
+        if (!providerGroup) {
             try {
+                // For manual services (no provider), also try 'MANUAL' and 'default' configs
+                const searchNames = providerName
+                    ? [providerName]
+                    : ['MANUAL', 'manual', 'default', 'Default'];
+
                 providerConfigFallback = await prisma.providerConfig.findFirst({
                     where: {
                         userId: userId,
-                        providerName: providerName,
+                        providerName: { in: searchNames },
                         isActive: true
                     }
                 });
 
                 if (providerConfigFallback) {
-                    logger.info(`📋 Found ProviderConfig (Provider Aliases) for "${providerName}"`);
+                    logger.info(`📋 Found ProviderConfig (Provider Aliases) for "${providerName || 'MANUAL'}"`);
                 }
             } catch (configErr) {
                 logger.warn(`Failed to check ProviderConfig fallback:`, configErr.message);

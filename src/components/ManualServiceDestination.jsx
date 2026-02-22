@@ -19,8 +19,8 @@ export default function ManualServiceDestination({ panelId }) {
     useEffect(() => { if (error) { const t = setTimeout(() => setError(null), 5000); return () => clearTimeout(t) } }, [error])
     useEffect(() => { if (success) { const t = setTimeout(() => setSuccess(null), 3000); return () => clearTimeout(t) } }, [success])
 
-    const fetchConfig = async () => {
-        setLoading(true)
+    const fetchConfig = async (silent = false) => {
+        if (!silent) setLoading(true)
         try {
             const res = await api.get(`/provider-config/manual-destination?panelId=${panelId}`)
             if (res.data?.data) {
@@ -34,7 +34,7 @@ export default function ManualServiceDestination({ panelId }) {
                 })
             }
         } catch (e) { /* No config yet, that's fine */ }
-        setLoading(false)
+        if (!silent) setLoading(false)
     }
 
     const handleSave = async () => {
@@ -46,7 +46,7 @@ export default function ManualServiceDestination({ panelId }) {
                 ...form
             })
             setSuccess('Destination saved successfully!')
-            await fetchConfig()
+            await fetchConfig(true)
         } catch (e) { setError(e.response?.data?.message || 'Failed to save') }
         setSaving(false)
     }
