@@ -218,7 +218,7 @@ class CommandHandlerService {
      * Process a single order command
      */
     async processOrderCommand(params) {
-        const { userId, panelId, panelIds, deviceId, orderId, command, senderNumber, platform = 'WHATSAPP', isGroup = false, groupJid } = params;
+        const { userId, panelId, panelIds, deviceId, orderId, command, senderNumber, platform = 'WHATSAPP', isGroup = false, groupJid, skipIndividualForward } = params;
 
         // Build order query - filter by panelId(s) if provided
         const whereClause = {
@@ -641,13 +641,13 @@ class CommandHandlerService {
         let result;
         switch (command) {
             case 'refill':
-                result = await this.handleRefill(order, orderId, senderNumber, userSettings, deviceId);
+                result = await this.handleRefill(order, orderId, senderNumber, userSettings, deviceId, skipIndividualForward);
                 break;
             case 'cancel':
-                result = await this.handleCancel(order, orderId, senderNumber, userSettings, deviceId);
+                result = await this.handleCancel(order, orderId, senderNumber, userSettings, deviceId, skipIndividualForward);
                 break;
             case 'speedup':
-                result = await this.handleSpeedUp(order, orderId, senderNumber, userSettings, deviceId);
+                result = await this.handleSpeedUp(order, orderId, senderNumber, userSettings, deviceId, skipIndividualForward);
                 break;
             case 'status':
                 result = await this.handleStatus(order, orderId, userSettings, { deviceId });
@@ -682,7 +682,7 @@ class CommandHandlerService {
     /**
      * Handle refill command
      */
-    async handleRefill(order, orderId, senderNumber, userSettings, deviceId) {
+    async handleRefill(order, orderId, senderNumber, userSettings, deviceId, skipIndividualForward = false) {
         // Check action mode
         const actionMode = userSettings?.refillActionMode || 'forward';
 
@@ -826,7 +826,7 @@ class CommandHandlerService {
                 }
             }
 
-            if (actionMode === 'forward' || actionMode === 'both' || actionMode === 'auto') {
+            if (!skipIndividualForward && (actionMode === 'forward' || actionMode === 'both' || actionMode === 'auto')) {
                 // Forward to provider group with PROVIDER Order ID
                 try {
                     forwardResult = await groupForwardingService.forwardToProvider({
@@ -908,7 +908,7 @@ class CommandHandlerService {
     /**
      * Handle cancel command
      */
-    async handleCancel(order, orderId, senderNumber, userSettings, deviceId) {
+    async handleCancel(order, orderId, senderNumber, userSettings, deviceId, skipIndividualForward = false) {
         // Check action mode
         const actionMode = userSettings?.cancelActionMode || 'forward';
 
@@ -1010,7 +1010,7 @@ class CommandHandlerService {
                 }
             }
 
-            if (actionMode === 'forward' || actionMode === 'both' || actionMode === 'auto') {
+            if (!skipIndividualForward && (actionMode === 'forward' || actionMode === 'both' || actionMode === 'auto')) {
                 // Forward to provider group
                 try {
                     forwardResult = await groupForwardingService.forwardToProvider({
@@ -1081,7 +1081,7 @@ class CommandHandlerService {
     /**
      * Handle speed-up command
      */
-    async handleSpeedUp(order, orderId, senderNumber, userSettings, deviceId) {
+    async handleSpeedUp(order, orderId, senderNumber, userSettings, deviceId, skipIndividualForward = false) {
         // Check action mode
         const actionMode = userSettings?.speedupActionMode || 'forward';
 
@@ -1119,7 +1119,7 @@ class CommandHandlerService {
 
         // Speed-up is usually forward-only (no API endpoint for speedup)
         // But we support all modes for consistency
-        if (actionMode === 'forward' || actionMode === 'both' || actionMode === 'auto') {
+        if (!skipIndividualForward && (actionMode === 'forward' || actionMode === 'both' || actionMode === 'auto')) {
             try {
                 forwardResult = await groupForwardingService.forwardToProvider({
                     order: order,
@@ -1901,7 +1901,69 @@ class CommandHandlerService {
                 });
 
                 if (!providerGroup) {
-                    console.log(`[CommandHandler] No provider group found for ${providerKey}`);
+                    console.log(`[CommandHandler] No provider group found for ${providerKey}, checking ProviderConfig...`);
+
+                    // Fallback: check ProviderConfig (Provider Aliases page)
+                    try {
+                        const providerConfig = await prisma.providerConfig.findFirst({
+                            where: {
+                                userId,
+                                providerName: providerData.providerName,
+                                isActive: true
+                            }
+                        });
+
+                        if (providerConfig && (providerConfig.whatsappGroupJid || providerConfig.whatsappNumber)) {
+                            console.log(`[CommandHandler] Found ProviderConfig for ${providerKey}, using for batch forward`);
+
+                            // Build batch message
+                            const providerOrderIds = providerData.orders
+                                .map(o => o.providerOrderId)
+                                .filter(id => id)
+                                .join(',');
+
+                            if (!providerOrderIds) {
+                                results.push({ provider: providerKey, success: false, reason: 'no_provider_ids' });
+                                continue;
+                            }
+
+                            const commandMap = { 'refill': 'refill', 'cancel': 'cancel', 'speedup': 'speed up', 'speed_up': 'speed up' };
+                            const cmdText = commandMap[command.toLowerCase()] || command.toLowerCase();
+                            const batchMessage = `${providerOrderIds} ${cmdText}`;
+
+                            // Resolve device
+                            let cfgDeviceId = providerConfig.deviceId;
+                            if (!cfgDeviceId) {
+                                const connDev = await prisma.device.findFirst({ where: { userId, status: 'connected' }, select: { id: true } });
+                                cfgDeviceId = connDev?.id;
+                            }
+                            if (!cfgDeviceId) {
+                                results.push({ provider: providerKey, success: false, reason: 'no_device' });
+                                continue;
+                            }
+
+                            // Send to group or number
+                            const targetJid = providerConfig.whatsappGroupJid
+                                ? (providerConfig.whatsappGroupJid.includes('@') ? providerConfig.whatsappGroupJid : `${providerConfig.whatsappGroupJid}@g.us`)
+                                : `${providerConfig.whatsappNumber.replace(/\D/g, '')}@s.whatsapp.net`;
+
+                            await groupForwardingService.whatsappService.sendMessage(cfgDeviceId, targetJid, batchMessage);
+
+                            console.log(`[CommandHandler] ✅ Batch forward via ProviderConfig: ${providerData.orders.length} orders to ${providerConfig.alias || providerConfig.providerName}`);
+                            results.push({
+                                provider: providerKey,
+                                success: true,
+                                groupName: providerConfig.alias || providerConfig.providerName,
+                                message: batchMessage,
+                                orderCount: providerData.orders.length,
+                                source: 'ProviderConfig'
+                            });
+                            continue;
+                        }
+                    } catch (cfgErr) {
+                        console.log(`[CommandHandler] ProviderConfig fallback failed:`, cfgErr.message);
+                    }
+
                     results.push({
                         provider: providerKey,
                         success: false,
@@ -1970,8 +2032,15 @@ class CommandHandlerService {
                     continue;
                 }
 
-                const deviceId = providerGroup.deviceId || providerGroup.device?.id;
-                if (!deviceId) {
+                // Resolve deviceId: group > device relation > first connected
+                let batchDeviceId = providerGroup.deviceId || providerGroup.device?.id;
+                if (!batchDeviceId) {
+                    try {
+                        const connDev = await prisma.device.findFirst({ where: { userId, status: 'connected' }, select: { id: true } });
+                        if (connDev) batchDeviceId = connDev.id;
+                    } catch (e) { /* non-critical */ }
+                }
+                if (!batchDeviceId) {
                     results.push({
                         provider: providerKey,
                         success: false,
@@ -1985,7 +2054,7 @@ class CommandHandlerService {
                     ? providerGroup.groupId
                     : `${providerGroup.groupId.replace(/\D/g, '')}@s.whatsapp.net`;
 
-                await groupForwardingService.whatsappService.sendMessage(deviceId, targetJid, batchMessage);
+                await groupForwardingService.whatsappService.sendMessage(batchDeviceId, targetJid, batchMessage);
 
                 results.push({
                     provider: providerKey,
