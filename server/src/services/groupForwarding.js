@@ -377,7 +377,9 @@ class GroupForwardingService {
      */
     formatProviderMessage(command, order, providerGroup, providerOrderId) {
         // Determine which order ID to use - ALWAYS prefer Provider Order ID
-        const displayOrderId = providerOrderId || order.providerOrderId || order.externalOrderId || 'N/A';
+        const _poi = providerOrderId && providerOrderId !== '0' ? providerOrderId : null;
+        const _opoi = order.providerOrderId && order.providerOrderId !== '0' ? order.providerOrderId : null;
+        const displayOrderId = _poi || _opoi || order.externalOrderId || 'N/A';
 
         // ==================== SIMPLE FORMAT MODE ====================
         // If provider group has useSimpleFormat enabled, send just "orderId command"
@@ -518,7 +520,7 @@ Remains: {remains}
 
         // Determine which order ID to display
         // Priority: Provider Order ID > Panel Order ID
-        const displayOrderId = providerOrderId || order.externalOrderId || 'N/A';
+        const displayOrderId = (providerOrderId && providerOrderId !== '0' ? providerOrderId : null) || order.externalOrderId || 'N/A';
 
         // Calculate delivered quantity
         const delivered = order.quantity && order.remains !== null && order.remains !== undefined
@@ -705,7 +707,10 @@ Remains: {remains}
         }
 
         // Build message using ProviderConfig templates or simple format
-        const displayOrderId = providerOrderId || order.providerOrderId || order.externalOrderId || 'N/A';
+        // providerOrderId "0" means not assigned — skip it
+        const validProviderOrderId = providerOrderId && providerOrderId !== '0' ? providerOrderId : null;
+        const validOrderProviderOrderId = order.providerOrderId && order.providerOrderId !== '0' ? order.providerOrderId : null;
+        const displayOrderId = validProviderOrderId || validOrderProviderOrderId || order.externalOrderId || 'N/A';
         let message;
 
         // Use template from ProviderConfig if available
