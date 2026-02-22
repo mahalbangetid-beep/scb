@@ -558,8 +558,84 @@ class BotMessageHandler {
             }
         }
 
-        // Priority 3: Custom keyword workflows (future)
-        // ... implementasi di Phase berikutnya
+        // Priority 3: Keyword Response matching
+        // Check if incoming message matches any user-defined keyword rules
+        try {
+            const keywordResponseService = require('./keywordResponseService');
+            const kwMatch = await keywordResponseService.findMatch(userId, message, {
+                deviceId,
+                platform,
+                isGroup
+            });
+
+            if (kwMatch) {
+                // Charge credit for keyword response
+                const kwUser = await prisma.user.findUnique({
+                    where: { id: userId },
+                    select: { messageCredits: true, creditBalance: true, role: true, customWaRate: true, customTgRate: true, customGroupRate: true, discountRate: true, customCreditRate: true }
+                });
+
+                let kwCreditResult = { charged: false };
+                if (kwUser.role !== 'MASTER_ADMIN' && kwUser.role !== 'ADMIN') {
+                    try {
+                        const isCreditsMode = await billingModeService.isCreditsMode();
+                        if (isCreditsMode) {
+                            kwCreditResult = await messageCreditService.chargeMessage(userId, platform, isGroup, kwUser);
+                        } else {
+                            kwCreditResult = await creditService.chargeMessage(userId, platform, isGroup, kwUser);
+                        }
+                        if (!kwCreditResult.charged && kwCreditResult.reason === 'insufficient_credits') {
+                            return {
+                                handled: true,
+                                type: 'keyword_response',
+                                response: `⚠️ Low message credits. Please top up to enable keyword responses.`,
+                                creditCharged: false,
+                                reason: 'insufficient_credits'
+                            };
+                        }
+                    } catch (creditErr) {
+                        console.error('[BotHandler] Keyword response credit error:', creditErr.message);
+                    }
+                }
+
+                // Execute trigger action if configured (forward, webhook, etc.)
+                try {
+                    if (kwMatch.triggerAction && kwMatch.triggerAction !== 'NONE') {
+                        await keywordResponseService.executeTriggerAction(kwMatch, {
+                            senderNumber, message, deviceId
+                        });
+                    }
+                } catch (actionErr) {
+                    console.error('[BotHandler] Keyword trigger action error:', actionErr.message);
+                }
+
+                // Log
+                await this.logMessage({
+                    deviceId, userId, senderNumber,
+                    content: message, type: 'keyword_response', platform,
+                    creditCharged: kwCreditResult.amount || 0,
+                    metadata: { keywordId: kwMatch.id, keyword: kwMatch.keyword }
+                });
+
+                // Increment system bot usage
+                if (params._systemBotSubscriptionId) {
+                    await this.incrementSystemBotUsage(params._systemBotSubscriptionId);
+                }
+
+                return {
+                    handled: true,
+                    type: 'keyword_response',
+                    response: kwMatch.responseText,
+                    mediaUrl: kwMatch.responseMedia || null,
+                    keywordId: kwMatch.id,
+                    creditCharged: kwCreditResult.charged,
+                    creditAmount: kwCreditResult.amount
+                };
+            }
+        } catch (kwError) {
+            // Keyword response check failed — fall through to fallback
+            console.log('[BotHandler] Keyword response check failed:', kwError.message);
+        }
 
         // Priority 4: Reply to all messages fallback (DMs only)
         // If enabled, bot will reply to unmatched DM messages with a fallback response.
