@@ -70,6 +70,7 @@ const automationNavigation = [
     { name: 'Keyword Responses', icon: MessageCircle, path: '/keyword-responses' },
     { name: 'User Mappings', icon: Users, path: '/user-mappings' },
     { name: 'Bot Settings', icon: Zap, path: '/bot-settings' },
+    { name: 'Guarantee Rules', icon: Shield, path: '/guarantee-rules' },
 ]
 
 // Finance - Credits & reporting

@@ -1338,6 +1338,49 @@ model GuaranteeConfig {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  // Detection method: "manual" (keyword parsing), "api" (from provider API), "both"
+  detectionMethod String @default("manual")
+
+  // Whether to trust API's refill field (refill=1/0) from provider
+  useApiRefillField Boolean @default(false)
+}
+
+// ==================== GUARANTEE RULES ====================
+// Per-panel customizable keyword rules for guarantee detection
+// Method 2: Creative/Manual parsing
+
+model GuaranteeRule {
+  id       String  @id @default(cuid())
+  userId   String
+  panelId  String? // null = global rule, specific = per-panel rule
+
+  // Keyword to search for in service name
+  keyword  String  // e.g. "30 Days ♻️", "No Refill", "Lifetime ♻️"
+
+  // What this keyword means
+  // "no_guarantee" = no refill available
+  // "guarantee" = has guarantee with X days
+  action   String  // "no_guarantee" or "guarantee"
+
+  // Guarantee days (only used when action = "guarantee")
+  // null for "no_guarantee" or "lifetime"
+  days     Int?    // e.g. 30, 60, 90, 365, null (lifetime = 99999)
+
+  // Whether this is a "lifetime" guarantee
+  isLifetime Boolean @default(false)
+
+  // Priority: lower = checked first
+  priority   Int @default(100)
+
+  // Whether this rule is active
+  isActive Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, panelId])
+  @@index([userId, isActive])
 }
 
 // ==================== CREDIT PACKAGES ====================

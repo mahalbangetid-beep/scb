@@ -202,5 +202,99 @@ router.get('/info/:orderId', async (req, res, next) => {
         next(error);
     }
 });
+// ==================== GUARANTEE RULES ====================
+
+/**
+ * GET /api/guarantee/rules
+ * Get all guarantee rules for the current user
+ */
+router.get('/rules', async (req, res, next) => {
+    try {
+        // Seed defaults on first access
+        await guaranteeService.seedDefaultRules(req.user.id);
+
+        const panelId = req.query.panelId || null;
+        const rules = await guaranteeService.getRules(req.user.id, panelId);
+        successResponse(res, rules);
+    } catch (error) {
+        next(error);
+    }
+});
+
+/**
+ * POST /api/guarantee/rules
+ * Create a new guarantee rule
+ */
+router.post('/rules', async (req, res, next) => {
+    try {
+        const { keyword, action, days, isLifetime, priority, panelId } = req.body;
+
+        if (!keyword || !action) {
+            throw new AppError('keyword and action are required', 400);
+        }
+        if (!['no_guarantee', 'guarantee'].includes(action)) {
+            throw new AppError('action must be "no_guarantee" or "guarantee"', 400);
+        }
+
+        const rule = await guaranteeService.createRule(req.user.id, {
+            keyword, action, days, isLifetime, priority, panelId
+        });
+
+        successResponse(res, rule, 'Guarantee rule created');
+    } catch (error) {
+        next(error);
+    }
+});
+
+/**
+ * PUT /api/guarantee/rules/:id
+ * Update a guarantee rule
+ */
+router.put('/rules/:id', async (req, res, next) => {
+    try {
+        const rule = await guaranteeService.updateRule(req.params.id, req.user.id, req.body);
+        successResponse(res, rule, 'Guarantee rule updated');
+    } catch (error) {
+        next(error);
+    }
+});
+
+/**
+ * DELETE /api/guarantee/rules/:id
+ * Delete a guarantee rule
+ */
+router.delete('/rules/:id', async (req, res, next) => {
+    try {
+        await guaranteeService.deleteRule(req.params.id, req.user.id);
+        successResponse(res, null, 'Guarantee rule deleted');
+    } catch (error) {
+        next(error);
+    }
+});
+
+/**
+ * POST /api/guarantee/test-rules
+ * Test guarantee rule matching against a service name
+ */
+router.post('/test-rules', async (req, res, next) => {
+    try {
+        const { serviceName, panelId } = req.body;
+        if (!serviceName) throw new AppError('serviceName is required', 400);
+
+        const result = await guaranteeService.checkGuaranteeByRules(serviceName, req.user.id, panelId || null);
+
+        successResponse(res, {
+            serviceName,
+            ...result,
+            message: result.hasGuarantee === false
+                ? `❌ No guarantee (matched: "${result.matchedRule || 'none'}")`
+                : result.hasGuarantee
+                    ? `✅ ${result.isLifetime ? 'Lifetime' : result.days + ' days'} guarantee (matched: "${result.matchedRule || 'pattern'}")`
+                    : '❓ No rule or pattern matched'
+        });
+    } catch (error) {
+        next(error);
+    }
+});
 
 module.exports = router;

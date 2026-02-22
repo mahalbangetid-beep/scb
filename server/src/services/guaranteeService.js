@@ -354,6 +354,182 @@ class GuaranteeService {
             icon: daysRemaining <= 3 ? '⚠️' : '✅'
         };
     }
+
+    // ==================== GUARANTEE RULES (Method 2 Enhancement) ====================
+
+    /**
+     * Get all guarantee rules for a user, optionally filtered by panel
+     * @param {string} userId
+     * @param {string|null} panelId - null for all rules
+     * @returns {Array} Rules sorted by priority
+     */
+    async getRules(userId, panelId = null) {
+        const where = { userId };
+        if (panelId !== undefined && panelId !== null) {
+            where.OR = [
+                { panelId: null },   // Global rules
+                { panelId }          // Panel-specific rules
+            ];
+        }
+
+        return prisma.guaranteeRule.findMany({
+            where,
+            orderBy: [{ priority: 'asc' }, { createdAt: 'asc' }]
+        });
+    }
+
+    /**
+     * Create a new guarantee rule
+     */
+    async createRule(userId, data) {
+        return prisma.guaranteeRule.create({
+            data: {
+                userId,
+                panelId: data.panelId || null,
+                keyword: data.keyword,
+                action: data.action, // "no_guarantee" or "guarantee"
+                days: data.action === 'guarantee' ? (data.isLifetime ? null : (data.days || 30)) : null,
+                isLifetime: data.isLifetime || false,
+                priority: data.priority || 100,
+                isActive: data.isActive !== undefined ? data.isActive : true
+            }
+        });
+    }
+
+    /**
+     * Update a guarantee rule
+     */
+    async updateRule(ruleId, userId, data) {
+        // Verify ownership
+        const existing = await prisma.guaranteeRule.findFirst({
+            where: { id: ruleId, userId }
+        });
+        if (!existing) throw new Error('Rule not found');
+
+        return prisma.guaranteeRule.update({
+            where: { id: ruleId },
+            data: {
+                keyword: data.keyword !== undefined ? data.keyword : existing.keyword,
+                action: data.action !== undefined ? data.action : existing.action,
+                days: data.days !== undefined ? data.days : existing.days,
+                isLifetime: data.isLifetime !== undefined ? data.isLifetime : existing.isLifetime,
+                priority: data.priority !== undefined ? data.priority : existing.priority,
+                panelId: data.panelId !== undefined ? data.panelId : existing.panelId,
+                isActive: data.isActive !== undefined ? data.isActive : existing.isActive
+            }
+        });
+    }
+
+    /**
+     * Delete a guarantee rule
+     */
+    async deleteRule(ruleId, userId) {
+        const existing = await prisma.guaranteeRule.findFirst({
+            where: { id: ruleId, userId }
+        });
+        if (!existing) throw new Error('Rule not found');
+
+        return prisma.guaranteeRule.delete({ where: { id: ruleId } });
+    }
+
+    /**
+     * Seed default rules for a user (called on first access)
+     */
+    async seedDefaultRules(userId) {
+        const count = await prisma.guaranteeRule.count({ where: { userId } });
+        if (count > 0) return; // Already seeded
+
+        const defaults = [
+            // No guarantee keywords
+            { keyword: 'No Refill', action: 'no_guarantee', priority: 10 },
+            { keyword: 'No Guarantee', action: 'no_guarantee', priority: 10 },
+            { keyword: 'Non Refill', action: 'no_guarantee', priority: 10 },
+            { keyword: 'Without Guarantee', action: 'no_guarantee', priority: 10 },
+            // Guarantee keywords
+            { keyword: '7 Days ♻️', action: 'guarantee', days: 7, priority: 50 },
+            { keyword: '15 Days ♻️', action: 'guarantee', days: 15, priority: 50 },
+            { keyword: '20 Days ♻️', action: 'guarantee', days: 20, priority: 50 },
+            { keyword: '30 Days ♻️', action: 'guarantee', days: 30, priority: 50 },
+            { keyword: '60 Days ♻️', action: 'guarantee', days: 60, priority: 50 },
+            { keyword: '90 Days ♻️', action: 'guarantee', days: 90, priority: 50 },
+            { keyword: '365 Days ♻️', action: 'guarantee', days: 365, priority: 50 },
+            { keyword: 'Lifetime ♻️', action: 'guarantee', days: null, isLifetime: true, priority: 50 },
+        ];
+
+        for (const d of defaults) {
+            await prisma.guaranteeRule.create({
+                data: {
+                    userId,
+                    keyword: d.keyword,
+                    action: d.action,
+                    days: d.days || null,
+                    isLifetime: d.isLifetime || false,
+                    priority: d.priority,
+                    isActive: true
+                }
+            });
+        }
+    }
+
+    /**
+     * Check guarantee using RULES first, then fall back to existing pattern logic
+     * This is a NEW method — does NOT replace checkGuarantee
+     * @param {string} serviceName
+     * @param {string} userId
+     * @param {string|null} panelId
+     * @returns {Object} { hasGuarantee, days, isLifetime, matchedRule }
+     */
+    async checkGuaranteeByRules(serviceName, userId, panelId = null) {
+        if (!serviceName) return { hasGuarantee: null, days: null };
+
+        // Get active rules for this user + panel
+        const rules = await prisma.guaranteeRule.findMany({
+            where: {
+                userId,
+                isActive: true,
+                OR: [
+                    { panelId: null },   // Global
+                    ...(panelId ? [{ panelId }] : [])
+                ]
+            },
+            orderBy: [{ priority: 'asc' }]
+        });
+
+        const lowerName = serviceName.toLowerCase();
+
+        for (const rule of rules) {
+            if (lowerName.includes(rule.keyword.toLowerCase())) {
+                if (rule.action === 'no_guarantee') {
+                    return {
+                        hasGuarantee: false,
+                        days: null,
+                        isLifetime: false,
+                        matchedRule: rule.keyword,
+                        source: 'rule'
+                    };
+                } else {
+                    return {
+                        hasGuarantee: true,
+                        days: rule.isLifetime ? 99999 : rule.days,
+                        isLifetime: rule.isLifetime,
+                        matchedRule: rule.keyword,
+                        source: 'rule'
+                    };
+                }
+            }
+        }
+
+        // No rule matched — fall back to existing pattern-based detection
+        const config = await this.getConfig(userId);
+        const days = this.extractGuaranteeDays(serviceName, config);
+        return {
+            hasGuarantee: days !== null,
+            days,
+            isLifetime: false,
+            matchedRule: null,
+            source: days !== null ? 'pattern' : null
+        };
+    }
 }
 
 module.exports = new GuaranteeService();
