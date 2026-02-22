@@ -531,23 +531,36 @@ export default function ProviderAliases() {
 
             {/* Tab Navigation */}
             {selectedPanel && (
-                <div style={{ display: 'flex', gap: 0, marginBottom: 'var(--spacing-lg)', borderBottom: '2px solid var(--border-color)', overflow: 'auto' }}>
+                <div className="card" style={{ padding: '4px', marginBottom: 'var(--spacing-lg)', display: 'flex', gap: '4px', overflow: 'auto' }}>
                     {[
-                        { id: 'providers', label: 'Provider Aliases' },
-                        { id: 'manual-services', label: 'Manual Services' },
-                        { id: 'failed-orders', label: 'Failed Orders' },
-                        { id: 'forward-rules', label: 'Service ID Forward' },
+                        { id: 'providers', label: '🔗 Provider Aliases' },
+                        { id: 'manual-services', label: '📦 Manual Services' },
+                        { id: 'failed-orders', label: '⚠️ Failed Orders' },
+                        { id: 'forward-rules', label: '↗️ Service ID Forward' },
                     ].map(tab => (
                         <button
                             key={tab.id}
                             onClick={() => setActiveTab(tab.id)}
                             style={{
-                                padding: '10px 20px', border: 'none', cursor: 'pointer', fontSize: 14, fontWeight: 500,
-                                background: activeTab === tab.id ? 'var(--color-primary)' : 'transparent',
+                                padding: '12px 24px',
+                                border: 'none',
+                                cursor: 'pointer',
+                                fontSize: 14,
+                                fontWeight: 600,
+                                letterSpacing: '0.01em',
+                                background: activeTab === tab.id
+                                    ? 'linear-gradient(135deg, var(--color-primary), var(--color-primary-dark, #4f46e5))'
+                                    : 'var(--bg-secondary, rgba(255,255,255,0.05))',
                                 color: activeTab === tab.id ? '#fff' : 'var(--text-secondary)',
-                                borderRadius: '8px 8px 0 0',
-                                transition: 'all 0.2s'
+                                borderRadius: '8px',
+                                transition: 'all 0.2s ease',
+                                whiteSpace: 'nowrap',
+                                boxShadow: activeTab === tab.id ? '0 2px 8px rgba(99,102,241,0.3)' : 'none',
+                                flex: '1 1 auto',
+                                textAlign: 'center'
                             }}
+                            onMouseEnter={e => { if (activeTab !== tab.id) e.target.style.background = 'var(--bg-tertiary, rgba(255,255,255,0.1))' }}
+                            onMouseLeave={e => { if (activeTab !== tab.id) e.target.style.background = 'var(--bg-secondary, rgba(255,255,255,0.05))' }}
                         >
                             {tab.label}
                         </button>
