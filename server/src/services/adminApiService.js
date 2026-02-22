@@ -1034,7 +1034,32 @@ class AdminApiService {
                 }
             }
 
-            // Fallback: Try common cancel endpoints
+            // Fallback 1: Try V1 Admin API style (action=setCanceled)
+            // Many Rental/V1 panels use this format for cancellation
+            if (this.isRentalPanel(panel)) {
+                const v1CancelActions = ['setCanceled', 'setcanceled', 'cancel'];
+                for (const action of v1CancelActions) {
+                    try {
+                        console.log(`[AdminAPI] Trying V1 cancel action: ${action} for order ${orderId}`);
+                        const response = await this.makeAdminRequest(panel, 'POST', '', {
+                            action: action,
+                            id: orderId
+                        });
+
+                        if (response.success !== false && !response.error) {
+                            console.log(`[AdminAPI] V1 cancel succeeded with action=${action}`);
+                            return {
+                                success: true,
+                                message: `Cancel submitted via V1 action=${action}`
+                            };
+                        }
+                    } catch (e) {
+                        continue;
+                    }
+                }
+            }
+
+            // Fallback 2: Try common REST cancel endpoints
             const endpoints = ['/orders/cancel', '/orders/request-cancel', '/adminapi/v2/orders/cancel', '/cancel'];
 
             for (const endpoint of endpoints) {
