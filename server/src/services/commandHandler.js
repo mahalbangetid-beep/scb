@@ -1329,22 +1329,34 @@ class CommandHandlerService {
         // Default format: Group by category (provider panel style)
         const commandDisplay = commandParser.getDisplayCommand(command);
 
-        // Categorize responses
-        const queued = [];      // Successfully processed
-        const notFound = [];    // not_found or security_check_failed
-        const inProgress = [];  // status issue (already completed, in progress, cooldown)
-        const otherFailed = []; // other errors
+        // Categorize responses by specific status
+        const queued = [];           // Successfully processed
+        const alreadyCancelled = []; // Status: CANCELLED
+        const alreadyCompleted = []; // Status: COMPLETED (for cancel/speedup)
+        const partialRefund = [];    // Status: PARTIAL
+        const cooldown = [];         // Cooldown / already in progress
+        const notFound = [];         // not_found or security_check_failed
+        const otherFailed = [];      // other errors
 
         for (const r of responses) {
             if (r.success) {
                 queued.push(r);
             } else {
                 const reason = r.details?.reason || '';
+                const status = r.details?.status || '';
+
                 if (reason === 'not_found' || reason === 'security_check_failed' || reason === 'needs_registration') {
                     notFound.push(r);
+                } else if (reason === 'status' && status === 'CANCELLED') {
+                    alreadyCancelled.push(r);
+                } else if (reason === 'status' && status === 'COMPLETED') {
+                    alreadyCompleted.push(r);
+                } else if (reason === 'status' && status === 'PARTIAL') {
+                    partialRefund.push(r);
                 } else if (reason === 'status' || reason === 'cooldown' || reason === 'disabled' ||
-                    reason === 'panel_cancel_not_available' || reason === 'panel_refill_not_available') {
-                    inProgress.push(r);
+                    reason === 'panel_cancel_not_available' || reason === 'panel_refill_not_available' ||
+                    reason === 'guarantee_failed') {
+                    cooldown.push(r);
                 } else {
                     otherFailed.push(r);
                 }
@@ -1355,20 +1367,38 @@ class CommandHandlerService {
 
         // ✅ Successfully queued
         if (queued.length > 0) {
-            const orderList = queued.map(r => r.orderId).join(',');
+            const orderList = queued.map(r => r.orderId).join(', ');
             message += `\n✅ *These orders are added to ${commandDisplay.toLowerCase()} support queue:*\n${orderList}\n`;
         }
 
-        // ⏳ Already in progress / status issue
-        if (inProgress.length > 0) {
-            const orderList = inProgress.map(r => r.orderId).join(',');
+        // 🔴 Already Cancelled
+        if (alreadyCancelled.length > 0) {
+            const orderList = alreadyCancelled.map(r => r.orderId).join(', ');
+            message += `\n🔴 *Already Cancelled – Cannot Be ${commandDisplay === 'Cancel' ? 'Cancelled Again' : commandDisplay + 'ed'}:*\n${orderList}\n`;
+        }
+
+        // 🔴 Already Completed
+        if (alreadyCompleted.length > 0) {
+            const orderList = alreadyCompleted.map(r => r.orderId).join(', ');
+            message += `\n🔴 *Already Completed – Cannot Be ${commandDisplay}ed:*\n${orderList}\n`;
+        }
+
+        // 🔴 Partially Refunded
+        if (partialRefund.length > 0) {
+            const orderList = partialRefund.map(r => r.orderId).join(', ');
+            message += `\n🔴 *Partially Refunded – ${commandDisplay} Not Possible:*\n${orderList}\n`;
+        }
+
+        // ⏳ Cooldown / already in progress
+        if (cooldown.length > 0) {
+            const orderList = cooldown.map(r => r.orderId).join(', ');
             message += `\n⏳ *These support requests are already in progress:*\n${orderList}\n`;
             message += `_For each order you can request support per 12 hour. If support request is already in queue you can't create a new support request with same order._\n`;
         }
 
         // ❌ Not found / not yours
         if (notFound.length > 0) {
-            const orderList = notFound.map(r => r.orderId).join(',');
+            const orderList = notFound.map(r => r.orderId).join(', ');
             message += `\n❌ *These orders are not found or not belong to you:*\n${orderList}\n`;
         }
 
@@ -1378,7 +1408,8 @@ class CommandHandlerService {
             message += `\n⚠️ *Other errors:*\n${orderList}\n`;
         }
 
-        message += `\n━━━━━━━━━━━━━━━━\nTotal: ${responses.length} | ✅ ${queued.length} | ❌ ${notFound.length + inProgress.length + otherFailed.length}`;
+        const totalFailed = alreadyCancelled.length + alreadyCompleted.length + partialRefund.length + cooldown.length + notFound.length + otherFailed.length;
+        message += `\n━━━━━━━━━━━━━━━━\nTotal: ${responses.length} | ✅ ${queued.length} | ❌ ${totalFailed}`;
 
         return message;
     }
