@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Users, Plus, Edit2, Trash2, UserCheck, Phone, AlertTriangle, Zap, X, RefreshCw, Search, ToggleRight, ToggleLeft, MessageSquare, StickyNote, Ban, CheckCircle, Hash, Send, CheckSquare, Square } from 'lucide-react';
+import { Users, Plus, Edit2, Trash2, UserCheck, Phone, AlertTriangle, Zap, X, RefreshCw, Search, ToggleRight, ToggleLeft, MessageSquare, StickyNote, Ban, CheckCircle, Hash, Send, CheckSquare, Square, Globe } from 'lucide-react';
 import api from '../services/api';
 
 const UserMappings = () => {
@@ -348,228 +348,257 @@ const UserMappings = () => {
                 </div>
             )}
 
-            {/* Filters Row: Panel Selector + Search */}
-            <div className="filters-row">
-                <div className="panel-filter">
-                    <label>Panel:</label>
-                    <select
-                        className="form-select"
-                        value={selectedPanel}
-                        onChange={(e) => setSelectedPanel(e.target.value)}
-                    >
-                        <option value="all">All Panels</option>
-                        {panels.map(panel => (
-                            <option key={panel.id} value={panel.id}>
-                                {panel.alias || panel.name}
-                            </option>
-                        ))}
-                    </select>
+            {/* 2-Column Layout: Panel Sidebar + Table */}
+            <div className="mappings-layout">
+                {/* Sidebar - Panel List */}
+                <div className="um-panels-sidebar">
+                    <div className="um-sidebar-header">
+                        <h3>SMM Panels</h3>
+                        <span className="um-panel-count">{panels.length}</span>
+                    </div>
+                    <div className="um-panel-list">
+                        <div
+                            className={`um-panel-item ${selectedPanel === 'all' ? 'selected' : ''}`}
+                            onClick={() => setSelectedPanel('all')}
+                        >
+                            <div className="um-panel-icon all-icon">
+                                <Users size={16} />
+                            </div>
+                            <div className="um-panel-info">
+                                <span className="um-panel-name">All Panels</span>
+                                <span className="um-panel-count-text">{mappings.length} users</span>
+                            </div>
+                        </div>
+                        {panels.map(panel => {
+                            const count = mappings.filter(m => m.panelId === panel.id).length;
+                            return (
+                                <div
+                                    key={panel.id}
+                                    className={`um-panel-item ${selectedPanel === panel.id ? 'selected' : ''}`}
+                                    onClick={() => setSelectedPanel(panel.id)}
+                                >
+                                    <div className="um-panel-icon">
+                                        <Globe size={16} />
+                                    </div>
+                                    <div className="um-panel-info">
+                                        <span className="um-panel-name">{panel.alias || panel.name}</span>
+                                        <span className="um-panel-count-text">{count} users</span>
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
                 </div>
-                <div className="search-bar">
-                    <Search size={18} />
-                    <input
-                        type="text"
-                        placeholder="Search username, phone, telegram, group..."
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                    />
-                    {searchQuery && (
-                        <button className="search-clear" onClick={() => setSearchQuery('')}><X size={14} /></button>
-                    )}
-                </div>
-            </div>
 
-            {/* Bulk Actions Bar */}
-            {selectedIds.size > 0 && (
-                <div className="bulk-actions-bar">
-                    <span className="bulk-count">
-                        <CheckSquare size={16} />
-                        {selectedIds.size} selected
-                    </span>
-                    <button
-                        className="btn btn-danger btn-sm"
-                        onClick={handleBulkDelete}
-                        disabled={bulkDeleting}
-                    >
-                        <Trash2 size={14} />
-                        {bulkDeleting ? 'Deleting...' : `Delete ${selectedIds.size}`}
-                    </button>
-                    <button
-                        className="btn btn-secondary btn-sm"
-                        onClick={() => setSelectedIds(new Set())}
-                    >
-                        Clear
-                    </button>
-                </div>
-            )}
-
-            {/* User List (Table Format) */}
-            <div className="mapping-table-wrap">
-                {filteredMappings.length === 0 ? (
-                    <div className="empty-state">
-                        <Users size={48} />
-                        <h3>No User Mappings</h3>
-                        <p>{searchQuery ? 'No results match your search' : 'Add user mappings to validate WhatsApp users'}</p>
-                        {!searchQuery && (
-                            <button className="btn btn-primary" onClick={() => { resetForm(); setShowModal(true); }}>
-                                <Plus size={16} /> Add Mapping
-                            </button>
+                {/* Main Content - Search + Table */}
+                <div className="um-main-content">
+                    {/* Search Bar */}
+                    <div className="search-bar" style={{ marginBottom: '1rem' }}>
+                        <Search size={18} />
+                        <input
+                            type="text"
+                            placeholder="Search username, phone, telegram, group..."
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                        />
+                        {searchQuery && (
+                            <button className="search-clear" onClick={() => setSearchQuery('')}><X size={14} /></button>
                         )}
                     </div>
-                ) : (
-                    <table className="mapping-table">
-                        <thead>
-                            <tr>
-                                <th style={{ width: '40px', textAlign: 'center' }}>
-                                    <input
-                                        type="checkbox"
-                                        className="row-checkbox"
-                                        checked={filteredMappings.length > 0 && selectedIds.size === filteredMappings.length}
-                                        onChange={handleSelectAll}
-                                        title="Select all"
-                                    />
-                                </th>
-                                <th>Username</th>
-                                <th>WhatsApp</th>
-                                <th>Telegram ID</th>
-                                <th>Group ID</th>
-                                <th>Status</th>
-                                <th>Created</th>
-                                <th>Notes</th>
-                                <th style={{ textAlign: 'right' }}>Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {filteredMappings.map(user => (
-                                <tr key={user.id} className={`${user.isAutoSuspended ? 'row-blocked' : ''} ${!user.isBotEnabled ? 'row-disabled' : ''} ${selectedIds.has(user.id) ? 'row-selected' : ''}`}>
-                                    {/* Checkbox */}
-                                    <td style={{ textAlign: 'center' }}>
-                                        <input
-                                            type="checkbox"
-                                            className="row-checkbox"
-                                            checked={selectedIds.has(user.id)}
-                                            onChange={() => handleSelectOne(user.id)}
-                                        />
-                                    </td>
-                                    {/* Username */}
-                                    <td>
-                                        <div className="user-cell">
-                                            <div className="user-avatar-sm">
-                                                {(user.panelUsername || 'U').charAt(0).toUpperCase()}
-                                            </div>
-                                            <div>
-                                                <div className="username-text">{user.panelUsername}</div>
-                                                {user.whatsappName && (
-                                                    <div className="wa-name-text">{user.whatsappName}</div>
+
+                    {/* Bulk Actions Bar */}
+                    {selectedIds.size > 0 && (
+                        <div className="bulk-actions-bar">
+                            <span className="bulk-count">
+                                <CheckSquare size={16} />
+                                {selectedIds.size} selected
+                            </span>
+                            <button
+                                className="btn btn-danger btn-sm"
+                                onClick={handleBulkDelete}
+                                disabled={bulkDeleting}
+                            >
+                                <Trash2 size={14} />
+                                {bulkDeleting ? 'Deleting...' : `Delete ${selectedIds.size}`}
+                            </button>
+                            <button
+                                className="btn btn-secondary btn-sm"
+                                onClick={() => setSelectedIds(new Set())}
+                            >
+                                Clear
+                            </button>
+                        </div>
+                    )}
+
+                    {/* User List (Table Format) */}
+                    <div className="mapping-table-wrap">
+                        {filteredMappings.length === 0 ? (
+                            <div className="empty-state">
+                                <Users size={48} />
+                                <h3>No User Mappings</h3>
+                                <p>{searchQuery ? 'No results match your search' : 'Add user mappings to validate WhatsApp users'}</p>
+                                {!searchQuery && (
+                                    <button className="btn btn-primary" onClick={() => { resetForm(); setShowModal(true); }}>
+                                        <Plus size={16} /> Add Mapping
+                                    </button>
+                                )}
+                            </div>
+                        ) : (
+                            <table className="mapping-table">
+                                <thead>
+                                    <tr>
+                                        <th style={{ width: '40px', textAlign: 'center' }}>
+                                            <input
+                                                type="checkbox"
+                                                className="row-checkbox"
+                                                checked={filteredMappings.length > 0 && selectedIds.size === filteredMappings.length}
+                                                onChange={handleSelectAll}
+                                                title="Select all"
+                                            />
+                                        </th>
+                                        <th>Username</th>
+                                        <th>WhatsApp</th>
+                                        <th>Telegram ID</th>
+                                        <th>Group ID</th>
+                                        <th>Status</th>
+                                        <th>Created</th>
+                                        <th>Notes</th>
+                                        <th style={{ textAlign: 'right' }}>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {filteredMappings.map(user => (
+                                        <tr key={user.id} className={`${user.isAutoSuspended ? 'row-blocked' : ''} ${!user.isBotEnabled ? 'row-disabled' : ''} ${selectedIds.has(user.id) ? 'row-selected' : ''}`}>
+                                            {/* Checkbox */}
+                                            <td style={{ textAlign: 'center' }}>
+                                                <input
+                                                    type="checkbox"
+                                                    className="row-checkbox"
+                                                    checked={selectedIds.has(user.id)}
+                                                    onChange={() => handleSelectOne(user.id)}
+                                                />
+                                            </td>
+                                            {/* Username */}
+                                            <td>
+                                                <div className="user-cell">
+                                                    <div className="user-avatar-sm">
+                                                        {(user.panelUsername || 'U').charAt(0).toUpperCase()}
+                                                    </div>
+                                                    <div>
+                                                        <div className="username-text">{user.panelUsername}</div>
+                                                        {user.whatsappName && (
+                                                            <div className="wa-name-text">{user.whatsappName}</div>
+                                                        )}
+                                                        {user.panelEmail && (
+                                                            <div className="email-text">{user.panelEmail}</div>
+                                                        )}
+                                                        {user.panelId && (
+                                                            <div className="panel-badge-sm">{getPanelName(user.panelId) || 'Panel'}</div>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            </td>
+
+                                            {/* WhatsApp Numbers */}
+                                            <td>
+                                                <div className="phone-list">
+                                                    {(user.whatsappNumbers || []).length === 0 ? (
+                                                        <span className="no-data">—</span>
+                                                    ) : (
+                                                        (user.whatsappNumbers || []).map((num, i) => (
+                                                            <span key={i} className="phone-tag">{num}</span>
+                                                        ))
+                                                    )}
+                                                </div>
+                                            </td>
+
+                                            {/* Telegram ID */}
+                                            <td>
+                                                {user.telegramId ? (
+                                                    <span className="telegram-tag">{user.telegramId}</span>
+                                                ) : (
+                                                    <span className="no-data">—</span>
                                                 )}
-                                                {user.panelEmail && (
-                                                    <div className="email-text">{user.panelEmail}</div>
-                                                )}
-                                                {user.panelId && (
-                                                    <div className="panel-badge-sm">{getPanelName(user.panelId) || 'Panel'}</div>
-                                                )}
-                                            </div>
-                                        </div>
-                                    </td>
+                                            </td>
 
-                                    {/* WhatsApp Numbers */}
-                                    <td>
-                                        <div className="phone-list">
-                                            {(user.whatsappNumbers || []).length === 0 ? (
-                                                <span className="no-data">—</span>
-                                            ) : (
-                                                (user.whatsappNumbers || []).map((num, i) => (
-                                                    <span key={i} className="phone-tag">{num}</span>
-                                                ))
-                                            )}
-                                        </div>
-                                    </td>
+                                            {/* Group ID */}
+                                            <td>
+                                                <div className="group-list">
+                                                    {(user.groupIds || []).length === 0 ? (
+                                                        <span className="no-data">—</span>
+                                                    ) : (
+                                                        (user.groupIds || []).map((gid, i) => (
+                                                            <span key={i} className="group-tag">{gid}</span>
+                                                        ))
+                                                    )}
+                                                </div>
+                                            </td>
 
-                                    {/* Telegram ID */}
-                                    <td>
-                                        {user.telegramId ? (
-                                            <span className="telegram-tag">{user.telegramId}</span>
-                                        ) : (
-                                            <span className="no-data">—</span>
-                                        )}
-                                    </td>
+                                            {/* Status */}
+                                            <td>
+                                                <div className="status-badges">
+                                                    {user.isVerified && (
+                                                        <span className="badge badge-verified"><CheckCircle size={12} /> Verified</span>
+                                                    )}
+                                                    {user.isAutoSuspended && (
+                                                        <span className="badge badge-blocked"><Ban size={12} /> Blocked</span>
+                                                    )}
+                                                    <button
+                                                        className={`toggle-btn-sm ${user.isBotEnabled ? 'on' : 'off'}`}
+                                                        onClick={() => handleToggleBot(user.id)}
+                                                        title={user.isBotEnabled ? 'Bot: ON' : 'Bot: OFF'}
+                                                    >
+                                                        {user.isBotEnabled ? <ToggleRight size={16} /> : <ToggleLeft size={16} />}
+                                                    </button>
+                                                </div>
+                                            </td>
 
-                                    {/* Group ID */}
-                                    <td>
-                                        <div className="group-list">
-                                            {(user.groupIds || []).length === 0 ? (
-                                                <span className="no-data">—</span>
-                                            ) : (
-                                                (user.groupIds || []).map((gid, i) => (
-                                                    <span key={i} className="group-tag">{gid}</span>
-                                                ))
-                                            )}
-                                        </div>
-                                    </td>
+                                            {/* Date Created */}
+                                            <td>
+                                                <span className="date-text" title={user.createdAt ? new Date(user.createdAt).toLocaleString() : ''}>
+                                                    {user.createdAt ? new Date(user.createdAt).toLocaleDateString() : '—'}
+                                                </span>
+                                            </td>
 
-                                    {/* Status */}
-                                    <td>
-                                        <div className="status-badges">
-                                            {user.isVerified && (
-                                                <span className="badge badge-verified"><CheckCircle size={12} /> Verified</span>
-                                            )}
-                                            {user.isAutoSuspended && (
-                                                <span className="badge badge-blocked"><Ban size={12} /> Blocked</span>
-                                            )}
-                                            <button
-                                                className={`toggle-btn-sm ${user.isBotEnabled ? 'on' : 'off'}`}
-                                                onClick={() => handleToggleBot(user.id)}
-                                                title={user.isBotEnabled ? 'Bot: ON' : 'Bot: OFF'}
-                                            >
-                                                {user.isBotEnabled ? <ToggleRight size={16} /> : <ToggleLeft size={16} />}
-                                            </button>
-                                        </div>
-                                    </td>
-
-                                    {/* Date Created */}
-                                    <td>
-                                        <span className="date-text" title={user.createdAt ? new Date(user.createdAt).toLocaleString() : ''}>
-                                            {user.createdAt ? new Date(user.createdAt).toLocaleDateString() : '—'}
-                                        </span>
-                                    </td>
-
-                                    {/* Notes */}
-                                    <td>
-                                        <button
-                                            className={`btn btn-ghost btn-xs ${user.adminNotes ? 'has-notes' : ''}`}
-                                            onClick={() => openNotesModal(user)}
-                                            title={user.adminNotes || 'Add notes'}
-                                        >
-                                            <StickyNote size={14} />
-                                            {user.adminNotes ? '📝' : ''}
-                                        </button>
-                                    </td>
-
-                                    {/* Actions */}
-                                    <td>
-                                        <div className="action-btns">
-                                            <button className="btn btn-ghost btn-xs" onClick={() => handleEdit(user)} title="Edit">
-                                                <Edit2 size={14} />
-                                            </button>
-                                            {user.isAutoSuspended ? (
-                                                <button className="btn btn-ghost btn-xs text-success" onClick={() => handleUnblock(user.id)} title="Unblock">
-                                                    <UserCheck size={14} />
+                                            {/* Notes */}
+                                            <td>
+                                                <button
+                                                    className={`btn btn-ghost btn-xs ${user.adminNotes ? 'has-notes' : ''}`}
+                                                    onClick={() => openNotesModal(user)}
+                                                    title={user.adminNotes || 'Add notes'}
+                                                >
+                                                    <StickyNote size={14} />
+                                                    {user.adminNotes ? '📝' : ''}
                                                 </button>
-                                            ) : (
-                                                <button className="btn btn-ghost btn-xs text-warning" onClick={() => handleBlock(user.id)} title="Block">
-                                                    <Ban size={14} />
-                                                </button>
-                                            )}
-                                            <button className="btn btn-ghost btn-xs text-danger" onClick={() => handleDelete(user.id)} title="Delete">
-                                                <Trash2 size={14} />
-                                            </button>
-                                        </div>
-                                    </td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                )}
+                                            </td>
+
+                                            {/* Actions */}
+                                            <td>
+                                                <div className="action-btns">
+                                                    <button className="btn btn-ghost btn-xs" onClick={() => handleEdit(user)} title="Edit">
+                                                        <Edit2 size={14} />
+                                                    </button>
+                                                    {user.isAutoSuspended ? (
+                                                        <button className="btn btn-ghost btn-xs text-success" onClick={() => handleUnblock(user.id)} title="Unblock">
+                                                            <UserCheck size={14} />
+                                                        </button>
+                                                    ) : (
+                                                        <button className="btn btn-ghost btn-xs text-warning" onClick={() => handleBlock(user.id)} title="Block">
+                                                            <Ban size={14} />
+                                                        </button>
+                                                    )}
+                                                    <button className="btn btn-ghost btn-xs text-danger" onClick={() => handleDelete(user.id)} title="Delete">
+                                                        <Trash2 size={14} />
+                                                    </button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        )}
+                    </div>
+                </div>
             </div>
 
             {/* Add/Edit Modal */}
@@ -855,33 +884,107 @@ const UserMappings = () => {
                     color: var(--text-secondary);
                 }
 
-                /* Filters Row */
-                .filters-row {
-                    display: flex;
-                    gap: 1rem;
-                    margin-bottom: 1.5rem;
-                    align-items: center;
-                    flex-wrap: wrap;
+                /* 2-Column Layout */
+                .mappings-layout {
+                    display: grid;
+                    grid-template-columns: 240px 1fr;
+                    gap: 1.25rem;
+                    min-height: calc(100vh - 340px);
                 }
-                .panel-filter {
-                    display: flex;
-                    align-items: center;
-                    gap: 0.5rem;
-                    flex-shrink: 0;
-                }
-                .panel-filter label {
-                    font-size: 0.9rem;
-                    color: var(--text-secondary);
-                    font-weight: 500;
-                }
-                .panel-filter .form-select {
-                    min-width: 180px;
-                    padding: 0.5rem 0.75rem;
+                .um-panels-sidebar {
                     background: var(--bg-card);
                     border: 1px solid var(--border-color);
+                    border-radius: 12px;
+                    overflow: hidden;
+                    align-self: start;
+                    position: sticky;
+                    top: 1.5rem;
+                }
+                .um-sidebar-header {
+                    padding: 0.875rem 1rem;
+                    border-bottom: 1px solid var(--border-color);
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                }
+                .um-sidebar-header h3 {
+                    font-size: 0.8rem;
+                    font-weight: 600;
+                    margin: 0;
+                    text-transform: uppercase;
+                    letter-spacing: 0.5px;
+                    color: var(--text-secondary);
+                }
+                .um-panel-count {
+                    background: var(--primary-color);
+                    color: white;
+                    padding: 2px 8px;
+                    border-radius: 999px;
+                    font-size: 0.7rem;
+                    font-weight: 600;
+                }
+                .um-panel-list {
+                    max-height: calc(100vh - 380px);
+                    overflow-y: auto;
+                }
+                .um-panel-item {
+                    display: flex;
+                    align-items: center;
+                    gap: 0.625rem;
+                    padding: 0.75rem 1rem;
+                    cursor: pointer;
+                    border-bottom: 1px solid var(--border-color);
+                    transition: all 0.15s ease;
+                }
+                .um-panel-item:last-child {
+                    border-bottom: none;
+                }
+                .um-panel-item:hover {
+                    background: var(--bg-tertiary);
+                }
+                .um-panel-item.selected {
+                    background: rgba(59, 130, 246, 0.08);
+                    border-left: 3px solid var(--primary-color);
+                }
+                .um-panel-icon {
+                    width: 32px;
+                    height: 32px;
                     border-radius: 8px;
+                    background: var(--bg-tertiary);
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    color: var(--text-secondary);
+                    flex-shrink: 0;
+                }
+                .um-panel-icon.all-icon {
+                    background: rgba(59, 130, 246, 0.1);
+                    color: var(--primary-color);
+                }
+                .um-panel-item.selected .um-panel-icon {
+                    background: rgba(59, 130, 246, 0.15);
+                    color: var(--primary-color);
+                }
+                .um-panel-info {
+                    flex: 1;
+                    min-width: 0;
+                }
+                .um-panel-name {
+                    display: block;
+                    font-size: 0.875rem;
+                    font-weight: 600;
                     color: var(--text-primary);
-                    font-size: 0.9rem;
+                    white-space: nowrap;
+                    overflow: hidden;
+                    text-overflow: ellipsis;
+                }
+                .um-panel-count-text {
+                    display: block;
+                    font-size: 0.75rem;
+                    color: var(--text-muted);
+                }
+                .um-main-content {
+                    min-width: 0;
                 }
                 .search-bar {
                     display: flex;
@@ -1165,21 +1268,30 @@ const UserMappings = () => {
                 }
 
                 /* Responsive */
+                @media (max-width: 1100px) {
+                    .mappings-layout {
+                        grid-template-columns: 1fr;
+                    }
+                    .um-panels-sidebar {
+                        position: static;
+                    }
+                    .um-panel-list {
+                        display: flex;
+                        flex-wrap: wrap;
+                        gap: 0;
+                        max-height: 200px;
+                    }
+                    .um-panel-item {
+                        flex: 1;
+                        min-width: 140px;
+                    }
+                }
                 @media (max-width: 900px) {
                     .mapping-table-wrap {
                         overflow-x: auto;
                     }
                     .mapping-table {
                         min-width: 800px;
-                    }
-                    .filters-row {
-                        flex-direction: column;
-                    }
-                    .panel-filter {
-                        width: 100%;
-                    }
-                    .panel-filter .form-select {
-                        flex: 1;
                     }
                     .search-bar {
                         width: 100%;
