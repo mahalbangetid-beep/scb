@@ -700,10 +700,12 @@ class CommandHandlerService {
         if (order.status !== 'COMPLETED') {
             return {
                 success: false,
-                message: commandParser.generateResponse('refill', orderId, false, {
-                    reason: 'status',
-                    status: order.status
-                }),
+                message: order.status === 'CANCELLED' || order.status === 'REFUNDED' || order.status === 'PARTIAL'
+                    ? `❌ Order #${orderId}: Your order is ${order.status.toLowerCase()}.`
+                    : commandParser.generateResponse('refill', orderId, false, {
+                        reason: 'status',
+                        status: order.status
+                    }),
                 details: { reason: 'status', status: order.status }
             };
         }
@@ -920,14 +922,11 @@ class CommandHandlerService {
             };
         }
 
-        // Cannot cancel completed or already cancelled orders
-        if (['COMPLETED', 'CANCELLED', 'REFUNDED'].includes(order.status)) {
+        // Cannot cancel completed, already cancelled, refunded, or partial orders
+        if (['COMPLETED', 'CANCELLED', 'REFUNDED', 'PARTIAL'].includes(order.status)) {
             return {
                 success: false,
-                message: commandParser.generateResponse('cancel', orderId, false, {
-                    reason: 'status',
-                    status: order.status
-                }),
+                message: `❌ Order #${orderId}: Your order is ${order.status.toLowerCase()}.`,
                 details: { reason: 'status', status: order.status }
             };
         }
