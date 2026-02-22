@@ -698,14 +698,19 @@ class CommandHandlerService {
 
         // Refill only for completed orders
         if (order.status !== 'COMPLETED') {
+            // Use customizable template from Response Templates page
+            let statusMsg = `❌ Order #${orderId}: Your order is ${order.status.toLowerCase()}.`;
+            try {
+                const responseTemplateService = require('./responseTemplateService');
+                const tpl = await responseTemplateService.getResponse(order.userId, 'REFILL_STATUS_INVALID', {
+                    order_id: orderId,
+                    status: order.status.toLowerCase()
+                });
+                if (tpl) statusMsg = tpl;
+            } catch (e) { /* use fallback */ }
             return {
                 success: false,
-                message: order.status === 'CANCELLED' || order.status === 'REFUNDED' || order.status === 'PARTIAL'
-                    ? `❌ Order #${orderId}: Your order is ${order.status.toLowerCase()}.`
-                    : commandParser.generateResponse('refill', orderId, false, {
-                        reason: 'status',
-                        status: order.status
-                    }),
+                message: statusMsg,
                 details: { reason: 'status', status: order.status }
             };
         }
@@ -924,9 +929,19 @@ class CommandHandlerService {
 
         // Cannot cancel completed, already cancelled, refunded, or partial orders
         if (['COMPLETED', 'CANCELLED', 'REFUNDED', 'PARTIAL'].includes(order.status)) {
+            // Use customizable template from Response Templates page
+            let statusMsg = `❌ Order #${orderId}: Your order is ${order.status.toLowerCase()}.`;
+            try {
+                const responseTemplateService = require('./responseTemplateService');
+                const tpl = await responseTemplateService.getResponse(order.userId, 'CANCEL_STATUS_INVALID', {
+                    order_id: orderId,
+                    status: order.status.toLowerCase()
+                });
+                if (tpl) statusMsg = tpl;
+            } catch (e) { /* use fallback */ }
             return {
                 success: false,
-                message: `❌ Order #${orderId}: Your order is ${order.status.toLowerCase()}.`,
+                message: statusMsg,
                 details: { reason: 'status', status: order.status }
             };
         }
