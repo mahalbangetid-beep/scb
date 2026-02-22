@@ -727,6 +727,7 @@ Remains: {remains}
             message = template
                 .replace(/{externalId}/gi, displayOrderId)
                 .replace(/{order_id}/gi, displayOrderId)
+                .replace(/{order id}/gi, displayOrderId)
                 .replace(/{orderId}/gi, displayOrderId)
                 .replace(/{order_ids}/gi, displayOrderId)
                 .replace(/{command}/gi, command.toLowerCase())

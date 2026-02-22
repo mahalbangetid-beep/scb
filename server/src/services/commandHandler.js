@@ -145,7 +145,7 @@ class CommandHandlerService {
                     isGroup,
                     groupJid,   // Pass groupJid for group-based ownership check
                     isStaffOverride,  // Staff Override Group bypass (Section 5)
-                    skipIndividualForward: orderIds.length > 1
+                    skipIndividualForward: true  // Batch forward handles all orders (including single)
                 });
 
                 responses.push({
