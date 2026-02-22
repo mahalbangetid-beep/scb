@@ -53,11 +53,12 @@ export default function GuaranteeRules() {
             const [rulesRes, configRes, panelsRes] = await Promise.all([
                 api.get(`/guarantee/rules${selectedPanel ? `?panelId=${selectedPanel}` : ''}`),
                 api.get('/guarantee/config'),
-                api.get('/smm-panels').catch(() => ({ data: { data: [] } }))
+                api.get('/panels').catch(() => ({ data: { data: [] } }))
             ])
             setRules(rulesRes.data?.data || rulesRes.data || [])
             setConfig(configRes.data?.data || configRes.data || null)
-            setPanels(panelsRes.data?.data || [])
+            const panelData = panelsRes.data?.data?.panels || panelsRes.data?.data || panelsRes.data || []
+            setPanels(Array.isArray(panelData) ? panelData : [])
         } catch (err) {
             setError('Failed to load guarantee rules')
             console.error(err)
