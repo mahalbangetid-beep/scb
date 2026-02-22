@@ -1326,8 +1326,23 @@ class CommandHandlerService {
                 .replace(/\{results\}/g, resultsText.trim());
         }
 
-        // Default format: Group by category (provider panel style)
+        // Default format: Group by category using customizable templates
         const commandDisplay = commandParser.getDisplayCommand(command);
+        const responseTemplateService = require('./responseTemplateService');
+
+        // Helper: get template text or fallback
+        const getLabel = async (key, vars = {}) => {
+            if (userId) {
+                try {
+                    const tpl = await responseTemplateService.getResponse(userId, key, vars);
+                    if (tpl) return tpl;
+                } catch (e) { /* fallback */ }
+            }
+            // Fallback: use default from service
+            const def = responseTemplateService.defaultTemplates[key];
+            if (def) return responseTemplateService.formatTemplate(def.template, vars);
+            return null;
+        };
 
         // Categorize responses by specific status
         const queued = [];           // Successfully processed
@@ -1363,53 +1378,64 @@ class CommandHandlerService {
             }
         }
 
-        let message = `📋 *${commandDisplay} Results*\n━━━━━━━━━━━━━━━━\n`;
+        // Build message using customizable templates
+        let message = await getLabel('BULK_HEADER', { command: commandDisplay }) || `📋 *${commandDisplay} Results*\n━━━━━━━━━━━━━━━━`;
+        message += '\n';
 
         // ✅ Successfully queued
         if (queued.length > 0) {
             const orderList = queued.map(r => r.orderId).join(', ');
-            message += `\n✅ *These orders are added to ${commandDisplay.toLowerCase()} support queue:*\n${orderList}\n`;
+            const label = await getLabel('BULK_SUCCESS_LABEL', { command: commandDisplay.toLowerCase() }) || `✅ *These orders are added to ${commandDisplay.toLowerCase()} support queue:*`;
+            message += `\n${label}\n${orderList}\n`;
         }
 
         // 🔴 Already Cancelled
         if (alreadyCancelled.length > 0) {
             const orderList = alreadyCancelled.map(r => r.orderId).join(', ');
-            message += `\n🔴 *Already Cancelled – Cannot Be ${commandDisplay === 'Cancel' ? 'Cancelled Again' : commandDisplay + 'ed'}:*\n${orderList}\n`;
+            const label = await getLabel('BULK_ALREADY_CANCELLED') || `🔴 *Already Cancelled – Cannot Be Cancelled Again:*`;
+            message += `\n${label}\n${orderList}\n`;
         }
 
         // 🔴 Already Completed
         if (alreadyCompleted.length > 0) {
             const orderList = alreadyCompleted.map(r => r.orderId).join(', ');
-            message += `\n🔴 *Already Completed – Cannot Be ${commandDisplay}ed:*\n${orderList}\n`;
+            const label = await getLabel('BULK_ALREADY_COMPLETED') || `🔴 *Already Completed – Cannot Be Processed:*`;
+            message += `\n${label}\n${orderList}\n`;
         }
 
         // 🔴 Partially Refunded
         if (partialRefund.length > 0) {
             const orderList = partialRefund.map(r => r.orderId).join(', ');
-            message += `\n🔴 *Partially Refunded – ${commandDisplay} Not Possible:*\n${orderList}\n`;
+            const label = await getLabel('BULK_PARTIAL_REFUND') || `🔴 *Partially Refunded – Not Possible:*`;
+            message += `\n${label}\n${orderList}\n`;
         }
 
         // ⏳ Cooldown / already in progress
         if (cooldown.length > 0) {
             const orderList = cooldown.map(r => r.orderId).join(', ');
-            message += `\n⏳ *These support requests are already in progress:*\n${orderList}\n`;
-            message += `_For each order you can request support per 12 hour. If support request is already in queue you can't create a new support request with same order._\n`;
+            const label = await getLabel('BULK_COOLDOWN') || `⏳ *These support requests are already in progress:*`;
+            const hint = await getLabel('BULK_COOLDOWN_HINT') || `_For each order you can request support per 12 hour. If support request is already in queue you can't create a new support request with same order._`;
+            message += `\n${label}\n${orderList}\n${hint}\n`;
         }
 
         // ❌ Not found / not yours
         if (notFound.length > 0) {
             const orderList = notFound.map(r => r.orderId).join(', ');
-            message += `\n❌ *These orders are not found or not belong to you:*\n${orderList}\n`;
+            const label = await getLabel('BULK_NOT_FOUND') || `❌ *These orders are not found or not belong to you:*`;
+            message += `\n${label}\n${orderList}\n`;
         }
 
         // ⚠️ Other errors
         if (otherFailed.length > 0) {
             const orderList = otherFailed.map(r => `${r.orderId}: ${r.details?.error || 'Error'}`).join('\n');
-            message += `\n⚠️ *Other errors:*\n${orderList}\n`;
+            const label = await getLabel('BULK_OTHER_ERRORS') || `⚠️ *Other errors:*`;
+            message += `\n${label}\n${orderList}\n`;
         }
 
         const totalFailed = alreadyCancelled.length + alreadyCompleted.length + partialRefund.length + cooldown.length + notFound.length + otherFailed.length;
-        message += `\n━━━━━━━━━━━━━━━━\nTotal: ${responses.length} | ✅ ${queued.length} | ❌ ${totalFailed}`;
+        const summary = await getLabel('BULK_SUMMARY', { total: responses.length.toString(), success_count: queued.length.toString(), failed_count: totalFailed.toString() })
+            || `━━━━━━━━━━━━━━━━\nTotal: ${responses.length} | ✅ ${queued.length} | ❌ ${totalFailed}`;
+        message += `\n${summary}`;
 
         return message;
     }

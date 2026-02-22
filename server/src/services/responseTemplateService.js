@@ -54,8 +54,8 @@ class ResponseTemplateService {
                 variables: ['order_id']
             },
             'REFILL_STATUS_INVALID': {
-                template: `❌ Order #{order_id}: Cannot refill.\n\nOrder status is "{status}". Only completed orders can be refilled.`,
-                description: 'Order status not eligible for refill',
+                template: `❌ Order #{order_id}: Your order is {status}.`,
+                description: 'Order status not eligible for refill (cancelled, partial, etc)',
                 variables: ['order_id', 'status']
             },
             'REFILL_NO_GUARANTEE': {
@@ -86,8 +86,8 @@ class ResponseTemplateService {
                 variables: ['order_id']
             },
             'CANCEL_STATUS_INVALID': {
-                template: `❌ Order #{order_id}: Cannot cancel.\n\nOrder status is "{status}". Only pending/processing orders can be cancelled.`,
-                description: 'Order status not eligible for cancel',
+                template: `❌ Order #{order_id}: Your order is {status}.`,
+                description: 'Order status not eligible for cancel (cancelled, completed, partial)',
                 variables: ['order_id', 'status']
             },
             'CANCEL_ERROR': {
@@ -145,6 +145,48 @@ class ResponseTemplateService {
                 template: `━━━━━━━━━━━━━━━━\nTotal: {total} | ✅ {success_count} | ❌ {failed_count}`,
                 description: 'Summary footer for bulk responses',
                 variables: ['total', 'success_count', 'failed_count']
+            },
+
+            // ==================== BULK STATUS GROUP LABELS ====================
+            'BULK_SUCCESS_LABEL': {
+                template: `✅ *These orders are added to {command} support queue:*`,
+                description: 'Label for successfully queued orders in bulk response',
+                variables: ['command']
+            },
+            'BULK_ALREADY_CANCELLED': {
+                template: `🔴 *Already Cancelled – Cannot Be Cancelled Again:*`,
+                description: 'Label for already cancelled orders in bulk response',
+                variables: []
+            },
+            'BULK_ALREADY_COMPLETED': {
+                template: `🔴 *Already Completed – Cannot Be Processed:*`,
+                description: 'Label for already completed orders in bulk response',
+                variables: []
+            },
+            'BULK_PARTIAL_REFUND': {
+                template: `🔴 *Partially Refunded – Not Possible:*`,
+                description: 'Label for partially refunded orders in bulk response',
+                variables: []
+            },
+            'BULK_COOLDOWN': {
+                template: `⏳ *These support requests are already in progress:*`,
+                description: 'Label for in-progress/cooldown orders in bulk response',
+                variables: []
+            },
+            'BULK_COOLDOWN_HINT': {
+                template: `_For each order you can request support per 12 hour. If support request is already in queue you can't create a new support request with same order._`,
+                description: 'Hint text shown under cooldown section',
+                variables: []
+            },
+            'BULK_NOT_FOUND': {
+                template: `❌ *These orders are not found or not belong to you:*`,
+                description: 'Label for not-found orders in bulk response',
+                variables: []
+            },
+            'BULK_OTHER_ERRORS': {
+                template: `⚠️ *Other errors:*`,
+                description: 'Label for other errors in bulk response',
+                variables: []
             }
         };
     }

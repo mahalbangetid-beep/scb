@@ -40,7 +40,7 @@ const TEMPLATE_CATEGORIES = {
     bulk: {
         label: 'Bulk Orders (Multiple Orders)',
         icon: '📦',
-        templates: ['BULK_HEADER', 'BULK_SUCCESS_ITEM', 'BULK_FAILED_ITEM', 'BULK_SUMMARY']
+        templates: ['BULK_HEADER', 'BULK_SUCCESS_LABEL', 'BULK_ALREADY_CANCELLED', 'BULK_ALREADY_COMPLETED', 'BULK_PARTIAL_REFUND', 'BULK_COOLDOWN', 'BULK_COOLDOWN_HINT', 'BULK_NOT_FOUND', 'BULK_OTHER_ERRORS', 'BULK_SUMMARY']
     },
     general: {
         label: 'General Responses',
