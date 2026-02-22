@@ -55,7 +55,7 @@ const smmNavigation = [
     { name: 'SMM Panels', icon: Globe, path: '/smm-panels' },
     { name: 'Panel Connections', icon: Plug, path: '/panel-connections' },
     { name: 'Orders', icon: Package, path: '/orders' },
-    // { name: 'Provider Groups', icon: Radio, path: '/provider-groups' }, // Hidden per client request
+    { name: 'Provider Groups', icon: Radio, path: '/provider-groups' },
     { name: 'Support Groups', icon: UsersRound, path: '/support-groups' },
     { name: 'Tickets', icon: Ticket, path: '/tickets' },
 ]
@@ -65,7 +65,7 @@ const automationNavigation = [
     // { name: 'Auto Reply', icon: Bot, path: '/auto-reply' }, // Hidden for now
     { name: 'Response Templates', icon: FileText, path: '/response-templates' },
     { name: 'Command Templates', icon: MessageCircle, path: '/command-templates' },
-    // { name: 'Provider Forwarding', icon: Send, path: '/provider-forwarding' }, // Hidden per client request
+    { name: 'Provider Forwarding', icon: Send, path: '/provider-forwarding' },
     { name: 'Provider Aliases', icon: Layers, path: '/provider-aliases' },
     { name: 'Keyword Responses', icon: MessageCircle, path: '/keyword-responses' },
     { name: 'User Mappings', icon: Users, path: '/user-mappings' },
