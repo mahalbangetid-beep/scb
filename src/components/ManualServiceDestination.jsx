@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Save, Loader2, MapPin, MessageCircle, Phone, CheckCircle } from 'lucide-react'
+import { Save, Loader2, MapPin, MessageCircle, Phone, CheckCircle, Smartphone } from 'lucide-react'
 import api from '../services/api'
 
 export default function ManualServiceDestination({ panelId }) {
@@ -8,17 +8,30 @@ export default function ManualServiceDestination({ panelId }) {
     const [error, setError] = useState(null)
     const [success, setSuccess] = useState(null)
     const [savedConfig, setSavedConfig] = useState(null)
+    const [devices, setDevices] = useState([])
     const [form, setForm] = useState({
+        deviceId: '',
         whatsappNumber: '',
         whatsappGroupJid: '',
         telegramChatId: '',
+        refillTemplate: '',
+        cancelTemplate: '',
+        speedupTemplate: '',
         errorGroupJid: '',
-        errorChatId: ''
+        errorChatId: '',
+        errorTemplate: ''
     })
 
-    useEffect(() => { if (panelId) fetchConfig() }, [panelId])
+    useEffect(() => { if (panelId) { fetchConfig(); fetchDevices() } }, [panelId])
     useEffect(() => { if (error) { const t = setTimeout(() => setError(null), 5000); return () => clearTimeout(t) } }, [error])
     useEffect(() => { if (success) { const t = setTimeout(() => setSuccess(null), 3000); return () => clearTimeout(t) } }, [success])
+
+    const fetchDevices = async () => {
+        try {
+            const res = await api.get('/devices')
+            setDevices(res.data?.devices || res.data || [])
+        } catch (e) { console.error('Failed to fetch devices') }
+    }
 
     const fetchConfig = async () => {
         setLoading(true)
@@ -28,11 +41,16 @@ export default function ManualServiceDestination({ panelId }) {
                 const cfg = res.data.data
                 setSavedConfig(cfg)
                 setForm({
+                    deviceId: cfg.deviceId || '',
                     whatsappNumber: cfg.whatsappNumber || '',
                     whatsappGroupJid: cfg.whatsappGroupJid || '',
                     telegramChatId: cfg.telegramChatId || '',
+                    refillTemplate: cfg.refillTemplate || '',
+                    cancelTemplate: cfg.cancelTemplate || '',
+                    speedupTemplate: cfg.speedupTemplate || '',
                     errorGroupJid: cfg.errorGroupJid || '',
-                    errorChatId: cfg.errorChatId || ''
+                    errorChatId: cfg.errorChatId || '',
+                    errorTemplate: cfg.errorTemplate || ''
                 })
             }
         } catch (e) { /* No config yet */ }
@@ -53,11 +71,17 @@ export default function ManualServiceDestination({ panelId }) {
     // Build saved destinations list
     const savedList = []
     if (savedConfig) {
+        const devName = devices.find(d => d.id === savedConfig.deviceId)?.name
+        if (devName) savedList.push({ type: 'Device', platform: 'WhatsApp', value: devName })
         if (savedConfig.whatsappNumber) savedList.push({ type: 'Command', platform: 'WhatsApp DM', value: savedConfig.whatsappNumber })
         if (savedConfig.whatsappGroupJid) savedList.push({ type: 'Command', platform: 'WhatsApp Group', value: savedConfig.whatsappGroupJid })
         if (savedConfig.telegramChatId) savedList.push({ type: 'Command', platform: 'Telegram', value: savedConfig.telegramChatId })
+        if (savedConfig.refillTemplate) savedList.push({ type: 'Template', platform: 'Refill', value: savedConfig.refillTemplate.substring(0, 50) + (savedConfig.refillTemplate.length > 50 ? '...' : '') })
+        if (savedConfig.cancelTemplate) savedList.push({ type: 'Template', platform: 'Cancel', value: savedConfig.cancelTemplate.substring(0, 50) + (savedConfig.cancelTemplate.length > 50 ? '...' : '') })
+        if (savedConfig.speedupTemplate) savedList.push({ type: 'Template', platform: 'Speed Up', value: savedConfig.speedupTemplate.substring(0, 50) + (savedConfig.speedupTemplate.length > 50 ? '...' : '') })
         if (savedConfig.errorGroupJid) savedList.push({ type: 'Error', platform: 'WhatsApp Group', value: savedConfig.errorGroupJid })
         if (savedConfig.errorChatId) savedList.push({ type: 'Error', platform: 'Telegram', value: savedConfig.errorChatId })
+        if (savedConfig.errorTemplate) savedList.push({ type: 'Error', platform: 'Template', value: savedConfig.errorTemplate.substring(0, 50) + (savedConfig.errorTemplate.length > 50 ? '...' : '') })
     }
 
     if (!panelId) return <div className="empty-state"><p>Select a panel first</p></div>
@@ -83,10 +107,28 @@ export default function ManualServiceDestination({ panelId }) {
 
                     {/* ==================== LEFT: FORM ==================== */}
                     <div>
+                        {/* Device Selection */}
+                        <div style={{ marginBottom: 'var(--spacing-md)', padding: 'var(--spacing-sm)', background: 'var(--bg-secondary)', borderRadius: 'var(--radius-md)' }}>
+                            <h4 style={{ margin: '0 0 var(--spacing-sm)', color: 'var(--text-primary)', fontSize: 14 }}>
+                                <Smartphone size={14} style={{ marginRight: 6, verticalAlign: 'middle' }} />
+                                WhatsApp Connected Device
+                            </h4>
+                            <select className="form-select" value={form.deviceId} onChange={e => setForm({ ...form, deviceId: e.target.value })}>
+                                <option value="">Select Device for Forwarding</option>
+                                {devices.map(d => (
+                                    <option key={d.id} value={d.id}>
+                                        {d.name} ({d.status})
+                                    </option>
+                                ))}
+                            </select>
+                            <span style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>Required — select which device sends forwarded messages</span>
+                        </div>
+
+                        {/* Command Forwarding */}
                         <div style={{ marginBottom: 'var(--spacing-md)' }}>
                             <h4 style={{ margin: '0 0 var(--spacing-sm)', color: 'var(--text-primary)', fontSize: 14 }}>
                                 <MessageCircle size={14} style={{ marginRight: 6, verticalAlign: 'middle' }} />
-                                Command Forwarding
+                                Command Forwarding Destinations
                             </h4>
                             <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-sm)' }}>
                                 <div>
@@ -104,10 +146,37 @@ export default function ManualServiceDestination({ panelId }) {
                             </div>
                         </div>
 
+                        {/* Command Templates */}
+                        <div style={{ marginBottom: 'var(--spacing-md)' }}>
+                            <h4 style={{ margin: '0 0 var(--spacing-xs)', color: 'var(--text-primary)', fontSize: 14 }}>
+                                Command Text Templates
+                            </h4>
+                            <p style={{ fontSize: 11, color: 'var(--text-tertiary)', margin: '0 0 var(--spacing-sm)' }}>
+                                Variables: {'{order_id}'}, {'{order_ids}'}, {'{service}'}, {'{link}'}, {'{quantity}'}
+                            </p>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-sm)' }}>
+                                <div>
+                                    <label className="form-label">Refill Template</label>
+                                    <textarea className="form-input" rows={2} placeholder="e.g. {order_id} refill" value={form.refillTemplate} onChange={e => setForm({ ...form, refillTemplate: e.target.value })} style={{ resize: 'vertical', minHeight: 40 }} />
+                                </div>
+                                <div>
+                                    <label className="form-label">Cancel Template</label>
+                                    <textarea className="form-input" rows={2} placeholder="e.g. {order_id} cancel" value={form.cancelTemplate} onChange={e => setForm({ ...form, cancelTemplate: e.target.value })} style={{ resize: 'vertical', minHeight: 40 }} />
+                                </div>
+                                <div>
+                                    <label className="form-label">Speed Up Template</label>
+                                    <textarea className="form-input" rows={2} placeholder="e.g. {order_id} speed up" value={form.speedupTemplate} onChange={e => setForm({ ...form, speedupTemplate: e.target.value })} style={{ resize: 'vertical', minHeight: 40 }} />
+                                </div>
+                            </div>
+                        </div>
+
+                        <hr style={{ border: 'none', borderTop: '1px solid var(--border-color)', margin: 'var(--spacing-md) 0' }} />
+
+                        {/* Error Forwarding */}
                         <div style={{ marginBottom: 'var(--spacing-md)' }}>
                             <h4 style={{ margin: '0 0 var(--spacing-sm)', color: 'var(--color-error)', fontSize: 14 }}>
                                 <Phone size={14} style={{ marginRight: 6, verticalAlign: 'middle' }} />
-                                Error / Failed Forwarding
+                                Error / Failed Order Forwarding
                             </h4>
                             <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-sm)' }}>
                                 <div>
@@ -117,6 +186,10 @@ export default function ManualServiceDestination({ panelId }) {
                                 <div>
                                     <label className="form-label">Error Telegram Chat ID</label>
                                     <input className="form-input" placeholder="e.g. -1001234567890" value={form.errorChatId} onChange={e => setForm({ ...form, errorChatId: e.target.value })} />
+                                </div>
+                                <div>
+                                    <label className="form-label">Error Message Template</label>
+                                    <textarea className="form-input" rows={2} placeholder="e.g. ⚠️ Error #{order_id} - {service}" value={form.errorTemplate} onChange={e => setForm({ ...form, errorTemplate: e.target.value })} style={{ resize: 'vertical', minHeight: 40 }} />
                                 </div>
                             </div>
                         </div>
@@ -153,7 +226,7 @@ export default function ManualServiceDestination({ panelId }) {
                                         <tr style={{ background: 'var(--bg-secondary)' }}>
                                             <th style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 600, borderBottom: '1px solid var(--border-color)' }}>Type</th>
                                             <th style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 600, borderBottom: '1px solid var(--border-color)' }}>Platform</th>
-                                            <th style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 600, borderBottom: '1px solid var(--border-color)' }}>Destination</th>
+                                            <th style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 600, borderBottom: '1px solid var(--border-color)' }}>Value</th>
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -161,8 +234,8 @@ export default function ManualServiceDestination({ panelId }) {
                                             <tr key={i} style={{ borderBottom: i < savedList.length - 1 ? '1px solid var(--border-color)' : 'none' }}>
                                                 <td style={{ padding: '8px 12px' }}>
                                                     <span style={{
-                                                        background: item.type === 'Command' ? 'rgba(34,197,94,0.15)' : 'rgba(239,68,68,0.15)',
-                                                        color: item.type === 'Command' ? 'var(--color-success)' : 'var(--color-error)',
+                                                        background: item.type === 'Command' ? 'rgba(34,197,94,0.15)' : item.type === 'Error' ? 'rgba(239,68,68,0.15)' : item.type === 'Device' ? 'rgba(59,130,246,0.15)' : 'rgba(168,85,247,0.15)',
+                                                        color: item.type === 'Command' ? 'var(--color-success)' : item.type === 'Error' ? 'var(--color-error)' : item.type === 'Device' ? 'var(--color-info, #3b82f6)' : 'rgb(168,85,247)',
                                                         padding: '2px 8px',
                                                         borderRadius: 'var(--radius-sm)',
                                                         fontSize: 11,
@@ -173,7 +246,7 @@ export default function ManualServiceDestination({ panelId }) {
                                                 </td>
                                                 <td style={{ padding: '8px 12px', color: 'var(--text-secondary)' }}>{item.platform}</td>
                                                 <td style={{ padding: '8px 12px' }}>
-                                                    <code style={{ background: 'var(--bg-tertiary)', padding: '2px 6px', borderRadius: 4, fontSize: 12 }}>
+                                                    <code style={{ background: 'var(--bg-tertiary)', padding: '2px 6px', borderRadius: 4, fontSize: 12, wordBreak: 'break-all' }}>
                                                         {item.value}
                                                     </code>
                                                 </td>

@@ -84,8 +84,9 @@ router.get('/manual-destination', authenticate, async (req, res, next) => {
 router.post('/manual-destination', authenticate, async (req, res, next) => {
     try {
         const {
-            whatsappNumber, whatsappGroupJid, telegramChatId,
-            errorGroupJid, errorChatId
+            deviceId, whatsappNumber, whatsappGroupJid, telegramChatId,
+            refillTemplate, cancelTemplate, speedupTemplate,
+            errorGroupJid, errorChatId, errorTemplate
         } = req.body;
 
         const config = await prisma.providerConfig.upsert({
@@ -93,22 +94,32 @@ router.post('/manual-destination', authenticate, async (req, res, next) => {
                 userId_providerName: { userId: req.user.id, providerName: 'MANUAL' }
             },
             update: {
+                deviceId: deviceId || null,
                 whatsappNumber: whatsappNumber || null,
                 whatsappGroupJid: whatsappGroupJid || null,
                 telegramChatId: telegramChatId || null,
+                refillTemplate: refillTemplate || null,
+                cancelTemplate: cancelTemplate || null,
+                speedupTemplate: speedupTemplate || null,
                 errorGroupJid: errorGroupJid || null,
                 errorChatId: errorChatId || null,
+                errorTemplate: errorTemplate || null,
                 isActive: true
             },
             create: {
                 userId: req.user.id,
                 providerName: 'MANUAL',
                 alias: 'Manual Service Destination',
+                deviceId: deviceId || null,
                 whatsappNumber: whatsappNumber || null,
                 whatsappGroupJid: whatsappGroupJid || null,
                 telegramChatId: telegramChatId || null,
+                refillTemplate: refillTemplate || null,
+                cancelTemplate: cancelTemplate || null,
+                speedupTemplate: speedupTemplate || null,
                 errorGroupJid: errorGroupJid || null,
                 errorChatId: errorChatId || null,
+                errorTemplate: errorTemplate || null,
                 errorNotifyEnabled: true,
                 isActive: true
             }
