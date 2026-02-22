@@ -1181,7 +1181,9 @@ class AdminApiService {
                     providerStatus: orderData.provider_status || orderStatus,
                     // V1 panels don't always return actions — null means unknown (triggers guarantee check)
                     canRefill: orderData.actions?.refill ?? orderData.actions?.resend ?? null,
-                    canCancel: orderData.actions?.cancel_and_refund ?? orderData.actions?.request_cancel ?? null
+                    canCancel: orderData.actions?.cancel_and_refund ?? orderData.actions?.request_cancel ?? null,
+                    // Order dates from panel (critical for accurate guarantee expiry)
+                    createdAt: orderData.created || orderData.created_at || orderData.date || null
                 };
 
             } else {
@@ -1228,7 +1230,8 @@ class AdminApiService {
                     providerOrderId: orderData.external_id || orderData.provider_order_id,
                     providerStatus: orderData.status,
                     canRefill: orderData.actions?.refill === true || orderData.actions?.resend === true,
-                    canCancel: orderData.actions?.cancel_and_refund === true || orderData.actions?.request_cancel === true
+                    canCancel: orderData.actions?.cancel_and_refund === true || orderData.actions?.request_cancel === true,
+                    createdAt: orderData.created || orderData.created_at || orderData.date || null
                 };
             }
         } catch (error) {

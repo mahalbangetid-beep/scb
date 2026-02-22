@@ -379,8 +379,17 @@ class CommandHandlerService {
                         };
 
                         // Set completedAt if order is already COMPLETED
-                        if (normalizedStatus === 'COMPLETED') {
-                            createData.completedAt = new Date();
+                        // Use order date from panel if available, otherwise fallback to now
+                        if (normalizedStatus === 'COMPLETED' || normalizedStatus === 'PARTIAL') {
+                            if (orderData.createdAt) {
+                                // Panel provided the order date — use it as completedAt
+                                const panelDate = new Date(orderData.createdAt);
+                                createData.completedAt = isNaN(panelDate.getTime()) ? new Date() : panelDate;
+                                console.log(`[CommandHandler] Using panel order date as completedAt: ${createData.completedAt}`);
+                            } else {
+                                createData.completedAt = new Date();
+                                console.log(`[CommandHandler] No panel date available, using current time as completedAt`);
+                            }
                         }
 
                         // Create order record in database
