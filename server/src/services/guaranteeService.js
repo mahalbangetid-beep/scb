@@ -198,6 +198,8 @@ class GuaranteeService {
 
         // ==================== METHOD 1: API-Based Detection ====================
         // If config says "api" or "both", check order.canRefill field from Admin API
+        // NOTE: canRefill=true only means the button exists, NOT that guarantee period is valid
+        // So we only use API to BLOCK (canRefill=false), never to ALLOW without expiry check
         if (config.detectionMethod === 'api' || config.detectionMethod === 'both') {
             if (order.canRefill === false) {
                 // API says no refill available
@@ -210,17 +212,7 @@ class GuaranteeService {
                     }
                 };
             }
-            // If detectionMethod is "api" only (not "both"), and canRefill is true, allow it
-            if (config.detectionMethod === 'api' && order.canRefill === true) {
-                return {
-                    valid: true,
-                    reason: 'API_REFILL_ALLOWED',
-                    details: {
-                        message: '✅ Refill allowed (API confirmed)',
-                        source: 'api'
-                    }
-                };
-            }
+            // canRefill=true: fall through to expiry check below (don't skip it)
         }
 
         // ==================== METHOD 2 Enhanced: Rules-Based Detection ====================
