@@ -745,13 +745,8 @@ class CommandHandlerService {
             }
         }
 
-        // If Panel API explicitly says refill is available, trust it and skip local guarantee check
-        if (panelRefillAvailable === true) {
-            console.log(`[CommandHandler] Panel API confirms refill is available for order ${orderId} - skipping local guarantee check`);
-            // Continue to execute refill below
-        }
-        // If Panel API explicitly says refill is NOT available
-        else if (panelRefillAvailable === false) {
+        // If Panel API explicitly says refill is NOT available (technically impossible)
+        if (panelRefillAvailable === false) {
             console.log(`[CommandHandler] Panel API says refill is NOT available for order ${orderId}`);
             return {
                 success: false,
@@ -759,48 +754,48 @@ class CommandHandlerService {
                 details: { reason: 'panel_refill_not_available' }
             };
         }
-        // If Panel API info is not available, fall back to local guarantee check
-        else {
-            // ==================== GUARANTEE VALIDATION (FALLBACK) ====================
-            // Check if order is within guarantee period based on service name keywords
-            try {
-                const guaranteeService = require('./guaranteeService');
 
-                console.log(`[CommandHandler] Panel API canRefill not available, checking local guarantee for order ${orderId}:`);
-                console.log(`  - Service Name: "${order.serviceName}"`);
-                console.log(`  - Completed At: ${order.completedAt}`);
+        // ==================== GUARANTEE VALIDATION ====================
+        // ALWAYS run guarantee check regardless of panel API canRefill value
+        // Panel API only tells us if the refill BUTTON exists, not if the guarantee period is still valid
+        try {
+            const guaranteeService = require('./guaranteeService');
 
-                const guaranteeCheck = await guaranteeService.checkGuarantee(order, order.userId);
+            console.log(`[CommandHandler] Checking local guarantee for order ${orderId}:`);
+            console.log(`  - Service Name: "${order.serviceName}"`);
+            console.log(`  - Completed At: ${order.completedAt}`);
+            console.log(`  - Panel canRefill: ${panelRefillAvailable}`);
 
-                if (!guaranteeCheck.valid) {
-                    console.log(`[CommandHandler] Guarantee check FAILED for order ${orderId}: ${guaranteeCheck.reason}`);
+            const guaranteeCheck = await guaranteeService.checkGuarantee(order, order.userId);
 
-                    // Format message based on reason
-                    let message;
-                    if (guaranteeCheck.reason === 'NO_GUARANTEE') {
-                        message = `❌ Order ${orderId}: This is not possible to refill. This is a no-refill, no-support service.`;
-                    } else if (guaranteeCheck.reason === 'EXPIRED') {
-                        message = `❌ Order ${orderId}: Refill period has expired.`;
-                    } else {
-                        message = guaranteeService.formatGuaranteeMessage(guaranteeCheck, order);
-                    }
+            if (!guaranteeCheck.valid) {
+                console.log(`[CommandHandler] Guarantee check FAILED for order ${orderId}: ${guaranteeCheck.reason}`);
 
-                    return {
-                        success: false,
-                        message,
-                        details: {
-                            reason: 'guarantee_failed',
-                            guaranteeReason: guaranteeCheck.reason,
-                            ...guaranteeCheck.details
-                        }
-                    };
+                // Format message based on reason
+                let message;
+                if (guaranteeCheck.reason === 'NO_GUARANTEE') {
+                    message = `❌ Order ${orderId}: This is not possible to refill. This is a no-refill, no-support service.`;
+                } else if (guaranteeCheck.reason === 'EXPIRED') {
+                    message = `❌ Order ${orderId}: Refill period has expired.`;
+                } else {
+                    message = guaranteeService.formatGuaranteeMessage(guaranteeCheck, order);
                 }
 
-                console.log(`[CommandHandler] Guarantee check PASSED for order ${orderId}: ${guaranteeCheck.reason}`);
-            } catch (guaranteeError) {
-                // Log but don't fail the command if guarantee service has issues
-                console.error('[CommandHandler] Guarantee validation error:', guaranteeError.message);
+                return {
+                    success: false,
+                    message,
+                    details: {
+                        reason: 'guarantee_failed',
+                        guaranteeReason: guaranteeCheck.reason,
+                        ...guaranteeCheck.details
+                    }
+                };
             }
+
+            console.log(`[CommandHandler] Guarantee check PASSED for order ${orderId}: ${guaranteeCheck.reason}`);
+        } catch (guaranteeError) {
+            // Log but don't fail the command if guarantee service has issues
+            console.error('[CommandHandler] Guarantee validation error:', guaranteeError.message);
         }
 
         try {
