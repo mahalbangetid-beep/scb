@@ -726,10 +726,15 @@ Remains: {remains}
             // Simple variable replacement
             message = template
                 .replace(/{externalId}/gi, displayOrderId)
+                .replace(/{order_id}/gi, displayOrderId)
                 .replace(/{orderId}/gi, displayOrderId)
+                .replace(/{order_ids}/gi, displayOrderId)
                 .replace(/{command}/gi, command.toLowerCase())
                 .replace(/{providerName}/gi, order.providerName || 'N/A')
-                .replace(/{providerAlias}/gi, config.alias || config.providerName || 'N/A');
+                .replace(/{providerAlias}/gi, config.alias || config.providerName || 'N/A')
+                .replace(/{service}/gi, order.serviceName || 'N/A')
+                .replace(/{link}/gi, order.link || '')
+                .replace(/{quantity}/gi, order.quantity || '');
         } else {
             // Default simple format: "orderId command"
             const cmdMap = { 'REFILL': 'refill', 'CANCEL': 'cancel', 'SPEED_UP': 'speed up', 'NEW_ORDER': 'new', 'RE_REQUEST': 'refill' };

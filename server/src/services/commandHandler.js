@@ -965,7 +965,16 @@ class CommandHandlerService {
      */
     async handleCancel(order, orderId, senderNumber, userSettings, deviceId, skipIndividualForward = false) {
         // Check action mode
-        const actionMode = userSettings?.cancelActionMode || 'forward';
+        let actionMode = userSettings?.cancelActionMode || 'forward';
+
+        // CRITICAL: For manual services (no real provider), NEVER auto-cancel via API
+        // Only forward to support for manual review
+        const noProviderValues = ['n/a', '0', 'none', 'manual', ''];
+        const isManualService = !order.providerName || noProviderValues.includes((order.providerName || '').toLowerCase());
+        if (isManualService && (actionMode === 'auto' || actionMode === 'both')) {
+            console.log(`[CommandHandler] Manual service detected (provider=${order.providerName}) — forcing 'forward' mode instead of '${actionMode}'`);
+            actionMode = 'forward';
+        }
 
         if (actionMode === 'disabled') {
             return {
@@ -2088,7 +2097,11 @@ class CommandHandlerService {
                             // Build batch message
                             // Use providerOrderId if available, fallback to panelOrderId (for manual services)
                             const batchOrderIds = providerData.orders
-                                .map(o => o.providerOrderId || o.panelOrderId)
+                                .map(o => {
+                                    // providerOrderId "0" means not assigned, use panelOrderId
+                                    const poi = o.providerOrderId && o.providerOrderId !== '0' ? o.providerOrderId : null;
+                                    return poi || o.panelOrderId;
+                                })
                                 .filter(id => id)
                                 .join(',');
 
