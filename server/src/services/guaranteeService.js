@@ -215,6 +215,23 @@ class GuaranteeService {
             // canRefill=true: fall through to expiry check below (don't skip it)
         }
 
+        // ==================== EXPLICIT NO-REFILL DETECTION ====================
+        // If service name explicitly says "No Refill" / "No Guarantee", ALWAYS deny
+        // This is different from "no guarantee keyword found" (which uses noGuaranteeAction)
+        const svcName = order.serviceName || '';
+        if (/\bno\s*(refill|guarantee|warranty|replacement)\b/i.test(svcName) ||
+            /\bnon[- ]?refill(able)?\b/i.test(svcName) ||
+            /\bwithout\s*(refill|guarantee)\b/i.test(svcName)) {
+            return {
+                valid: false,
+                reason: 'NO_GUARANTEE',
+                details: {
+                    message: `❌ Refill not available. This service explicitly states no refill/guarantee.`,
+                    source: 'explicit_no_refill'
+                }
+            };
+        }
+
         // ==================== METHOD 2 Enhanced: Rules-Based Detection ====================
         // Check user's custom keyword rules before falling back to pattern matching
         try {
