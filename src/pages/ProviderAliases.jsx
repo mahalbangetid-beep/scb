@@ -38,6 +38,9 @@ export default function ProviderAliases() {
     const [manualProviderAlias, setManualProviderAlias] = useState('')
     const [addingManual, setAddingManual] = useState(false)
 
+    // JID test result state: { field: 'whatsappGroupJid'|'whatsappNumber', status: 'testing'|'success'|'failed', message: '' }
+    const [jidTestResult, setJidTestResult] = useState(null)
+
     // Form state for inline setup
     const [formData, setFormData] = useState({
         providerName: '',
@@ -344,6 +347,47 @@ export default function ProviderAliases() {
             setError(`Bot test failed: ${err.error?.message || err.message || 'Bot may not be in the group'}`)
         } finally {
             setTestingProvider(null)
+        }
+    }
+
+    // Test JID inline - sends test message and shows result below input
+    const handleTestJid = async (jidValue, fieldName) => {
+        if (!jidValue || !jidValue.trim()) {
+            setJidTestResult({ field: fieldName, status: 'failed', message: 'Please enter a JID or number first' })
+            return
+        }
+        setJidTestResult({ field: fieldName, status: 'testing', message: 'Sending test message...' })
+        try {
+            let targetDevice = null
+            const tryDeviceId = formData.deviceId
+            if (tryDeviceId) {
+                targetDevice = devices.find(d => d.id === tryDeviceId)
+            }
+            if (!targetDevice) {
+                targetDevice = devices.find(d => d.status === 'connected')
+            }
+            if (!targetDevice) {
+                setJidTestResult({ field: fieldName, status: 'failed', message: 'No connected WhatsApp device. Connect a device first.' })
+                return
+            }
+
+            // Format the JID
+            let to = jidValue.trim()
+            if (fieldName === 'whatsappGroupJid' && !to.includes('@')) {
+                to = `${to}@g.us`
+            } else if (fieldName === 'whatsappNumber' && !to.includes('@')) {
+                to = `${to.replace(/\D/g, '')}@s.whatsapp.net`
+            }
+
+            await api.post('/messages/send', {
+                deviceId: targetDevice.id,
+                to: to,
+                message: `🧪 *Test Message*\n\nThis is a test to verify forwarding destination.\nProvider: ${formData.providerName || 'N/A'}\nTime: ${new Date().toLocaleString()}`
+            })
+            setJidTestResult({ field: fieldName, status: 'success', message: '✅ Test message sent successfully! The destination is correctly linked.' })
+        } catch (err) {
+            const errMsg = err.error?.message || err.message || 'Failed to send'
+            setJidTestResult({ field: fieldName, status: 'failed', message: `❌ Test failed: ${errMsg}. Your WhatsApp number may not be a member of this group.` })
         }
     }
 
@@ -956,22 +1000,78 @@ export default function ProviderAliases() {
                                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--spacing-md)' }}>
                                         <div className="form-group">
                                             <label className="form-label">Group JID</label>
-                                            <input
-                                                className="form-input"
-                                                placeholder="120363xxx@g.us"
-                                                value={formData.whatsappGroupJid}
-                                                onChange={e => setFormData(p => ({ ...p, whatsappGroupJid: e.target.value }))}
-                                            />
+                                            <div style={{ display: 'flex', gap: '6px', alignItems: 'flex-start' }}>
+                                                <input
+                                                    className="form-input"
+                                                    style={{ flex: 1 }}
+                                                    placeholder="120363xxx@g.us"
+                                                    value={formData.whatsappGroupJid}
+                                                    onChange={e => { setFormData(p => ({ ...p, whatsappGroupJid: e.target.value })); setJidTestResult(null) }}
+                                                />
+                                                <button
+                                                    type="button"
+                                                    className="btn btn-secondary btn-sm"
+                                                    style={{ whiteSpace: 'nowrap', height: '38px', minWidth: '90px' }}
+                                                    onClick={() => handleTestJid(formData.whatsappGroupJid, 'whatsappGroupJid')}
+                                                    disabled={!formData.whatsappGroupJid || (jidTestResult?.field === 'whatsappGroupJid' && jidTestResult?.status === 'testing')}
+                                                >
+                                                    {jidTestResult?.field === 'whatsappGroupJid' && jidTestResult?.status === 'testing'
+                                                        ? <Loader2 size={14} className="animate-spin" />
+                                                        : <TestTube size={14} />}
+                                                    Test
+                                                </button>
+                                            </div>
+                                            {jidTestResult?.field === 'whatsappGroupJid' && jidTestResult.status !== 'testing' && (
+                                                <div style={{
+                                                    fontSize: '0.8rem',
+                                                    marginTop: '4px',
+                                                    padding: '6px 10px',
+                                                    borderRadius: '6px',
+                                                    background: jidTestResult.status === 'success' ? 'rgba(34, 197, 94, 0.1)' : 'rgba(239, 68, 68, 0.1)',
+                                                    color: jidTestResult.status === 'success' ? 'var(--success)' : 'var(--error)',
+                                                    border: `1px solid ${jidTestResult.status === 'success' ? 'rgba(34, 197, 94, 0.3)' : 'rgba(239, 68, 68, 0.3)'}`
+                                                }}>
+                                                    {jidTestResult.message}
+                                                </div>
+                                            )}
                                             <div className="form-hint">Send <code>.groupid</code> in group to get this</div>
                                         </div>
                                         <div className="form-group">
                                             <label className="form-label">WA Number (Direct)</label>
-                                            <input
-                                                className="form-input"
-                                                placeholder="628xxx"
-                                                value={formData.whatsappNumber}
-                                                onChange={e => setFormData(p => ({ ...p, whatsappNumber: e.target.value }))}
-                                            />
+                                            <div style={{ display: 'flex', gap: '6px', alignItems: 'flex-start' }}>
+                                                <input
+                                                    className="form-input"
+                                                    style={{ flex: 1 }}
+                                                    placeholder="628xxx"
+                                                    value={formData.whatsappNumber}
+                                                    onChange={e => { setFormData(p => ({ ...p, whatsappNumber: e.target.value })); setJidTestResult(null) }}
+                                                />
+                                                <button
+                                                    type="button"
+                                                    className="btn btn-secondary btn-sm"
+                                                    style={{ whiteSpace: 'nowrap', height: '38px', minWidth: '90px' }}
+                                                    onClick={() => handleTestJid(formData.whatsappNumber, 'whatsappNumber')}
+                                                    disabled={!formData.whatsappNumber || (jidTestResult?.field === 'whatsappNumber' && jidTestResult?.status === 'testing')}
+                                                >
+                                                    {jidTestResult?.field === 'whatsappNumber' && jidTestResult?.status === 'testing'
+                                                        ? <Loader2 size={14} className="animate-spin" />
+                                                        : <TestTube size={14} />}
+                                                    Test
+                                                </button>
+                                            </div>
+                                            {jidTestResult?.field === 'whatsappNumber' && jidTestResult.status !== 'testing' && (
+                                                <div style={{
+                                                    fontSize: '0.8rem',
+                                                    marginTop: '4px',
+                                                    padding: '6px 10px',
+                                                    borderRadius: '6px',
+                                                    background: jidTestResult.status === 'success' ? 'rgba(34, 197, 94, 0.1)' : 'rgba(239, 68, 68, 0.1)',
+                                                    color: jidTestResult.status === 'success' ? 'var(--success)' : 'var(--error)',
+                                                    border: `1px solid ${jidTestResult.status === 'success' ? 'rgba(34, 197, 94, 0.3)' : 'rgba(239, 68, 68, 0.3)'}`
+                                                }}>
+                                                    {jidTestResult.message}
+                                                </div>
+                                            )}
                                             <div className="form-hint">Multiple numbers: separate with comma</div>
                                         </div>
                                     </div>
