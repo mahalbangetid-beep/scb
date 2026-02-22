@@ -38,9 +38,11 @@ export default function ManualServiceDestination({ panelId }) {
     const fetchConfig = async () => {
         setLoading(true)
         try {
+            // NOTE: api interceptor already unwraps response.data
+            // So res = { success, data, message } — NOT axios response object
             const res = await api.get(`/provider-config/manual-destination?panelId=${panelId}`)
-            if (res.data?.data) {
-                const cfg = res.data.data
+            const cfg = res.data  // res.data = the config object (NOT res.data.data!)
+            if (cfg) {
                 setSavedConfig(cfg)
                 setForm({
                     deviceId: cfg.deviceId || '',
@@ -57,7 +59,9 @@ export default function ManualServiceDestination({ panelId }) {
                     errorTemplate: cfg.errorTemplate || ''
                 })
             }
-        } catch (e) { /* No config yet */ }
+        } catch (e) {
+            console.error('[ManualDest] fetchConfig error:', e.message || e)
+        }
         setLoading(false)
     }
 
@@ -65,10 +69,11 @@ export default function ManualServiceDestination({ panelId }) {
         setSaving(true)
         setError(null)
         try {
+            // NOTE: api interceptor unwraps response.data
             const res = await api.post(`/provider-config/manual-destination`, { panelId, ...form })
-            setSavedConfig(res.data?.data || { ...form })
+            setSavedConfig(res.data || { ...form })  // res.data = config (not res.data.data)
             setSuccess('✅ Destination saved successfully!')
-        } catch (e) { setError(e.response?.data?.message || 'Failed to save') }
+        } catch (e) { setError(e.message || 'Failed to save') }
         setSaving(false)
     }
 
