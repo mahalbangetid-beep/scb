@@ -211,10 +211,11 @@ class GroupForwardingService {
         let providerConfigFallback = null;
         if (!providerGroup) {
             try {
-                // For manual services (no provider), also try 'MANUAL' and 'default' configs
-                const searchNames = providerName
-                    ? [providerName]
-                    : ['MANUAL', 'manual', 'default', 'Default'];
+                // Treat "N/A", "0", empty as no real provider (manual service)
+                const isNoProvider = !providerName || ['n/a', '0', 'none', 'manual', ''].includes(providerName.toLowerCase());
+                const searchNames = isNoProvider
+                    ? ['MANUAL', 'manual', 'default', 'Default']
+                    : [providerName, 'MANUAL', 'default'];
 
                 providerConfigFallback = await prisma.providerConfig.findFirst({
                     where: {

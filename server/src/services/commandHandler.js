@@ -2013,7 +2013,8 @@ class CommandHandlerService {
 
         for (const order of successfulOrders) {
             // Detect manual mode: either mode='Manual' from panel or no provider name
-            const isManual = order.order?.mode?.toLowerCase() === 'manual' || !order.providerName;
+            const noProviderValues = ['n/a', '0', 'none', 'manual', ''];
+            const isManual = order.order?.mode?.toLowerCase() === 'manual' || !order.providerName || noProviderValues.includes((order.providerName || '').toLowerCase());
             const providerKey = isManual ? 'MANUAL' : (order.providerName || 'default');
             if (!ordersByProvider.has(providerKey)) {
                 ordersByProvider.set(providerKey, {
