@@ -6,6 +6,9 @@ import {
     ChevronRight, Settings2, Layers, Zap, Shield, Plus, UserPlus
 } from 'lucide-react'
 import api from '../services/api'
+import ManualServices from '../components/ManualServices'
+import FailedOrders from '../components/FailedOrders'
+import ServiceForwardRules from '../components/ServiceForwardRules'
 
 export default function ProviderAliases() {
     // Panel & provider state
@@ -40,6 +43,7 @@ export default function ProviderAliases() {
 
     // JID test result state: { field: 'whatsappGroupJid'|'whatsappNumber', status: 'testing'|'success'|'failed', message: '' }
     const [jidTestResult, setJidTestResult] = useState(null)
+    const [activeTab, setActiveTab] = useState('providers')
 
     // Form state for inline setup
     const [formData, setFormData] = useState({
@@ -525,8 +529,55 @@ export default function ProviderAliases() {
                 </div>
             )}
 
-            {/* Provider List */}
+            {/* Tab Navigation */}
             {selectedPanel && (
+                <div style={{ display: 'flex', gap: 0, marginBottom: 'var(--spacing-lg)', borderBottom: '2px solid var(--border-color)', overflow: 'auto' }}>
+                    {[
+                        { id: 'providers', label: 'Provider Aliases' },
+                        { id: 'manual-services', label: 'Manual Services' },
+                        { id: 'failed-orders', label: 'Failed Orders' },
+                        { id: 'forward-rules', label: 'Service ID Forward' },
+                    ].map(tab => (
+                        <button
+                            key={tab.id}
+                            onClick={() => setActiveTab(tab.id)}
+                            style={{
+                                padding: '10px 20px', border: 'none', cursor: 'pointer', fontSize: 14, fontWeight: 500,
+                                background: activeTab === tab.id ? 'var(--color-primary)' : 'transparent',
+                                color: activeTab === tab.id ? '#fff' : 'var(--text-secondary)',
+                                borderRadius: '8px 8px 0 0',
+                                transition: 'all 0.2s'
+                            }}
+                        >
+                            {tab.label}
+                        </button>
+                    ))}
+                </div>
+            )}
+
+            {/* Tab: Manual Services */}
+            {selectedPanel && activeTab === 'manual-services' && (
+                <div className="card" style={{ padding: 'var(--spacing-lg)' }}>
+                    <ManualServices panelId={selectedPanel} />
+                </div>
+            )}
+
+            {/* Tab: Failed Orders */}
+            {selectedPanel && activeTab === 'failed-orders' && (
+                <div className="card" style={{ padding: 'var(--spacing-lg)' }}>
+                    <FailedOrders panelId={selectedPanel} />
+                </div>
+            )}
+
+            {/* Tab: Service Forward Rules */}
+            {selectedPanel && activeTab === 'forward-rules' && (
+                <div className="card" style={{ padding: 'var(--spacing-lg)' }}>
+                    <ServiceForwardRules panelId={selectedPanel} />
+                </div>
+            )}
+
+            {/* Tab: Provider Aliases (original content) */}
+            {selectedPanel && activeTab === 'providers' && (
                 <>
                     {/* Search + Add Manual */}
                     <div className="filter-bar" style={{ display: 'flex', gap: 'var(--spacing-sm)', marginBottom: 'var(--spacing-lg)', alignItems: 'center' }}>
