@@ -50,6 +50,32 @@ class UserMappingService {
 
             // Normalize phone numbers
             whatsappNumbers = whatsappNumbers.map(n => this.normalizePhone(n));
+
+            // Cross-panel duplicate check: ensure WA number isn't already linked to a DIFFERENT panel
+            for (const phone of whatsappNumbers) {
+                const existingMapping = await prisma.userPanelMapping.findFirst({
+                    where: {
+                        userId,
+                        whatsappNumbers: { contains: phone }
+                    }
+                });
+                if (existingMapping) {
+                    const parsed = this.parseMapping(existingMapping);
+                    if (parsed.whatsappNumbers.includes(phone)) {
+                        // Allow if same panel, block if different panel
+                        const existingPanelId = existingMapping.panelId;
+                        const newPanelId = data.panelId || null;
+                        if (existingPanelId !== newPanelId || existingMapping.panelUsername !== data.panelUsername) {
+                            let panelName = existingMapping.panelUsername;
+                            if (existingPanelId) {
+                                const panel = await prisma.smmPanel.findUnique({ where: { id: existingPanelId }, select: { alias: true, name: true } });
+                                if (panel) panelName = `${existingMapping.panelUsername} (${panel.alias || panel.name})`;
+                            }
+                            throw new Error(`WhatsApp number ${phone} is already registered under mapping "${panelName}". A number cannot be linked to multiple panels.`);
+                        }
+                    }
+                }
+            }
         }
 
         // Parse group IDs
@@ -244,6 +270,30 @@ class UserMappingService {
             const numbers = Array.isArray(data.whatsappNumbers)
                 ? data.whatsappNumbers.map(n => this.normalizePhone(n))
                 : [this.normalizePhone(data.whatsappNumbers)];
+
+            // Cross-panel duplicate check for new numbers
+            for (const phone of numbers) {
+                if (existing.whatsappNumbers.includes(phone)) continue; // Already in this mapping, skip
+                const dup = await prisma.userPanelMapping.findFirst({
+                    where: {
+                        userId,
+                        whatsappNumbers: { contains: phone },
+                        NOT: { id }
+                    }
+                });
+                if (dup) {
+                    const parsed = this.parseMapping(dup);
+                    if (parsed.whatsappNumbers.includes(phone)) {
+                        let panelName = dup.panelUsername;
+                        if (dup.panelId) {
+                            const panel = await prisma.smmPanel.findUnique({ where: { id: dup.panelId }, select: { alias: true, name: true } });
+                            if (panel) panelName = `${dup.panelUsername} (${panel.alias || panel.name})`;
+                        }
+                        throw new Error(`WhatsApp number ${phone} is already registered under mapping "${panelName}". A number cannot be linked to multiple panels.`);
+                    }
+                }
+            }
+
             updateData.whatsappNumbers = JSON.stringify(numbers);
         }
 
@@ -271,6 +321,26 @@ class UserMappingService {
 
         if (mapping.whatsappNumbers.includes(normalizedPhone)) {
             throw new Error('Phone number already exists in this mapping');
+        }
+
+        // Cross-panel duplicate check
+        const existingMapping = await prisma.userPanelMapping.findFirst({
+            where: {
+                userId,
+                whatsappNumbers: { contains: normalizedPhone },
+                NOT: { id } // Exclude current mapping
+            }
+        });
+        if (existingMapping) {
+            const parsed = this.parseMapping(existingMapping);
+            if (parsed.whatsappNumbers.includes(normalizedPhone)) {
+                let panelName = existingMapping.panelUsername;
+                if (existingMapping.panelId) {
+                    const panel = await prisma.smmPanel.findUnique({ where: { id: existingMapping.panelId }, select: { alias: true, name: true } });
+                    if (panel) panelName = `${existingMapping.panelUsername} (${panel.alias || panel.name})`;
+                }
+                throw new Error(`WhatsApp number ${normalizedPhone} is already registered under mapping "${panelName}". A number cannot be linked to multiple panels.`);
+            }
         }
 
         const numbers = [...mapping.whatsappNumbers, normalizedPhone];
