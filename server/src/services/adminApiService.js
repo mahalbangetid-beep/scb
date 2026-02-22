@@ -208,9 +208,9 @@ class AdminApiService {
                         customerUsername: order.username,
                         customerEmail: null,
 
-                        // Available actions
-                        canRefill: true,
-                        canCancel: true,
+                        // Available actions — null means unknown (will trigger guarantee check)
+                        canRefill: null,
+                        canCancel: null,
 
                         createdAt: order.date ? new Date(order.date) : null,
                         _raw: order
@@ -1179,9 +1179,9 @@ class AdminApiService {
                         (orderData.provider?.name || orderData.provider_name || null),
                     providerOrderId: orderData.external_id || orderData.provider_order_id || null,
                     providerStatus: orderData.provider_status || orderStatus,
-                    // V1 panels don't always return actions — default to true (allow attempt)
-                    canRefill: orderData.actions?.refill ?? orderData.actions?.resend ?? true,
-                    canCancel: orderData.actions?.cancel_and_refund ?? orderData.actions?.request_cancel ?? true
+                    // V1 panels don't always return actions — null means unknown (triggers guarantee check)
+                    canRefill: orderData.actions?.refill ?? orderData.actions?.resend ?? null,
+                    canCancel: orderData.actions?.cancel_and_refund ?? orderData.actions?.request_cancel ?? null
                 };
 
             } else {
