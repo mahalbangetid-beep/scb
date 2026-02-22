@@ -17,6 +17,8 @@ export default function ManualServiceDestination({ panelId }) {
         refillTemplate: '',
         cancelTemplate: '',
         speedupTemplate: '',
+        errorDeviceId: '',
+        errorWhatsappNumber: '',
         errorGroupJid: '',
         errorChatId: '',
         errorTemplate: ''
@@ -48,6 +50,8 @@ export default function ManualServiceDestination({ panelId }) {
                     refillTemplate: cfg.refillTemplate || '',
                     cancelTemplate: cfg.cancelTemplate || '',
                     speedupTemplate: cfg.speedupTemplate || '',
+                    errorDeviceId: cfg.errorDeviceId || '',
+                    errorWhatsappNumber: cfg.errorWhatsappNumber || '',
                     errorGroupJid: cfg.errorGroupJid || '',
                     errorChatId: cfg.errorChatId || '',
                     errorTemplate: cfg.errorTemplate || ''
@@ -72,13 +76,16 @@ export default function ManualServiceDestination({ panelId }) {
     const savedList = []
     if (savedConfig) {
         const devName = devices.find(d => d.id === savedConfig.deviceId)?.name
-        if (devName) savedList.push({ type: 'Device', platform: 'WhatsApp', value: devName })
+        if (devName) savedList.push({ type: 'Device', platform: 'Command Device', value: devName })
         if (savedConfig.whatsappNumber) savedList.push({ type: 'Command', platform: 'WhatsApp DM', value: savedConfig.whatsappNumber })
         if (savedConfig.whatsappGroupJid) savedList.push({ type: 'Command', platform: 'WhatsApp Group', value: savedConfig.whatsappGroupJid })
         if (savedConfig.telegramChatId) savedList.push({ type: 'Command', platform: 'Telegram', value: savedConfig.telegramChatId })
         if (savedConfig.refillTemplate) savedList.push({ type: 'Template', platform: 'Refill', value: savedConfig.refillTemplate.substring(0, 50) + (savedConfig.refillTemplate.length > 50 ? '...' : '') })
         if (savedConfig.cancelTemplate) savedList.push({ type: 'Template', platform: 'Cancel', value: savedConfig.cancelTemplate.substring(0, 50) + (savedConfig.cancelTemplate.length > 50 ? '...' : '') })
         if (savedConfig.speedupTemplate) savedList.push({ type: 'Template', platform: 'Speed Up', value: savedConfig.speedupTemplate.substring(0, 50) + (savedConfig.speedupTemplate.length > 50 ? '...' : '') })
+        const errDevName = devices.find(d => d.id === savedConfig.errorDeviceId)?.name
+        if (errDevName) savedList.push({ type: 'Error', platform: 'Error Device', value: errDevName })
+        if (savedConfig.errorWhatsappNumber) savedList.push({ type: 'Error', platform: 'WhatsApp DM', value: savedConfig.errorWhatsappNumber })
         if (savedConfig.errorGroupJid) savedList.push({ type: 'Error', platform: 'WhatsApp Group', value: savedConfig.errorGroupJid })
         if (savedConfig.errorChatId) savedList.push({ type: 'Error', platform: 'Telegram', value: savedConfig.errorChatId })
         if (savedConfig.errorTemplate) savedList.push({ type: 'Error', platform: 'Template', value: savedConfig.errorTemplate.substring(0, 50) + (savedConfig.errorTemplate.length > 50 ? '...' : '') })
@@ -111,20 +118,17 @@ export default function ManualServiceDestination({ panelId }) {
                         <div style={{ marginBottom: 'var(--spacing-md)', padding: 'var(--spacing-sm)', background: 'var(--bg-secondary)', borderRadius: 'var(--radius-md)' }}>
                             <h4 style={{ margin: '0 0 var(--spacing-sm)', color: 'var(--text-primary)', fontSize: 14 }}>
                                 <Smartphone size={14} style={{ marginRight: 6, verticalAlign: 'middle' }} />
-                                WhatsApp Connected Device
+                                WhatsApp Device (Command Forwarding)
                             </h4>
                             <select className="form-select" value={form.deviceId} onChange={e => setForm({ ...form, deviceId: e.target.value })}>
-                                <option value="">Select Device for Forwarding</option>
+                                <option value="">Select Device</option>
                                 {devices.map(d => (
-                                    <option key={d.id} value={d.id}>
-                                        {d.name} ({d.status})
-                                    </option>
+                                    <option key={d.id} value={d.id}>{d.name} ({d.status})</option>
                                 ))}
                             </select>
-                            <span style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>Required — select which device sends forwarded messages</span>
                         </div>
 
-                        {/* Command Forwarding */}
+                        {/* Command Destinations */}
                         <div style={{ marginBottom: 'var(--spacing-md)' }}>
                             <h4 style={{ margin: '0 0 var(--spacing-sm)', color: 'var(--text-primary)', fontSize: 14 }}>
                                 <MessageCircle size={14} style={{ marginRight: 6, verticalAlign: 'middle' }} />
@@ -152,7 +156,7 @@ export default function ManualServiceDestination({ panelId }) {
                                 Command Text Templates
                             </h4>
                             <p style={{ fontSize: 11, color: 'var(--text-tertiary)', margin: '0 0 var(--spacing-sm)' }}>
-                                Variables: {'{order_id}'}, {'{order_ids}'}, {'{service}'}, {'{link}'}, {'{quantity}'}
+                                Variables: {'{order_id}'}, {'{service}'}, {'{link}'}, {'{quantity}'}
                             </p>
                             <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-sm)' }}>
                                 <div>
@@ -172,19 +176,36 @@ export default function ManualServiceDestination({ panelId }) {
 
                         <hr style={{ border: 'none', borderTop: '1px solid var(--border-color)', margin: 'var(--spacing-md) 0' }} />
 
-                        {/* Error Forwarding */}
+                        {/* ==================== ERROR SECTION ==================== */}
                         <div style={{ marginBottom: 'var(--spacing-md)' }}>
                             <h4 style={{ margin: '0 0 var(--spacing-sm)', color: 'var(--color-error)', fontSize: 14 }}>
                                 <Phone size={14} style={{ marginRight: 6, verticalAlign: 'middle' }} />
                                 Error / Failed Order Forwarding
                             </h4>
+
+                            {/* Error Device */}
+                            <div style={{ marginBottom: 'var(--spacing-sm)', padding: 'var(--spacing-sm)', background: 'rgba(239,68,68,0.05)', borderRadius: 'var(--radius-md)', border: '1px solid rgba(239,68,68,0.15)' }}>
+                                <label className="form-label">WhatsApp Device (Error Forwarding)</label>
+                                <select className="form-select" value={form.errorDeviceId} onChange={e => setForm({ ...form, errorDeviceId: e.target.value })}>
+                                    <option value="">Select Device for Error Messages</option>
+                                    {devices.map(d => (
+                                        <option key={d.id} value={d.id}>{d.name} ({d.status})</option>
+                                    ))}
+                                </select>
+                            </div>
+
                             <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-sm)' }}>
                                 <div>
-                                    <label className="form-label">Error WA Group JID</label>
+                                    <label className="form-label">WhatsApp DM Number</label>
+                                    <input className="form-input" placeholder="e.g. 628123456789" value={form.errorWhatsappNumber} onChange={e => setForm({ ...form, errorWhatsappNumber: e.target.value })} />
+                                    <span style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>Receive error notifications directly via WhatsApp DM</span>
+                                </div>
+                                <div>
+                                    <label className="form-label">WhatsApp Group JID</label>
                                     <input className="form-input" placeholder="e.g. 120363xxx@g.us" value={form.errorGroupJid} onChange={e => setForm({ ...form, errorGroupJid: e.target.value })} />
                                 </div>
                                 <div>
-                                    <label className="form-label">Error Telegram Chat ID</label>
+                                    <label className="form-label">Telegram Chat ID</label>
                                     <input className="form-input" placeholder="e.g. -1001234567890" value={form.errorChatId} onChange={e => setForm({ ...form, errorChatId: e.target.value })} />
                                 </div>
                                 <div>

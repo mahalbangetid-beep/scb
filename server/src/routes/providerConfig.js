@@ -86,7 +86,7 @@ router.post('/manual-destination', authenticate, async (req, res, next) => {
         const {
             deviceId, whatsappNumber, whatsappGroupJid, telegramChatId,
             refillTemplate, cancelTemplate, speedupTemplate,
-            errorGroupJid, errorChatId, errorTemplate
+            errorGroupJid, errorWhatsappNumber, errorChatId, errorDeviceId, errorTemplate
         } = req.body;
 
         const config = await prisma.providerConfig.upsert({
@@ -102,7 +102,9 @@ router.post('/manual-destination', authenticate, async (req, res, next) => {
                 cancelTemplate: cancelTemplate || null,
                 speedupTemplate: speedupTemplate || null,
                 errorGroupJid: errorGroupJid || null,
+                errorWhatsappNumber: errorWhatsappNumber || null,
                 errorChatId: errorChatId || null,
+                errorDeviceId: errorDeviceId || null,
                 errorTemplate: errorTemplate || null,
                 isActive: true
             },
@@ -118,7 +120,9 @@ router.post('/manual-destination', authenticate, async (req, res, next) => {
                 cancelTemplate: cancelTemplate || null,
                 speedupTemplate: speedupTemplate || null,
                 errorGroupJid: errorGroupJid || null,
+                errorWhatsappNumber: errorWhatsappNumber || null,
                 errorChatId: errorChatId || null,
+                errorDeviceId: errorDeviceId || null,
                 errorTemplate: errorTemplate || null,
                 errorNotifyEnabled: true,
                 isActive: true

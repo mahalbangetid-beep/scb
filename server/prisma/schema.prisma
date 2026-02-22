@@ -1783,9 +1783,11 @@ model ProviderConfig {
   telegramBotToken String? // Optional: use different bot for this provider
 
   // Error handling
-  errorGroupJid      String? // WhatsApp group for error notifications
-  errorChatId        String? // Telegram chat for error notifications
-  errorNotifyEnabled Boolean @default(true)
+  errorGroupJid        String? // WhatsApp group for error notifications
+  errorWhatsappNumber  String? // WhatsApp DM number for error notifications
+  errorChatId          String? // Telegram chat for error notifications
+  errorDeviceId        String? // Device for sending error forward messages
+  errorNotifyEnabled   Boolean @default(true)
 
   // Message templates (with variables support)
   newOrderTemplate String? @db.Text // Template for new order messages
