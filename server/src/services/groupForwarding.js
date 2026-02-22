@@ -205,7 +205,28 @@ class GroupForwardingService {
             }
         }
 
-        if (!providerGroup) {
+        // ==================== 6. PROVIDER CONFIG FALLBACK (Provider Aliases page) ====================
+        // If no ProviderGroup found, check ProviderConfig table (set via Provider Aliases page)
+        let providerConfigFallback = null;
+        if (!providerGroup && providerName) {
+            try {
+                providerConfigFallback = await prisma.providerConfig.findFirst({
+                    where: {
+                        userId: userId,
+                        providerName: providerName,
+                        isActive: true
+                    }
+                });
+
+                if (providerConfigFallback) {
+                    logger.info(`📋 Found ProviderConfig (Provider Aliases) for "${providerName}"`);
+                }
+            } catch (configErr) {
+                logger.warn(`Failed to check ProviderConfig fallback:`, configErr.message);
+            }
+        }
+
+        if (!providerGroup && !providerConfigFallback) {
             const panelName = order.panel?.alias || order.panel?.name || 'Unknown';
             logger.warn(`❌ No provider group found for panel "${panelName}"`);
             return {
@@ -214,6 +235,12 @@ class GroupForwardingService {
                 message: `No provider group configured for panel "${panelName}". Please set up a provider group in SMM Integration → Provider Groups.`,
                 panelName
             };
+        }
+
+        // ==================== PROVIDER CONFIG PATH ====================
+        // If using ProviderConfig (from Provider Aliases page), forward directly
+        if (!providerGroup && providerConfigFallback) {
+            return this._forwardViaProviderConfig(providerConfigFallback, command, order, providerOrderId, userId, deviceId);
         }
 
         // Format the message with PROVIDER Order ID (if available)
@@ -230,9 +257,24 @@ class GroupForwardingService {
         }
 
         try {
-            // Note: ProviderGroup doesn't have deviceId field - must use param
-            // TODO: Consider adding deviceId to ProviderGroup schema if per-group device is needed
-            const sendDeviceId = deviceId;
+            // Resolve deviceId: param > ProviderGroup.deviceId > first connected device
+            let sendDeviceId = deviceId || providerGroup.deviceId;
+
+            // Auto-resolve from first connected device if still missing
+            if (!sendDeviceId) {
+                try {
+                    const connectedDevice = await prisma.device.findFirst({
+                        where: { userId: userId, status: 'connected' },
+                        select: { id: true }
+                    });
+                    if (connectedDevice) {
+                        sendDeviceId = connectedDevice.id;
+                        logger.info(`🔌 Auto-resolved deviceId from connected device: ${sendDeviceId}`);
+                    }
+                } catch (devErr) {
+                    logger.warn(`Failed to auto-resolve device:`, devErr.message);
+                }
+            }
 
             if (!sendDeviceId) {
                 return {
@@ -589,6 +631,171 @@ Remains: {remains}
         await this.whatsappService.sendMessage(deviceId, jid, message);
 
         return { success: true, targetNumber };
+    }
+
+    /**
+     * Forward via ProviderConfig (Provider Aliases page) as fallback
+     * This handles destinations set on the Provider Aliases page (ProviderConfig table)
+     * when no ProviderGroup is configured for the provider.
+     */
+    async _forwardViaProviderConfig(config, command, order, providerOrderId, userId, deviceId) {
+        if (!this.whatsappService) {
+            return {
+                success: false,
+                reason: 'service_unavailable',
+                message: 'WhatsApp service not available'
+            };
+        }
+
+        // Check if this command type should be forwarded
+        const commandUpper = command.toUpperCase();
+        if (commandUpper === 'REFILL' && !config.forwardRefill) {
+            return { success: false, reason: 'disabled', message: 'Refill forwarding disabled for this provider' };
+        }
+        if (commandUpper === 'CANCEL' && !config.forwardCancel) {
+            return { success: false, reason: 'disabled', message: 'Cancel forwarding disabled for this provider' };
+        }
+        if (commandUpper === 'SPEED_UP' && !config.forwardSpeedup) {
+            return { success: false, reason: 'disabled', message: 'Speedup forwarding disabled for this provider' };
+        }
+
+        // Get the target destination from ProviderConfig
+        const targetGroupJid = config.whatsappGroupJid;
+        const targetNumber = config.whatsappNumber;
+        const targetTelegram = config.telegramChatId;
+
+        if (!targetGroupJid && !targetNumber && !targetTelegram) {
+            return {
+                success: false,
+                reason: 'no_destination',
+                message: `ProviderConfig for "${config.providerName}" has no forwarding destination set.`
+            };
+        }
+
+        // Resolve deviceId: param > config.deviceId > first connected device
+        let sendDeviceId = deviceId || config.deviceId;
+        if (!sendDeviceId) {
+            try {
+                const connectedDevice = await prisma.device.findFirst({
+                    where: { userId: userId, status: 'connected' },
+                    select: { id: true }
+                });
+                if (connectedDevice) {
+                    sendDeviceId = connectedDevice.id;
+                    logger.info(`🔌 ProviderConfig: Auto-resolved deviceId: ${sendDeviceId}`);
+                }
+            } catch (devErr) {
+                logger.warn(`Failed to auto-resolve device for ProviderConfig:`, devErr.message);
+            }
+        }
+
+        if (!sendDeviceId && (targetGroupJid || targetNumber)) {
+            return {
+                success: false,
+                reason: 'no_device',
+                message: 'No WhatsApp device available for forwarding.'
+            };
+        }
+
+        // Build message using ProviderConfig templates or simple format
+        const displayOrderId = providerOrderId || order.providerOrderId || order.externalOrderId || 'N/A';
+        let message;
+
+        // Use template from ProviderConfig if available
+        const templateMap = {
+            'REFILL': config.refillTemplate,
+            'CANCEL': config.cancelTemplate,
+            'SPEED_UP': config.speedupTemplate,
+            'NEW_ORDER': null
+        };
+        const template = templateMap[commandUpper];
+
+        if (template) {
+            // Simple variable replacement
+            message = template
+                .replace(/{externalId}/gi, displayOrderId)
+                .replace(/{orderId}/gi, displayOrderId)
+                .replace(/{command}/gi, command.toLowerCase())
+                .replace(/{providerName}/gi, order.providerName || 'N/A')
+                .replace(/{providerAlias}/gi, config.alias || config.providerName || 'N/A');
+        } else {
+            // Default simple format: "orderId command"
+            const cmdMap = { 'REFILL': 'refill', 'CANCEL': 'cancel', 'SPEED_UP': 'speed up', 'NEW_ORDER': 'new', 'RE_REQUEST': 'refill' };
+            message = `${displayOrderId} ${cmdMap[commandUpper] || command.toLowerCase()}`;
+        }
+
+        let success = false;
+        let forwardedTo = [];
+        let errors = [];
+
+        // Forward to WhatsApp Group
+        if (targetGroupJid) {
+            try {
+                const formattedJid = targetGroupJid.includes('@') ? targetGroupJid : `${targetGroupJid}@g.us`;
+                await this.whatsappService.sendMessage(sendDeviceId, formattedJid, message);
+                forwardedTo.push(`WA Group: ${targetGroupJid.substring(0, 15)}...`);
+                success = true;
+                logger.info(`✅ ProviderConfig: Forwarded ${command} to WA group for "${config.providerName}"`);
+            } catch (err) {
+                errors.push(`WA Group failed: ${err.message}`);
+                logger.error(`❌ ProviderConfig: WA Group forward failed:`, err.message);
+            }
+        }
+
+        // Forward to WhatsApp Number
+        if (targetNumber) {
+            try {
+                const numberJid = `${targetNumber.replace(/\D/g, '')}@s.whatsapp.net`;
+                await this.whatsappService.sendMessage(sendDeviceId, numberJid, message);
+                forwardedTo.push(`WA Number: ${targetNumber}`);
+                success = true;
+                logger.info(`✅ ProviderConfig: Forwarded ${command} to WA number for "${config.providerName}"`);
+            } catch (err) {
+                errors.push(`WA Number failed: ${err.message}`);
+                logger.error(`❌ ProviderConfig: WA Number forward failed:`, err.message);
+            }
+        }
+
+        // Note: Telegram forwarding would need telegram bot service, skip if not available
+        // ProviderConfig.telegramChatId is stored but forwarding to Telegram
+        // requires a Telegram bot integration which is separate from WhatsApp service
+
+        // Log the forwarding
+        try {
+            await prisma.orderCommand.updateMany({
+                where: {
+                    orderId: order.id,
+                    command: commandUpper,
+                    status: 'SUCCESS'
+                },
+                data: {
+                    forwardedTo: forwardedTo.join(', ') || null,
+                    response: JSON.stringify({
+                        forwarded: true,
+                        source: 'ProviderConfig',
+                        configId: config.id,
+                        providerName: config.providerName,
+                        providerAlias: config.alias,
+                        destinations: forwardedTo,
+                        errors: errors.length > 0 ? errors : undefined,
+                        timestamp: new Date().toISOString()
+                    })
+                }
+            });
+        } catch (logErr) {
+            logger.warn(`Failed to log ProviderConfig forwarding:`, logErr.message);
+        }
+
+        return {
+            success,
+            message: success
+                ? `Forwarded to ${forwardedTo.join(', ')} (via Provider Aliases)`
+                : `Forward failed: ${errors.join('; ')}`,
+            source: 'ProviderConfig',
+            groupName: config.alias || config.providerName,
+            forwardedTo,
+            errors: errors.length > 0 ? errors : undefined
+        };
     }
 }
 

@@ -641,13 +641,13 @@ class CommandHandlerService {
         let result;
         switch (command) {
             case 'refill':
-                result = await this.handleRefill(order, orderId, senderNumber, userSettings);
+                result = await this.handleRefill(order, orderId, senderNumber, userSettings, deviceId);
                 break;
             case 'cancel':
-                result = await this.handleCancel(order, orderId, senderNumber, userSettings);
+                result = await this.handleCancel(order, orderId, senderNumber, userSettings, deviceId);
                 break;
             case 'speedup':
-                result = await this.handleSpeedUp(order, orderId, senderNumber, userSettings);
+                result = await this.handleSpeedUp(order, orderId, senderNumber, userSettings, deviceId);
                 break;
             case 'status':
                 result = await this.handleStatus(order, orderId, userSettings, { deviceId });
@@ -682,7 +682,7 @@ class CommandHandlerService {
     /**
      * Handle refill command
      */
-    async handleRefill(order, orderId, senderNumber, userSettings) {
+    async handleRefill(order, orderId, senderNumber, userSettings, deviceId) {
         // Check action mode
         const actionMode = userSettings?.refillActionMode || 'forward';
 
@@ -834,7 +834,8 @@ class CommandHandlerService {
                         command: 'REFILL',
                         userId: order.userId,
                         providerOrderId: order.providerOrderId,
-                        providerName: order.providerName
+                        providerName: order.providerName,
+                        deviceId: deviceId
                     });
                 } catch (fwdError) {
                     console.log(`[CommandHandler] Group forwarding failed:`, fwdError.message);
@@ -907,7 +908,7 @@ class CommandHandlerService {
     /**
      * Handle cancel command
      */
-    async handleCancel(order, orderId, senderNumber, userSettings) {
+    async handleCancel(order, orderId, senderNumber, userSettings, deviceId) {
         // Check action mode
         const actionMode = userSettings?.cancelActionMode || 'forward';
 
@@ -1017,7 +1018,8 @@ class CommandHandlerService {
                         command: 'CANCEL',
                         userId: order.userId,
                         providerOrderId: order.providerOrderId,
-                        providerName: order.providerName
+                        providerName: order.providerName,
+                        deviceId: deviceId
                     });
                 } catch (fwdError) {
                     console.log(`[CommandHandler] Group forwarding failed:`, fwdError.message);
@@ -1079,7 +1081,7 @@ class CommandHandlerService {
     /**
      * Handle speed-up command
      */
-    async handleSpeedUp(order, orderId, senderNumber, userSettings) {
+    async handleSpeedUp(order, orderId, senderNumber, userSettings, deviceId) {
         // Check action mode
         const actionMode = userSettings?.speedupActionMode || 'forward';
 
@@ -1124,7 +1126,8 @@ class CommandHandlerService {
                     command: 'SPEED_UP',
                     userId: order.userId,
                     providerOrderId: order.providerOrderId,
-                    providerName: order.providerName
+                    providerName: order.providerName,
+                    deviceId: deviceId
                 });
             } catch (fwdError) {
                 console.log(`[CommandHandler] Group forwarding failed:`, fwdError.message);
