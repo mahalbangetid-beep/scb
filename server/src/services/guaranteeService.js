@@ -184,8 +184,8 @@ class GuaranteeService {
             };
         }
 
-        // Only completed orders can have refill
-        if (order.status !== 'COMPLETED') {
+        // Only completed or partial orders can have refill
+        if (order.status !== 'COMPLETED' && order.status !== 'PARTIAL') {
             return {
                 valid: false,
                 reason: 'NOT_COMPLETED',
