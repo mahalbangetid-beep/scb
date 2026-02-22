@@ -694,10 +694,10 @@ class CommandHandlerService {
             };
         }
 
-        console.log(`[CommandHandler] Refill check for order ${orderId}: status="${order.status}" (expected: "COMPLETED")`);
+        console.log(`[CommandHandler] Refill check for order ${orderId}: status="${order.status}" (expected: "COMPLETED" or "PARTIAL")`);
 
-        // Refill only for completed orders
-        if (order.status !== 'COMPLETED') {
+        // Refill only for completed or partial orders
+        if (order.status !== 'COMPLETED' && order.status !== 'PARTIAL') {
             // Use customizable template from Response Templates page
             let statusMsg = `❌ Order #${orderId}: Your order is ${order.status.toLowerCase()}.`;
             try {
@@ -1384,13 +1384,15 @@ class CommandHandlerService {
         };
 
         // Categorize responses by specific status
-        const queued = [];           // Successfully processed
-        const alreadyCancelled = []; // Status: CANCELLED
-        const alreadyCompleted = []; // Status: COMPLETED (for cancel/speedup)
-        const partialRefund = [];    // Status: PARTIAL
-        const cooldown = [];         // Cooldown / already in progress
-        const notFound = [];         // not_found or security_check_failed
-        const otherFailed = [];      // other errors
+        const queued = [];              // Successfully processed
+        const alreadyCancelled = [];    // Status: CANCELLED
+        const alreadyCompleted = [];    // Status: COMPLETED (for cancel/speedup)
+        const partialRefund = [];       // Status: PARTIAL
+        const guaranteeExpired = [];    // Guarantee period expired
+        const noGuarantee = [];         // No refill / no guarantee service
+        const cooldown = [];            // Cooldown / already in progress
+        const notFound = [];            // not_found or security_check_failed
+        const otherFailed = [];         // other errors
 
         for (const r of responses) {
             if (r.success) {
@@ -1398,6 +1400,7 @@ class CommandHandlerService {
             } else {
                 const reason = r.details?.reason || '';
                 const status = r.details?.status || '';
+                const gReason = r.details?.guaranteeReason || '';
 
                 if (reason === 'not_found' || reason === 'security_check_failed' || reason === 'needs_registration') {
                     notFound.push(r);
@@ -1407,6 +1410,10 @@ class CommandHandlerService {
                     alreadyCompleted.push(r);
                 } else if (reason === 'status' && status === 'PARTIAL') {
                     partialRefund.push(r);
+                } else if (reason === 'guarantee_failed' && (gReason === 'EXPIRED')) {
+                    guaranteeExpired.push(r);
+                } else if (reason === 'guarantee_failed' && (gReason === 'NO_GUARANTEE' || gReason === 'API_NO_REFILL' || gReason === 'NO_GUARANTEE_ASK')) {
+                    noGuarantee.push(r);
                 } else if (reason === 'status' || reason === 'cooldown' || reason === 'disabled' ||
                     reason === 'panel_cancel_not_available' || reason === 'panel_refill_not_available' ||
                     reason === 'guarantee_failed') {
@@ -1428,10 +1435,27 @@ class CommandHandlerService {
             message += `\n${label}\n${orderList}\n`;
         }
 
+        // 🔴 Guarantee Expired
+        if (guaranteeExpired.length > 0) {
+            const orderList = guaranteeExpired.map(r => r.orderId).join(', ');
+            const label = await getLabel('BULK_GUARANTEE_EXPIRED') || `🔴 *Order Not Eligible for Refill ( Refill Time Period Expired ):*`;
+            message += `\n${label}\n${orderList}\n`;
+        }
+
+        // 🔴 No Guarantee / No Refill
+        if (noGuarantee.length > 0) {
+            const orderList = noGuarantee.map(r => r.orderId).join(', ');
+            const label = await getLabel('BULK_NO_GUARANTEE') || `🔴 *Order Not Eligible for Refill ( No Refill/ No Guarantee ):*`;
+            message += `\n${label}\n${orderList}\n`;
+        }
+
         // 🔴 Already Cancelled
         if (alreadyCancelled.length > 0) {
             const orderList = alreadyCancelled.map(r => r.orderId).join(', ');
-            const label = await getLabel('BULK_ALREADY_CANCELLED') || `🔴 *Already Cancelled – Cannot Be Cancelled Again:*`;
+            const cancelLabel = command === 'refill'
+                ? `🔴 *Order Already Cancelled ( Impossible to Refill ):*`
+                : `🔴 *Already Cancelled – Cannot Be Cancelled Again:*`;
+            const label = await getLabel('BULK_ALREADY_CANCELLED') || cancelLabel;
             message += `\n${label}\n${orderList}\n`;
         }
 
@@ -1471,7 +1495,7 @@ class CommandHandlerService {
             message += `\n${label}\n${orderList}\n`;
         }
 
-        const totalFailed = alreadyCancelled.length + alreadyCompleted.length + partialRefund.length + cooldown.length + notFound.length + otherFailed.length;
+        const totalFailed = guaranteeExpired.length + noGuarantee.length + alreadyCancelled.length + alreadyCompleted.length + partialRefund.length + cooldown.length + notFound.length + otherFailed.length;
         const summary = await getLabel('BULK_SUMMARY', { total: responses.length.toString(), success_count: queued.length.toString(), failed_count: totalFailed.toString() })
             || `━━━━━━━━━━━━━━━━\nTotal: ${responses.length} | ✅ ${queued.length} | ❌ ${totalFailed}`;
         message += `\n${summary}`;
