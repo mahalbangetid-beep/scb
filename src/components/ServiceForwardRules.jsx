@@ -17,7 +17,7 @@ export default function ServiceForwardRules({ panelId }) {
     const fetchRules = async () => {
         setLoading(true)
         try {
-            const res = await api.get(`/api/panel-tools/${panelId}/forward-rules`)
+            const res = await api.get(`/panel-tools/${panelId}/forward-rules`)
             setRules(res.data.data || [])
         } catch (e) { setError(e.response?.data?.message || 'Failed to load') }
         setLoading(false)
@@ -28,9 +28,9 @@ export default function ServiceForwardRules({ panelId }) {
         setSaving(true)
         try {
             if (editingId) {
-                await api.put(`/api/panel-tools/${panelId}/forward-rules/${editingId}`, form)
+                await api.put(`/panel-tools/${panelId}/forward-rules/${editingId}`, form)
             } else {
-                await api.post(`/api/panel-tools/${panelId}/forward-rules`, form)
+                await api.post(`/panel-tools/${panelId}/forward-rules`, form)
             }
             resetForm()
             fetchRules()
@@ -41,7 +41,7 @@ export default function ServiceForwardRules({ panelId }) {
     const handleDelete = async (id) => {
         if (!confirm('Delete this forward rule?')) return
         try {
-            await api.delete(`/api/panel-tools/${panelId}/forward-rules/${id}`)
+            await api.delete(`/panel-tools/${panelId}/forward-rules/${id}`)
             fetchRules()
         } catch (e) { setError(e.response?.data?.message || 'Failed to delete') }
     }
@@ -54,7 +54,7 @@ export default function ServiceForwardRules({ panelId }) {
 
     const handleToggle = async (r) => {
         try {
-            await api.put(`/api/panel-tools/${panelId}/forward-rules/${r.id}`, { isActive: !r.isActive })
+            await api.put(`/panel-tools/${panelId}/forward-rules/${r.id}`, { isActive: !r.isActive })
             fetchRules()
         } catch (e) { setError(e.response?.data?.message || 'Failed to toggle') }
     }

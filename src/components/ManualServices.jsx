@@ -17,7 +17,7 @@ export default function ManualServices({ panelId }) {
     const fetchServices = async () => {
         setLoading(true)
         try {
-            const res = await api.get(`/api/panel-tools/${panelId}/manual-services`)
+            const res = await api.get(`/panel-tools/${panelId}/manual-services`)
             setServices(res.data.data || [])
         } catch (e) { setError(e.response?.data?.message || 'Failed to load') }
         setLoading(false)
@@ -28,9 +28,9 @@ export default function ManualServices({ panelId }) {
         setSaving(true)
         try {
             if (editingId) {
-                await api.put(`/api/panel-tools/${panelId}/manual-services/${editingId}`, form)
+                await api.put(`/panel-tools/${panelId}/manual-services/${editingId}`, form)
             } else {
-                await api.post(`/api/panel-tools/${panelId}/manual-services`, form)
+                await api.post(`/panel-tools/${panelId}/manual-services`, form)
             }
             resetForm()
             fetchServices()
@@ -41,7 +41,7 @@ export default function ManualServices({ panelId }) {
     const handleDelete = async (id) => {
         if (!confirm('Delete this service?')) return
         try {
-            await api.delete(`/api/panel-tools/${panelId}/manual-services/${id}`)
+            await api.delete(`/panel-tools/${panelId}/manual-services/${id}`)
             fetchServices()
         } catch (e) { setError(e.response?.data?.message || 'Failed to delete') }
     }
@@ -54,7 +54,7 @@ export default function ManualServices({ panelId }) {
 
     const handleToggle = async (s) => {
         try {
-            await api.put(`/api/panel-tools/${panelId}/manual-services/${s.id}`, { isActive: !s.isActive })
+            await api.put(`/panel-tools/${panelId}/manual-services/${s.id}`, { isActive: !s.isActive })
             fetchServices()
         } catch (e) { setError(e.response?.data?.message || 'Failed to toggle') }
     }

@@ -16,7 +16,7 @@ export default function FailedOrders({ panelId }) {
     const fetchOrders = async () => {
         setLoading(true)
         try {
-            const res = await api.get(`/api/panel-tools/${panelId}/failed-orders?page=${page}&limit=25`)
+            const res = await api.get(`/panel-tools/${panelId}/failed-orders?page=${page}&limit=25`)
             const data = res.data.data || {}
             setOrders(data.orders || [])
             setTotal(data.total || 0)
