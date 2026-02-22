@@ -826,7 +826,7 @@ class CommandHandlerService {
                 }
             }
 
-            if (actionMode === 'forward' || actionMode === 'both') {
+            if (actionMode === 'forward' || actionMode === 'both' || actionMode === 'auto') {
                 // Forward to provider group with PROVIDER Order ID
                 try {
                     forwardResult = await groupForwardingService.forwardToProvider({
@@ -855,7 +855,7 @@ class CommandHandlerService {
             // Build response message based on mode
             let message;
             if (actionMode === 'auto') {
-                message = `✅ Refill submitted via API for Order #${orderId}`;
+                message = `✅ Refill submitted via API for Order #${orderId}${forwardResult?.success ? ` and forwarded to ${forwardResult.groupName || 'provider'}` : ''}`;
             } else if (actionMode === 'forward') {
                 message = forwardResult?.success
                     ? `✅ Refill request forwarded to ${forwardResult.groupName || 'provider'}`
@@ -1010,7 +1010,7 @@ class CommandHandlerService {
                 }
             }
 
-            if (actionMode === 'forward' || actionMode === 'both') {
+            if (actionMode === 'forward' || actionMode === 'both' || actionMode === 'auto') {
                 // Forward to provider group
                 try {
                     forwardResult = await groupForwardingService.forwardToProvider({
@@ -1039,7 +1039,7 @@ class CommandHandlerService {
             // Build response message based on mode
             let message;
             if (actionMode === 'auto') {
-                message = `✅ Cancel submitted via API for Order #${orderId}`;
+                message = `✅ Cancel submitted via API for Order #${orderId}${forwardResult?.success ? ` and forwarded to ${forwardResult.groupName || 'provider'}` : ''}`;
             } else if (actionMode === 'forward') {
                 message = forwardResult?.success
                     ? `✅ Cancel request forwarded to ${forwardResult.groupName || 'provider'}`
