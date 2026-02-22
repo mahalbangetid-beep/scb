@@ -120,13 +120,14 @@ class GroupForwardingService {
         // ==================== 1. CHECK SERVICE ID ROUTING ====================
         // Check if any provider group has a serviceIdRules that matches this order's serviceId
         if (order.serviceId) {
-            const groupsWithRules = await prisma.providerGroup.findMany({
+            const allGroups = await prisma.providerGroup.findMany({
                 where: {
                     panelId: order.panelId,
-                    isActive: true,
-                    NOT: { serviceIdRules: null }
+                    isActive: true
                 }
             });
+            // Filter groups that have serviceIdRules (JSON field can't use NOT null in Prisma)
+            const groupsWithRules = allGroups.filter(g => g.serviceIdRules != null);
 
             for (const group of groupsWithRules) {
                 const rules = typeof group.serviceIdRules === 'string'
