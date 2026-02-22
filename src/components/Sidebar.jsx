@@ -106,6 +106,7 @@ const adminNavigation = [
     { name: 'Credit Packages', icon: Package, path: '/admin/credit-packages' },
     { name: 'Vouchers', icon: Gift, path: '/admin/vouchers' },
     { name: 'Contact Backups', icon: Database, path: '/admin/contact-backups' },
+    { name: 'Panel Backups', icon: Shield, path: '/admin/master-backups' },
     { name: 'System Bots', icon: Bot, path: '/admin/system-bots' },
     { name: 'Email Settings', icon: Mail, path: '/admin/email-settings' },
     { name: 'Default Charges', icon: CreditCard, path: '/admin/charges' },

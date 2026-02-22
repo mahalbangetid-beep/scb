@@ -21,7 +21,8 @@ import {
     StopCircle,
     BarChart3,
     Users,
-    CheckSquare
+    CheckSquare,
+    Contact
 } from 'lucide-react'
 import api from '../services/api'
 import { formatDistanceToNow, format } from 'date-fns'
@@ -43,6 +44,7 @@ export default function Broadcast() {
     const autoRefreshRef = useRef(null)
     const [availableGroups, setAvailableGroups] = useState([])
     const [groupsLoading, setGroupsLoading] = useState(false)
+    const [retrievingContacts, setRetrievingContacts] = useState(false)
 
 
     // Form state
@@ -615,16 +617,50 @@ export default function Broadcast() {
 
                         {formData.broadcastType !== 'group' && (
                             <div className="form-group">
-                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px', flexWrap: 'wrap', gap: 4 }}>
                                     <label className="form-label" style={{ marginBottom: 0 }}>Recipients (one per line)</label>
-                                    <button
-                                        type="button"
-                                        className="btn btn-secondary btn-sm"
-                                        style={{ fontSize: '0.7rem', padding: '2px 8px' }}
-                                        onClick={() => csvInputRef.current?.click()}
-                                    >
-                                        <Upload size={12} /> Import CSV
-                                    </button>
+                                    <div style={{ display: 'flex', gap: 4 }}>
+                                        <button
+                                            type="button"
+                                            className="btn btn-primary btn-sm"
+                                            style={{ fontSize: '0.7rem', padding: '2px 8px' }}
+                                            disabled={retrievingContacts}
+                                            onClick={async () => {
+                                                setRetrievingContacts(true)
+                                                try {
+                                                    const res = await api.get('/contact-backup/all-contacts')
+                                                    const data = res.data?.data || res.data || {}
+                                                    const contacts = data.contacts || []
+                                                    if (contacts.length === 0) {
+                                                        alert('No contacts found. Please backup your devices first in Contact Backups page.')
+                                                        return
+                                                    }
+                                                    const phones = contacts.map(c => c.phone).filter(Boolean)
+                                                    setFormData(prev => ({
+                                                        ...prev,
+                                                        recipients: prev.recipients
+                                                            ? prev.recipients + '\n' + phones.join('\n')
+                                                            : phones.join('\n')
+                                                    }))
+                                                    alert(`Retrieved ${phones.length} contacts from ${data.totalDevices || 0} device(s)`)
+                                                } catch (error) {
+                                                    alert(error.response?.data?.message || 'Failed to retrieve contacts')
+                                                } finally {
+                                                    setRetrievingContacts(false)
+                                                }
+                                            }}
+                                        >
+                                            {retrievingContacts ? <Loader2 size={12} className="animate-spin" /> : <Contact size={12} />} Retrieve All Contacts
+                                        </button>
+                                        <button
+                                            type="button"
+                                            className="btn btn-secondary btn-sm"
+                                            style={{ fontSize: '0.7rem', padding: '2px 8px' }}
+                                            onClick={() => csvInputRef.current?.click()}
+                                        >
+                                            <Upload size={12} /> Import CSV
+                                        </button>
+                                    </div>
                                     <input
                                         ref={csvInputRef}
                                         type="file"

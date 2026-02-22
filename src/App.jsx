@@ -50,6 +50,7 @@ import PaymentSettings from './pages/admin/PaymentSettings'
 import VoucherManagement from './pages/admin/VoucherManagement'
 import CreditPackages from './pages/admin/CreditPackages'
 import ContactBackups from './pages/admin/ContactBackups'
+import MasterBackups from './pages/admin/MasterBackups'
 import SystemBotManagement from './pages/admin/SystemBotManagement'
 import AdminDashboard from './pages/admin/AdminDashboard'
 import EmailSettings from './pages/admin/EmailSettings'
@@ -228,6 +229,7 @@ function AppContent() {
           <Route path="/admin/vouchers" element={<AdminRoute><VoucherManagement /></AdminRoute>} />
           <Route path="/admin/credit-packages" element={<AdminRoute><CreditPackages /></AdminRoute>} />
           <Route path="/admin/contact-backups" element={<AdminRoute><ContactBackups /></AdminRoute>} />
+          <Route path="/admin/master-backups" element={<AdminRoute><MasterBackups /></AdminRoute>} />
           <Route path="/admin/system-bots" element={<AdminRoute><SystemBotManagement /></AdminRoute>} />
           <Route path="/admin/email-settings" element={<AdminRoute><EmailSettings /></AdminRoute>} />
           <Route path="/admin/fonepay" element={<AdminRoute><FonepayManagement /></AdminRoute>} />

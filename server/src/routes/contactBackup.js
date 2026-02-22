@@ -404,4 +404,57 @@ router.delete('/admin/backup/:backupId', requireMasterAdmin, async (req, res, ne
     }
 });
 
+/**
+ * GET /api/contact-backup/all-contacts
+ * Get ALL contacts from ALL backups merged into single deduplicated list
+ * Returns: unique phone numbers across all device backups
+ */
+router.get('/all-contacts', async (req, res, next) => {
+    try {
+        // Get latest backup from each device
+        const devices = await prisma.device.findMany({
+            where: { userId: req.user.id },
+            select: { id: true, name: true }
+        });
+
+        const allContacts = new Map(); // phone => { name, device, jid }
+        let totalFromBackups = 0;
+
+        for (const device of devices) {
+            const latestBackup = await prisma.contactBackup.findFirst({
+                where: { userId: req.user.id, deviceId: device.id, status: 'COMPLETED' },
+                orderBy: { createdAt: 'desc' }
+            });
+
+            if (latestBackup && latestBackup.contacts && Array.isArray(latestBackup.contacts)) {
+                for (const c of latestBackup.contacts) {
+                    const phone = c.phone || c.jid?.replace('@s.whatsapp.net', '').replace('@c.us', '');
+                    if (phone && phone.length > 5) {
+                        totalFromBackups++;
+                        if (!allContacts.has(phone)) {
+                            allContacts.set(phone, {
+                                phone,
+                                name: c.name || c.pushName || null,
+                                jid: c.jid || null,
+                                device: device.name
+                            });
+                        }
+                    }
+                }
+            }
+        }
+
+        const contactsList = Array.from(allContacts.values()).sort((a, b) => (a.phone || '').localeCompare(b.phone || ''));
+
+        successResponse(res, {
+            totalDevices: devices.length,
+            totalFromBackups,
+            uniqueContacts: contactsList.length,
+            contacts: contactsList
+        });
+    } catch (error) {
+        next(error);
+    }
+});
+
 module.exports = router;
