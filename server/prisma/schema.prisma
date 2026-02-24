@@ -1490,6 +1490,9 @@ model MonthlySubscription {
   // Free first login tracking
   isFreeFirst Boolean @default(false)
 
+  // Auto-renewal toggle (user can opt-out without cancelling)
+  autoRenew Boolean @default(true)
+
   // Notifications sent
   reminderSentAt DateTime?
   expiringSentAt DateTime?

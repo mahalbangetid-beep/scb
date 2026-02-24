@@ -3,13 +3,23 @@ const router = express.Router();
 const prisma = require('../utils/prisma');
 const { successResponse, paginatedResponse, parsePagination } = require('../utils/response');
 const { AppError } = require('../middleware/errorHandler');
-const { authenticate, requireAdmin, requireStaffPermission } = require('../middleware/auth');
+const { authenticate, requireAdmin, requireStaffPermission, getEffectiveUserId } = require('../middleware/auth');
 const adminApiService = require('../services/adminApiService');
 const providerDomainService = require('../services/providerDomainService');
 const providerForwardingService = require('../services/providerForwardingService');
 
 // All routes require authentication
 router.use(authenticate);
+
+// Resolve effective userId (staff → owner's ID, others → own ID)
+router.use(async (req, res, next) => {
+    try {
+        req.effectiveUserId = await getEffectiveUserId(req);
+        next();
+    } catch (err) {
+        next(err);
+    }
+});
 
 /**
  * Sanitize provider name - hide domain URLs, show alias if available
@@ -57,7 +67,7 @@ router.get('/', async (req, res, next) => {
         const { panelId, status, search, startDate, endDate } = req.query;
 
         // Build where clause
-        const where = { userId: req.user.id };
+        const where = { userId: req.effectiveUserId };
 
         if (panelId) {
             where.panelId = panelId;
@@ -108,7 +118,7 @@ router.get('/', async (req, res, next) => {
             prisma.order.count({ where }),
             // Get user's provider domain mappings for alias lookup
             prisma.providerDomainMapping.findMany({
-                where: { userId: req.user.id },
+                where: { userId: req.effectiveUserId },
                 select: {
                     providerName: true,
                     publicAlias: true
@@ -143,7 +153,7 @@ router.get('/stats', async (req, res, next) => {
     try {
         const { panelId } = req.query;
 
-        const where = { userId: req.user.id };
+        const where = { userId: req.effectiveUserId };
         if (panelId) {
             where.panelId = panelId;
         }
@@ -176,7 +186,7 @@ router.get('/:id', async (req, res, next) => {
         const order = await prisma.order.findFirst({
             where: {
                 id: req.params.id,
-                userId: req.user.id
+                userId: req.effectiveUserId
             },
             include: {
                 panel: {
@@ -211,7 +221,7 @@ router.get('/:id/status', async (req, res, next) => {
         const order = await prisma.order.findFirst({
             where: {
                 id: req.params.id,
-                userId: req.user.id
+                userId: req.effectiveUserId
             },
             include: {
                 panel: true // Include full panel for Admin API
@@ -268,7 +278,7 @@ router.post('/:id/refill', async (req, res, next) => {
         const order = await prisma.order.findFirst({
             where: {
                 id: req.params.id,
-                userId: req.user.id
+                userId: req.effectiveUserId
             },
             include: {
                 panel: true // Include full panel for Admin API
@@ -341,7 +351,7 @@ router.post('/:id/cancel', async (req, res, next) => {
         const order = await prisma.order.findFirst({
             where: {
                 id: req.params.id,
-                userId: req.user.id
+                userId: req.effectiveUserId
             },
             include: {
                 panel: true // Include full panel for Admin API
@@ -419,7 +429,7 @@ router.post('/:id/speed-up', async (req, res, next) => {
         const order = await prisma.order.findFirst({
             where: {
                 id: req.params.id,
-                userId: req.user.id
+                userId: req.effectiveUserId
             },
             include: {
                 panel: true  // Include full panel for Admin API integration
@@ -464,7 +474,7 @@ router.post('/:id/re-request', async (req, res, next) => {
         const order = await prisma.order.findFirst({
             where: {
                 id: req.params.id,
-                userId: req.user.id
+                userId: req.effectiveUserId
             },
             include: {
                 panel: {
@@ -520,7 +530,7 @@ router.post('/:id/re-request', async (req, res, next) => {
         try {
             // Forward to provider group using existing forwarding service
             const forwardResult = await providerForwardingService.forwardToAll(
-                req.user.id,
+                req.effectiveUserId,
                 order,
                 'RE_REQUEST',
                 {
@@ -594,7 +604,7 @@ router.post('/bulk-status', async (req, res, next) => {
         const orders = await prisma.order.findMany({
             where: {
                 id: { in: orderIds },
-                userId: req.user.id
+                userId: req.effectiveUserId
             },
             include: {
                 panel: true // Include full panel for Admin API
@@ -676,7 +686,7 @@ router.post('/bulk-refill', async (req, res, next) => {
         const orders = await prisma.order.findMany({
             where: {
                 id: { in: orderIds },
-                userId: req.user.id,
+                userId: req.effectiveUserId,
                 status: 'COMPLETED' // Only completed orders can be refilled
             },
             include: {
@@ -738,7 +748,7 @@ router.get('/:id/commands', async (req, res, next) => {
         const order = await prisma.order.findFirst({
             where: {
                 id: req.params.id,
-                userId: req.user.id
+                userId: req.effectiveUserId
             }
         });
 
@@ -769,17 +779,8 @@ router.patch('/:id/status-override', requireStaffPermission('order_manage', 'edi
             throw new AppError(`Invalid status. Must be one of: ${validStatuses.join(', ')}`, 400);
         }
 
-        // For staff: look up order by owner's userId, for admin/owner: use req.user.id
-        const ownerUserId = req.staffPermission?.userId || null;
-        const whereClause = { id: req.params.id };
-        // Only filter by userId if not a staff with access to all users
-        if (ownerUserId) {
-            whereClause.userId = ownerUserId;
-        } else if (!req.staffPermission) {
-            // Admin/owner - filter by their own ID
-            whereClause.userId = req.user.id;
-        }
-        // If staffPermission exists but userId is null, staff has access to all users' orders
+        // Use effectiveUserId from middleware (handles staff→owner scoping)
+        const whereClause = { id: req.params.id, userId: req.effectiveUserId };
 
         const order = await prisma.order.findFirst({
             where: whereClause
@@ -829,14 +830,8 @@ router.patch('/:id/memo', requireStaffPermission('order_manage'), async (req, re
             throw new AppError('Memo must be 1000 characters or less', 400);
         }
 
-        // For staff: look up order by owner's userId, for admin/owner: use req.user.id
-        const ownerUserId = req.staffPermission?.userId || null;
-        const whereClause = { id: req.params.id };
-        if (ownerUserId) {
-            whereClause.userId = ownerUserId;
-        } else if (!req.staffPermission) {
-            whereClause.userId = req.user.id;
-        }
+        // Use effectiveUserId from middleware (handles staff→owner scoping)
+        const whereClause = { id: req.params.id, userId: req.effectiveUserId };
 
         const order = await prisma.order.findFirst({
             where: whereClause
@@ -878,7 +873,7 @@ router.post('/bulk-copy', async (req, res, next) => {
         const orders = await prisma.order.findMany({
             where: {
                 id: { in: orderIds },
-                userId: req.user.id
+                userId: req.effectiveUserId
             },
             select: {
                 id: true,

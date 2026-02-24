@@ -120,6 +120,7 @@ class SubscriptionService {
         return prisma.monthlySubscription.findMany({
             where: {
                 status: 'ACTIVE',
+                autoRenew: true,
                 nextBillingDate: {
                     lte: now
                 }
@@ -540,7 +541,8 @@ class SubscriptionService {
                 name: sub.resourceName,
                 status: sub.status,
                 fee: sub.monthlyFee,
-                nextBilling: sub.nextBillingDate
+                nextBilling: sub.nextBillingDate,
+                autoRenew: sub.autoRenew !== false
             });
         }
 

@@ -20,7 +20,8 @@ import {
     Power,
     Users,
     ShieldOff,
-    ShieldCheck
+    ShieldCheck,
+    BellOff
 } from 'lucide-react'
 import api from '../services/api'
 import { formatDistanceToNow } from 'date-fns'
@@ -53,6 +54,8 @@ export default function Devices() {
     const [editDefaultPanelId, setEditDefaultPanelId] = useState('')  // Default panel for DM routing
     const [editReplyScope, setEditReplyScope] = useState('all')
     const [editForwardOnly, setEditForwardOnly] = useState(false)
+    const [editAutoMessage, setEditAutoMessage] = useState(false)
+    const [editAutoMessageLoading, setEditAutoMessageLoading] = useState(false)
     const [editLoading, setEditLoading] = useState(false)
 
     // Group Block State
@@ -270,7 +273,7 @@ export default function Devices() {
     }
 
     // Edit Panel Handlers
-    const handleOpenEditModal = (device) => {
+    const handleOpenEditModal = async (device) => {
         setEditDevice(device)
         // Populate from multi-panel bindings, fallback to primary panelId
         const boundIds = (device.panels || []).map(p => p.id)
@@ -285,6 +288,14 @@ export default function Devices() {
         setEditReplyScope(device.replyScope || 'all')
         setEditForwardOnly(device.forwardOnly || false)
         setShowEditModal(true)
+
+        // Fetch auto-message toggle for this device
+        try {
+            const toggleRes = await api.get(`/settings/bot-toggles?deviceId=${device.id}`)
+            setEditAutoMessage(toggleRes.data?.replyToAllMessages || false)
+        } catch {
+            setEditAutoMessage(false)
+        }
 
         // Fetch groups if device is connected
         if (device.status === 'connected') {
@@ -301,6 +312,7 @@ export default function Devices() {
         setEditDefaultPanelId('')
         setEditReplyScope('all')
         setEditForwardOnly(false)
+        setEditAutoMessage(false)
         setDeviceGroups([])
         setSelectedGroupJids([])
     }
@@ -1105,6 +1117,77 @@ export default function Devices() {
                                                 position: 'absolute',
                                                 top: '2px',
                                                 left: editForwardOnly ? '20px' : '2px',
+                                                transition: 'left 0.2s',
+                                                boxShadow: '0 1px 3px rgba(0,0,0,0.2)'
+                                            }} />
+                                        </div>
+                                    </label>
+                                </div>
+
+                                {/* Auto-Message Toggle */}
+                                <div className="form-group">
+                                    <label
+                                        style={{
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'space-between',
+                                            padding: '12px 14px',
+                                            borderRadius: '10px',
+                                            border: editAutoMessage
+                                                ? '2px solid #8b5cf6'
+                                                : '1px solid var(--border-color)',
+                                            background: editAutoMessage
+                                                ? 'rgba(139, 92, 246, 0.06)'
+                                                : 'var(--bg-secondary)',
+                                            cursor: editAutoMessageLoading ? 'wait' : 'pointer',
+                                            opacity: editAutoMessageLoading ? 0.6 : 1,
+                                            transition: 'all 0.15s'
+                                        }}
+                                    >
+                                        <div>
+                                            <div style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                <BellOff size={14} /> Auto-Reply to All Messages
+                                            </div>
+                                            <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '2px' }}>
+                                                When ON, bot replies to all messages. When OFF, only recognized commands.
+                                            </div>
+                                        </div>
+                                        <div
+                                            onClick={async (e) => {
+                                                e.preventDefault()
+                                                if (editAutoMessageLoading || !editDevice) return
+                                                setEditAutoMessageLoading(true)
+                                                try {
+                                                    await api.put('/settings/bot-toggles', {
+                                                        deviceId: editDevice.id,
+                                                        replyToAllMessages: !editAutoMessage
+                                                    })
+                                                    setEditAutoMessage(!editAutoMessage)
+                                                } catch (err) {
+                                                    console.error('Failed to toggle auto-message:', err)
+                                                } finally {
+                                                    setEditAutoMessageLoading(false)
+                                                }
+                                            }}
+                                            style={{
+                                                width: '40px',
+                                                height: '22px',
+                                                borderRadius: '11px',
+                                                background: editAutoMessage ? '#8b5cf6' : 'var(--border-color)',
+                                                position: 'relative',
+                                                transition: 'background 0.2s',
+                                                cursor: 'pointer',
+                                                flexShrink: 0
+                                            }}
+                                        >
+                                            <div style={{
+                                                width: '18px',
+                                                height: '18px',
+                                                borderRadius: '50%',
+                                                background: '#fff',
+                                                position: 'absolute',
+                                                top: '2px',
+                                                left: editAutoMessage ? '20px' : '2px',
                                                 transition: 'left 0.2s',
                                                 boxShadow: '0 1px 3px rgba(0,0,0,0.2)'
                                             }} />

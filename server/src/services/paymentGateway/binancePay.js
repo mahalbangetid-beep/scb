@@ -430,6 +430,17 @@ class BinancePayService {
             }
         } catch (e) { /* use default */ }
 
+        // Read disallowed countries from config
+        let disallowedCountries = [];
+        try {
+            const dcConfig = await prisma.systemConfig.findFirst({
+                where: { key: 'binance_disallowed_countries' }
+            });
+            if (dcConfig && dcConfig.value && dcConfig.value.trim()) {
+                disallowedCountries = dcConfig.value.split(',').map(c => c.trim().toUpperCase()).filter(Boolean);
+            }
+        } catch (e) { /* use default */ }
+
         return {
             id: 'binance',
             name: config.binanceName || 'Binance',
@@ -441,7 +452,8 @@ class BinancePayService {
             isAvailable: config.enabled && config.isConfigured,
             requiresVerification: true,
             supportedCrypto: ['USDT', 'USDC', 'BUSD'],
-            countries
+            countries,
+            disallowedCountries
         };
     }
 }

@@ -423,7 +423,7 @@ export default function ProviderAliases() {
             <div className="page-container">
                 <div className="loading-container">
                     <Loader2 size={32} className="animate-spin" />
-                    <p>Loading provider aliases...</p>
+                    <p>Loading provider support groups...</p>
                 </div>
             </div>
         )
@@ -434,8 +434,8 @@ export default function ProviderAliases() {
             {/* Page Header */}
             <div className="page-header">
                 <div>
-                    <h1 className="page-title">Provider Aliases</h1>
-                    <p className="page-subtitle">Select a panel, view provider aliases, and configure forwarding inline</p>
+                    <h1 className="page-title">Provider Support Group</h1>
+                    <p className="page-subtitle">Select a panel, view provider support group configs, and configure forwarding inline</p>
                 </div>
                 <div style={{ display: 'flex', gap: 'var(--spacing-sm)' }}>
                     <button className="btn btn-secondary" onClick={fetchInitialData}>
@@ -533,7 +533,7 @@ export default function ProviderAliases() {
             {selectedPanel && (
                 <div className="card" style={{ padding: '4px', marginBottom: 'var(--spacing-lg)', display: 'flex', gap: '4px', overflow: 'auto' }}>
                     {[
-                        { id: 'providers', label: '🔗 Provider Aliases' },
+                        { id: 'providers', label: '🔗 Provider Support Group' },
                         { id: 'manual-services', label: '📦 Manual Services' },
                         { id: 'failed-orders', label: '⚠️ Failed Orders' },
                         { id: 'forward-rules', label: '↗️ Service ID Forward' },
@@ -598,7 +598,7 @@ export default function ProviderAliases() {
                             <Search size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none' }} />
                             <input
                                 type="text"
-                                placeholder="Search provider aliases..."
+                                placeholder="Search provider support groups..."
                                 value={searchTerm}
                                 onChange={e => setSearchTerm(e.target.value)}
                                 className="form-input"
@@ -984,7 +984,7 @@ export default function ProviderAliases() {
                     <div className="empty-state-icon"><Globe size={32} /></div>
                     <div className="empty-state-title">Select a Panel</div>
                     <div className="empty-state-description">
-                        Choose a connected SMM panel above to view and configure provider aliases for forwarding.
+                        Choose a connected SMM panel above to view and configure provider support groups for forwarding.
                     </div>
                 </div>
             )}
@@ -992,7 +992,7 @@ export default function ProviderAliases() {
             {/* Setup/Edit Modal */}
             {showSetupModal && (
                 <div className="modal-overlay open" onClick={() => setShowSetupModal(false)}>
-                    <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '680px', maxHeight: '90vh', overflow: 'auto' }}>
+                    <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '900px', maxHeight: '90vh', overflow: 'auto' }}>
                         <div className="modal-header">
                             <h2>
                                 {configs.find(c => c.providerName === formData.providerName)

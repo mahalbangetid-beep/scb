@@ -127,6 +127,48 @@ router.get('/resource/:type/:resourceId', async (req, res, next) => {
     }
 });
 
+/**
+ * PATCH /api/subscriptions/:id/auto-renew
+ * Toggle auto-renew on/off for a subscription
+ */
+router.patch('/:id/auto-renew', async (req, res, next) => {
+    try {
+        const { autoRenew } = req.body;
+
+        if (typeof autoRenew !== 'boolean') {
+            throw new AppError('autoRenew must be a boolean', 400);
+        }
+
+        const prisma = require('../utils/prisma');
+        const subscription = await prisma.monthlySubscription.findFirst({
+            where: {
+                id: req.params.id,
+                userId: req.user.id
+            }
+        });
+
+        if (!subscription) {
+            throw new AppError('Subscription not found', 404);
+        }
+
+        if (subscription.status === 'CANCELLED') {
+            throw new AppError('Cannot change auto-renew for a cancelled subscription', 400);
+        }
+
+        const updated = await prisma.monthlySubscription.update({
+            where: { id: req.params.id },
+            data: { autoRenew }
+        });
+
+        successResponse(res, {
+            id: updated.id,
+            autoRenew: updated.autoRenew
+        }, `Auto-renew ${autoRenew ? 'enabled' : 'disabled'}`);
+    } catch (error) {
+        next(error);
+    }
+});
+
 // ==================== ADMIN ROUTES ====================
 
 /**

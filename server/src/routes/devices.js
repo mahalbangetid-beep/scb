@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const prisma = require('../utils/prisma');
-const { authenticate } = require('../middleware/auth');
+const { authenticate, getEffectiveUserId } = require('../middleware/auth');
 const { AppError } = require('../middleware/errorHandler');
 const { successResponse, paginatedResponse, parsePagination } = require('../utils/response');
 const resourceSubscriptionHook = require('../services/resourceSubscriptionHook');
@@ -11,9 +11,11 @@ router.get('/', authenticate, async (req, res, next) => {
     try {
         const { page, limit, skip } = parsePagination(req.query);
 
+        const effectiveUserId = await getEffectiveUserId(req);
+
         const [devices, total, messageStats] = await Promise.all([
             prisma.device.findMany({
-                where: { userId: req.user.id },
+                where: { userId: effectiveUserId },
                 skip,
                 take: limit,
                 orderBy: { createdAt: 'desc' },
@@ -40,11 +42,11 @@ router.get('/', authenticate, async (req, res, next) => {
                 }
             }),
             prisma.device.count({
-                where: { userId: req.user.id }
+                where: { userId: effectiveUserId }
             }),
             prisma.message.groupBy({
                 by: ['deviceId', 'type'],
-                where: { device: { userId: req.user.id } },
+                where: { device: { userId: effectiveUserId } },
                 _count: true
             })
         ]);
@@ -86,10 +88,11 @@ router.get('/', authenticate, async (req, res, next) => {
 // GET /api/devices/:id - Get device by ID
 router.get('/:id', authenticate, async (req, res, next) => {
     try {
+        const effectiveUserId = await getEffectiveUserId(req);
         const device = await prisma.device.findFirst({
             where: {
                 id: req.params.id,
-                userId: req.user.id
+                userId: effectiveUserId
             }
         });
 
@@ -112,12 +115,14 @@ router.post('/', authenticate, async (req, res, next) => {
             throw new AppError('Device name is required', 400);
         }
 
+        const effectiveUserId = await getEffectiveUserId(req);
+
         // Validate panelId if provided
         if (panelId) {
             const panel = await prisma.smmPanel.findFirst({
                 where: {
                     id: panelId,
-                    userId: req.user.id
+                    userId: effectiveUserId
                 }
             });
             if (!panel) {
@@ -129,7 +134,7 @@ router.post('/', authenticate, async (req, res, next) => {
         const device = await prisma.device.create({
             data: {
                 name,
-                userId: req.user.id,
+                userId: effectiveUserId,
                 panelId: panelId || null,  // Bind to panel if provided
                 status: 'pending'
             },
@@ -152,7 +157,7 @@ router.post('/', authenticate, async (req, res, next) => {
         let subscriptionInfo = null;
         try {
             subscriptionInfo = await resourceSubscriptionHook.onResourceCreated(
-                req.user.id, 'DEVICE', device.id, device.name
+                effectiveUserId, 'DEVICE', device.id, device.name
             );
         } catch (hookErr) {
             console.error('[Devices] Subscription hook error:', hookErr.message);
@@ -171,10 +176,11 @@ router.post('/', authenticate, async (req, res, next) => {
 // DELETE /api/devices/:id - Disconnect and delete device
 router.delete('/:id', authenticate, async (req, res, next) => {
     try {
+        const effectiveUserId = await getEffectiveUserId(req);
         const device = await prisma.device.findFirst({
             where: {
                 id: req.params.id,
-                userId: req.user.id
+                userId: effectiveUserId
             }
         });
 
@@ -188,7 +194,7 @@ router.delete('/:id', authenticate, async (req, res, next) => {
 
         // Cancel any associated subscription (before deleting the resource)
         try {
-            await resourceSubscriptionHook.onResourceDeleted(req.user.id, 'DEVICE', device.id);
+            await resourceSubscriptionHook.onResourceDeleted(effectiveUserId, 'DEVICE', device.id);
         } catch (hookErr) {
             console.error('[Devices] Subscription cancel hook error:', hookErr.message);
         }
@@ -210,10 +216,11 @@ router.put('/:id', authenticate, async (req, res, next) => {
         const { panelId, panelIds, name, replyScope, forwardOnly } = req.body;
 
         // Find device
+        const effectiveUserId = await getEffectiveUserId(req);
         const device = await prisma.device.findFirst({
             where: {
                 id: req.params.id,
-                userId: req.user.id
+                userId: effectiveUserId
             }
         });
 
@@ -226,7 +233,7 @@ router.put('/:id', authenticate, async (req, res, next) => {
             const panel = await prisma.smmPanel.findFirst({
                 where: {
                     id: panelId,
-                    userId: req.user.id
+                    userId: effectiveUserId
                 }
             });
             if (!panel) {
@@ -286,7 +293,7 @@ router.put('/:id', authenticate, async (req, res, next) => {
                 const validPanels = await prisma.smmPanel.findMany({
                     where: {
                         id: { in: panelIds },
-                        userId: req.user.id
+                        userId: effectiveUserId
                     },
                     select: { id: true }
                 });
@@ -343,10 +350,11 @@ router.put('/:id', authenticate, async (req, res, next) => {
 // PATCH /api/devices/:id/toggle - Toggle device ON/OFF (bot stops when OFF)
 router.patch('/:id/toggle', authenticate, async (req, res, next) => {
     try {
+        const effectiveUserId = await getEffectiveUserId(req);
         const device = await prisma.device.findFirst({
             where: {
                 id: req.params.id,
-                userId: req.user.id
+                userId: effectiveUserId
             }
         });
 
@@ -371,10 +379,11 @@ router.patch('/:id/toggle', authenticate, async (req, res, next) => {
 
 router.post('/:id/restart', authenticate, async (req, res, next) => {
     try {
+        const effectiveUserId = await getEffectiveUserId(req);
         const device = await prisma.device.findFirst({
             where: {
                 id: req.params.id,
-                userId: req.user.id
+                userId: effectiveUserId
             }
         });
 
@@ -394,10 +403,11 @@ router.post('/:id/restart', authenticate, async (req, res, next) => {
 // GET /api/devices/:id/qr - Get QR code for device
 router.get('/:id/qr', authenticate, async (req, res, next) => {
     try {
+        const effectiveUserId = await getEffectiveUserId(req);
         const device = await prisma.device.findFirst({
             where: {
                 id: req.params.id,
-                userId: req.user.id
+                userId: effectiveUserId
             }
         });
 
@@ -426,8 +436,9 @@ router.get('/:id/qr', authenticate, async (req, res, next) => {
 // GET /api/devices/:id/groups - Get live WhatsApp groups from a connected device
 router.get('/:id/groups', authenticate, async (req, res, next) => {
     try {
+        const effectiveUserId = await getEffectiveUserId(req);
         const device = await prisma.device.findFirst({
-            where: { id: req.params.id, userId: req.user.id }
+            where: { id: req.params.id, userId: effectiveUserId }
         });
 
         if (!device) {
@@ -483,8 +494,9 @@ router.get('/:id/groups', authenticate, async (req, res, next) => {
 // GET /api/devices/:id/group-blocks - Get all blocked groups for a device
 router.get('/:id/group-blocks', authenticate, async (req, res, next) => {
     try {
+        const effectiveUserId = await getEffectiveUserId(req);
         const device = await prisma.device.findFirst({
-            where: { id: req.params.id, userId: req.user.id }
+            where: { id: req.params.id, userId: effectiveUserId }
         });
 
         if (!device) {
@@ -507,8 +519,9 @@ router.post('/:id/group-blocks', authenticate, async (req, res, next) => {
     try {
         const { groupJid, groupName, groups } = req.body;
 
+        const effectiveUserId = await getEffectiveUserId(req);
         const device = await prisma.device.findFirst({
-            where: { id: req.params.id, userId: req.user.id }
+            where: { id: req.params.id, userId: effectiveUserId }
         });
 
         if (!device) {
@@ -576,8 +589,9 @@ router.post('/:id/group-blocks/mass-action', authenticate, async (req, res, next
             throw new AppError('groupJids must be a non-empty array', 400);
         }
 
+        const effectiveUserId = await getEffectiveUserId(req);
         const device = await prisma.device.findFirst({
-            where: { id: req.params.id, userId: req.user.id }
+            where: { id: req.params.id, userId: effectiveUserId }
         });
 
         if (!device) {
@@ -628,8 +642,9 @@ router.post('/:id/group-blocks/mass-action', authenticate, async (req, res, next
 // DELETE /api/devices/:id/group-blocks/:blockId - Unblock a single group
 router.delete('/:id/group-blocks/:blockId', authenticate, async (req, res, next) => {
     try {
+        const effectiveUserId = await getEffectiveUserId(req);
         const device = await prisma.device.findFirst({
-            where: { id: req.params.id, userId: req.user.id }
+            where: { id: req.params.id, userId: effectiveUserId }
         });
 
         if (!device) {

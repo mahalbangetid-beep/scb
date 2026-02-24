@@ -66,7 +66,7 @@ const automationNavigation = [
     { name: 'Response Templates', icon: FileText, path: '/response-templates' },
     // { name: 'Command Templates', icon: MessageCircle, path: '/command-templates' }, // Hidden
     // { name: 'Provider Forwarding', icon: Send, path: '/provider-forwarding' }, // Hidden
-    { name: 'Provider Aliases', icon: Layers, path: '/provider-aliases' },
+    { name: 'Provider Support Group', icon: Layers, path: '/provider-aliases' },
     { name: 'Keyword Responses', icon: MessageCircle, path: '/keyword-responses' },
     { name: 'User Mappings', icon: Users, path: '/user-mappings' },
     { name: 'Bot Settings', icon: Zap, path: '/bot-settings' },

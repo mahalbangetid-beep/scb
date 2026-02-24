@@ -1157,16 +1157,16 @@ const KeywordResponses = () => {
                 .keywords-list {
                     display: flex;
                     flex-direction: column;
-                    gap: 0.75rem;
+                    gap: 0.4rem;
                 }
                 .keyword-card {
                     background: var(--bg-card);
                     border: 1px solid var(--border-color);
-                    border-radius: 12px;
-                    padding: 1rem 1.25rem;
+                    border-radius: 8px;
+                    padding: 0.6rem 1rem;
                     transition: all 0.2s;
                     display: flex;
-                    gap: 0.75rem;
+                    gap: 0.5rem;
                     position: relative;
                 }
                 .keyword-card:hover {
@@ -1204,7 +1204,7 @@ const KeywordResponses = () => {
                     display: flex;
                     justify-content: space-between;
                     align-items: flex-start;
-                    margin-bottom: 0.75rem;
+                    margin-bottom: 0.35rem;
                 }
                 .keyword-name {
                     display: flex;
@@ -1231,19 +1231,19 @@ const KeywordResponses = () => {
                 .toggle-btn.off { color: var(--text-muted); }
                 .keyword-response {
                     color: var(--text-secondary);
-                    font-size: 0.9rem;
-                    line-height: 1.5;
-                    margin-bottom: 0.75rem;
-                    padding: 0.75rem;
+                    font-size: 0.82rem;
+                    line-height: 1.4;
+                    margin-bottom: 0.35rem;
+                    padding: 0.4rem 0.6rem;
                     background: var(--bg-tertiary);
-                    border-radius: 8px;
+                    border-radius: 6px;
                 }
                 .keyword-meta {
                     display: flex;
                     gap: 1rem;
-                    font-size: 0.8rem;
+                    font-size: 0.78rem;
                     color: var(--text-secondary);
-                    margin-bottom: 0.75rem;
+                    margin-bottom: 0.3rem;
                 }
                 .meta-label {
                     color: var(--text-muted);

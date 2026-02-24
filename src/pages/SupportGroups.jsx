@@ -227,10 +227,6 @@ export default function SupportGroups() {
                             Import from Device
                         </button>
                     )}
-                    <button className="btn btn-primary" onClick={() => openModal()}>
-                        <Plus size={16} />
-                        Add Group
-                    </button>
                 </div>
             </div>
 
@@ -317,12 +313,9 @@ export default function SupportGroups() {
                     </div>
                     <div className="empty-state-title">No support groups yet</div>
                     <div className="empty-state-description">
-                        Add your WhatsApp groups here to use them for marketing broadcasts and support forwarding
+                        Import your WhatsApp groups to use them for marketing broadcasts and support forwarding
                     </div>
                     <div style={{ display: 'flex', gap: 'var(--spacing-sm)', flexWrap: 'wrap' }}>
-                        <button className="btn btn-primary" onClick={() => openModal()}>
-                            <Plus size={16} /> Add First Group
-                        </button>
                         {connectedDevices.length > 0 && (
                             <button className="btn btn-secondary" onClick={() => setShowImportModal(true)}>
                                 <Download size={16} /> Import from Device
@@ -335,14 +328,12 @@ export default function SupportGroups() {
                     <table className="table">
                         <thead>
                             <tr>
-                                <th>Status</th>
                                 <th>Group</th>
                                 <th>Group JID</th>
                                 <th>Purpose</th>
                                 <th>Device</th>
                                 <th>Notes</th>
                                 <th>Created</th>
-                                <th style={{ textAlign: 'right' }}>Actions</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -351,13 +342,7 @@ export default function SupportGroups() {
                                 const PurposeIcon = ps.icon
 
                                 return (
-                                    <tr key={group.id} style={{ opacity: group.isActive ? 1 : 0.55 }}>
-                                        <td>
-                                            <span className={`badge ${group.isActive ? 'badge-success' : 'badge-error'}`}>
-                                                <span className={`status-dot ${group.isActive ? 'online' : 'offline'}`}></span>
-                                                {group.isActive ? 'Active' : 'Inactive'}
-                                            </span>
-                                        </td>
+                                    <tr key={group.id}>
                                         <td>
                                             <div style={{ fontWeight: 600 }}>{group.groupName}</div>
                                         </td>
@@ -413,40 +398,6 @@ export default function SupportGroups() {
                                             <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
                                                 {new Date(group.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                                             </span>
-                                        </td>
-                                        <td>
-                                            <div style={{ display: 'flex', gap: '4px', justifyContent: 'flex-end' }}>
-                                                <button
-                                                    className="btn btn-ghost btn-sm"
-                                                    onClick={() => handleToggleActive(group.id, group.isActive)}
-                                                    disabled={actionLoading === group.id}
-                                                    title={group.isActive ? 'Deactivate' : 'Activate'}
-                                                >
-                                                    {actionLoading === group.id
-                                                        ? <Loader2 size={14} className="animate-spin" />
-                                                        : group.isActive ? <EyeOff size={14} /> : <Eye size={14} />
-                                                    }
-                                                </button>
-                                                <button
-                                                    className="btn btn-ghost btn-sm"
-                                                    onClick={() => openModal(group)}
-                                                    title="Edit"
-                                                >
-                                                    <Edit3 size={14} />
-                                                </button>
-                                                <button
-                                                    className="btn btn-ghost btn-sm"
-                                                    onClick={() => handleDelete(group.id)}
-                                                    disabled={actionLoading === `del-${group.id}`}
-                                                    title="Delete"
-                                                    style={{ color: 'var(--error)' }}
-                                                >
-                                                    {actionLoading === `del-${group.id}`
-                                                        ? <Loader2 size={14} className="animate-spin" />
-                                                        : <Trash2 size={14} />
-                                                    }
-                                                </button>
-                                            </div>
                                         </td>
                                     </tr>
                                 )

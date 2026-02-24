@@ -410,6 +410,17 @@ class CryptomusService {
             }
         } catch (e) { /* use default */ }
 
+        // Read disallowed countries from config
+        let disallowedCountries = [];
+        try {
+            const dcConfig = await prisma.systemConfig.findFirst({
+                where: { key: 'cryptomus_disallowed_countries' }
+            });
+            if (dcConfig && dcConfig.value && dcConfig.value.trim()) {
+                disallowedCountries = dcConfig.value.split(',').map(c => c.trim().toUpperCase()).filter(Boolean);
+            }
+        } catch (e) { /* use default */ }
+
         return {
             id: 'cryptomus',
             name: 'Cryptomus',
@@ -421,7 +432,8 @@ class CryptomusService {
             isAvailable: config.enabled && config.isConfigured,
             isSandbox: false,
             supportedCrypto: ['BTC', 'ETH', 'USDT', 'LTC', 'TRX', 'BNB', 'DOGE', 'SOL'],
-            countries
+            countries,
+            disallowedCountries
         };
     }
 }

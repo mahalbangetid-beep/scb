@@ -22,6 +22,11 @@ router.get('/gateways', authenticate, async (req, res, next) => {
         if (country && country.trim()) {
             const countryCode = country.trim().toUpperCase();
             gateways = gateways.filter(g => {
+                // Disallowed countries check (higher priority)
+                if (g.disallowedCountries && g.disallowedCountries.length > 0) {
+                    if (g.disallowedCountries.includes(countryCode)) return false;
+                }
+                // Allowed countries check
                 if (!g.countries || g.countries.length === 0) return true; // no restriction
                 return g.countries.includes('*') || g.countries.includes(countryCode);
             });

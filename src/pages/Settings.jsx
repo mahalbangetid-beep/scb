@@ -467,70 +467,8 @@ export default function Settings() {
                                     <Bot size={18} /> Bot Security & Action Settings
                                 </h4>
 
-                                {/* Action Modes Section */}
-                                <div className="security-setting-card">
-                                    <div className="setting-header">
-                                        <div className="setting-icon"><Zap size={20} /></div>
-                                        <div>
-                                            <div className="setting-title">Command Action Modes</div>
-                                            <div className="setting-desc">How the bot handles refill, cancel, and speedup commands</div>
-                                        </div>
-                                    </div>
 
-                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 'var(--spacing-md)', marginTop: 'var(--spacing-md)' }}>
-                                        <div className="form-group">
-                                            <label className="form-label">Refill Action</label>
-                                            <select
-                                                className="form-select"
-                                                value={securitySettings.refillActionMode}
-                                                onChange={(e) => setSecuritySettings({ ...securitySettings, refillActionMode: e.target.value })}
-                                            >
-                                                <option value="forward">Forward to Provider Group</option>
-                                                <option value="auto">Auto Execute via API</option>
-                                                <option value="both">Both (API + Forward)</option>
-                                                <option value="disabled">Disabled</option>
-                                            </select>
-                                        </div>
-                                        <div className="form-group">
-                                            <label className="form-label">Cancel Action</label>
-                                            <select
-                                                className="form-select"
-                                                value={securitySettings.cancelActionMode}
-                                                onChange={(e) => setSecuritySettings({ ...securitySettings, cancelActionMode: e.target.value })}
-                                            >
-                                                <option value="forward">Forward to Provider Group</option>
-                                                <option value="auto">Auto Execute via API</option>
-                                                <option value="both">Both (API + Forward)</option>
-                                                <option value="disabled">Disabled</option>
-                                            </select>
-                                        </div>
-                                        <div className="form-group">
-                                            <label className="form-label">Speed-up Action</label>
-                                            <select
-                                                className="form-select"
-                                                value={securitySettings.speedupActionMode}
-                                                onChange={(e) => setSecuritySettings({ ...securitySettings, speedupActionMode: e.target.value })}
-                                            >
-                                                <option value="forward">Forward to Provider Group</option>
-                                                <option value="auto">Auto Execute via API</option>
-                                                <option value="both">Both (API + Forward)</option>
-                                                <option value="disabled">Disabled</option>
-                                            </select>
-                                        </div>
-                                        <div className="form-group">
-                                            <label className="form-label">Status Response</label>
-                                            <select
-                                                className="form-select"
-                                                value={securitySettings.statusResponseMode}
-                                                onChange={(e) => setSecuritySettings({ ...securitySettings, statusResponseMode: e.target.value })}
-                                            >
-                                                <option value="standard">Standard</option>
-                                                <option value="detailed">Detailed (with provider info)</option>
-                                                <option value="minimal">Minimal</option>
-                                            </select>
-                                        </div>
-                                    </div>
-                                </div>
+                                {/* Command Action Modes & statusResponseMode removed — available in Bot Settings page */}
 
                                 {/* Username Validation */}
                                 <div className="security-setting-card">
@@ -620,36 +558,8 @@ export default function Settings() {
                                     </div>
                                 </div>
 
-                                {/* Response Settings */}
+                                {/* showProviderInResponse & showDetailedStatus removed — available in Bot Settings page */}
                                 <div className="security-toggles">
-                                    <div className="toggle-row">
-                                        <div>
-                                            <div className="toggle-title">Show Provider in Response</div>
-                                            <div className="toggle-desc">Include provider name in status replies to customers</div>
-                                        </div>
-                                        <label className="toggle">
-                                            <input
-                                                type="checkbox"
-                                                checked={securitySettings.showProviderInResponse}
-                                                onChange={(e) => setSecuritySettings({ ...securitySettings, showProviderInResponse: e.target.checked })}
-                                            />
-                                            <span className="slider"></span>
-                                        </label>
-                                    </div>
-                                    <div className="toggle-row">
-                                        <div>
-                                            <div className="toggle-title">Show Detailed Status</div>
-                                            <div className="toggle-desc">Show comprehensive order details including charges and actions</div>
-                                        </div>
-                                        <label className="toggle">
-                                            <input
-                                                type="checkbox"
-                                                checked={securitySettings.showDetailedStatus}
-                                                onChange={(e) => setSecuritySettings({ ...securitySettings, showDetailedStatus: e.target.checked })}
-                                            />
-                                            <span className="slider"></span>
-                                        </label>
-                                    </div>
                                     <div className="toggle-row">
                                         <div>
                                             <div className="toggle-title">Private Reply in Groups</div>

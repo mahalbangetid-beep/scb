@@ -359,6 +359,56 @@ const requireCredit = (requiredAmount = 0) => {
     };
 };
 
+/**
+ * Get the effective userId for data queries.
+ * 
+ * For non-STAFF users: returns req.user.id (no behavior change).
+ * For STAFF users: returns the owner's userId from StaffPermission.
+ * 
+ * This allows staff to access their owner's resources (devices, panels, contacts, etc.)
+ * without modifying any existing middleware or authentication logic.
+ * 
+ * Result is cached on req._effectiveUserId to avoid repeated DB lookups.
+ * 
+ * @param {Object} req - Express request object (must have req.user set by authenticate middleware)
+ * @returns {Promise<string>} The userId to use in where clauses
+ */
+const getEffectiveUserId = async (req) => {
+    // Non-staff users always use their own ID
+    if (!req.user) {
+        return null; // Should never happen (authenticate middleware sets req.user), but safe fallback
+    }
+    if (req.user.role !== ROLES.STAFF) {
+        return req.user.id;
+    }
+
+    // Return cached result if already resolved in this request
+    if (req._effectiveUserId) {
+        return req._effectiveUserId;
+    }
+
+    // For STAFF: look up the owner's userId from their permission records
+    try {
+        const perm = await prisma.staffPermission.findFirst({
+            where: { staffId: req.user.id },
+            select: { userId: true }
+        });
+
+        // If staff has a scoped userId → use owner's ID
+        // If userId is null → global staff, fall back to own ID (safe default)
+        // If no permission found → fall back to own ID (safe default)
+        const effectiveId = perm?.userId || req.user.id;
+
+        // Cache on request to avoid repeated lookups within the same request
+        req._effectiveUserId = effectiveId;
+        return effectiveId;
+    } catch (error) {
+        // On any error, safely fall back to own ID (no broken behavior)
+        console.error('[Auth] getEffectiveUserId error:', error.message);
+        return req.user.id;
+    }
+};
+
 module.exports = {
     ROLES,
     ROLE_HIERARCHY,
@@ -370,5 +420,6 @@ module.exports = {
     requireAdmin,
     requireStaffPermission,
     optionalAuth,
-    requireCredit
+    requireCredit,
+    getEffectiveUserId
 };

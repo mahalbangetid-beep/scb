@@ -40,7 +40,7 @@ const TEMPLATE_CATEGORIES = {
     bulk: {
         label: 'Bulk Orders (Multiple Orders)',
         icon: '📦',
-        templates: ['BULK_HEADER', 'BULK_SUCCESS_LABEL', 'BULK_ALREADY_CANCELLED', 'BULK_ALREADY_COMPLETED', 'BULK_PARTIAL_REFUND', 'BULK_COOLDOWN', 'BULK_COOLDOWN_HINT', 'BULK_NOT_FOUND', 'BULK_OTHER_ERRORS', 'BULK_SUMMARY']
+        templates: ['BULK_HEADER', 'BULK_SUCCESS_ITEM', 'BULK_FAILED_ITEM', 'BULK_SUCCESS_LABEL', 'BULK_ALREADY_CANCELLED', 'BULK_ALREADY_COMPLETED', 'BULK_PARTIAL_REFUND', 'BULK_COOLDOWN', 'BULK_COOLDOWN_HINT', 'BULK_NOT_FOUND', 'BULK_OTHER_ERRORS', 'BULK_SUMMARY']
     },
     general: {
         label: 'General Responses',
@@ -250,12 +250,12 @@ export default function ResponseTemplates() {
                                     const template = getTemplateByCommand(command)
                                     return (
                                         <div key={command} style={{
-                                            padding: 'var(--spacing-md)',
+                                            padding: 'var(--spacing-sm) var(--spacing-md)',
                                             borderBottom: '1px solid var(--border-color)',
                                             display: 'flex',
                                             justifyContent: 'space-between',
                                             alignItems: 'flex-start',
-                                            gap: 'var(--spacing-md)'
+                                            gap: 'var(--spacing-sm)'
                                         }}>
                                             <div style={{ flex: 1 }}>
                                                 <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--spacing-sm)', marginBottom: 'var(--spacing-xs)' }}>
@@ -267,11 +267,11 @@ export default function ResponseTemplates() {
                                                     )}
                                                 </div>
                                                 <p style={{
-                                                    fontSize: '0.85rem',
+                                                    fontSize: '0.82rem',
                                                     color: 'var(--text-secondary)',
                                                     whiteSpace: 'pre-wrap',
                                                     margin: 0,
-                                                    maxHeight: '60px',
+                                                    maxHeight: '45px',
                                                     overflow: 'hidden'
                                                 }}>
                                                     {template.template || template.defaultTemplate || 'No template set'}

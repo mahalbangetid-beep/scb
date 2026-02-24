@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Plus, Edit2, Trash2, Star, DollarSign, Package, ToggleLeft, ToggleRight, Gift, AlertTriangle, Zap, Search } from 'lucide-react';
+import { Plus, Edit2, Trash2, Star, DollarSign, Package, ToggleLeft, ToggleRight, Gift, AlertTriangle, Zap, Search, Filter } from 'lucide-react';
 import api from '../../services/api';
 
 const CreditPackages = () => {
@@ -10,6 +10,7 @@ const CreditPackages = () => {
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
     const [searchTerm, setSearchTerm] = useState('');
+    const [filterCategory, setFilterCategory] = useState('');
 
     const [formData, setFormData] = useState({
         name: '',
@@ -183,9 +184,9 @@ const CreditPackages = () => {
             {error && <div className="alert alert-error"><AlertTriangle size={20} />{error}</div>}
             {success && <div className="alert alert-success"><Zap size={20} />{success}</div>}
 
-            {/* Search */}
-            <div style={{ marginBottom: 'var(--spacing-lg)' }}>
-                <div className="search-box">
+            {/* Search & Filter */}
+            <div style={{ marginBottom: 'var(--spacing-lg)', display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+                <div className="search-box" style={{ flex: 1, minWidth: '200px' }}>
                     <Search size={18} />
                     <input
                         type="text"
@@ -194,11 +195,23 @@ const CreditPackages = () => {
                         onChange={(e) => setSearchTerm(e.target.value)}
                     />
                 </div>
+                <select
+                    className="form-select"
+                    value={filterCategory}
+                    onChange={(e) => setFilterCategory(e.target.value)}
+                    style={{ minWidth: '180px', padding: '0.5rem 0.75rem', fontSize: '0.875rem' }}
+                >
+                    <option value="">All Categories</option>
+                    <option value="support">Support Messages</option>
+                    <option value="whatsapp_marketing">WhatsApp Marketing</option>
+                    <option value="telegram_marketing">Telegram Marketing</option>
+                </select>
             </div>
 
             {/* Packages Grid */}
             <div className="packages-grid">
                 {packages
+                    .filter(pkg => !filterCategory || pkg.category === filterCategory)
                     .filter(pkg => !searchTerm || pkg.name.toLowerCase().includes(searchTerm.toLowerCase()) || (pkg.description && pkg.description.toLowerCase().includes(searchTerm.toLowerCase())))
                     .map(pkg => (
                         <div key={pkg.id} className={`package-card ${pkg.isFeatured ? 'featured' : ''} ${!pkg.isActive ? 'inactive' : ''}`}>

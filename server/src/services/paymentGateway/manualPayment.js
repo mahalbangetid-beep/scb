@@ -331,9 +331,10 @@ class ManualPaymentService {
         // Check admin setting for manual payment
         let isEnabled = false;
         let countries = ['*']; // default: all countries
+        let disallowedCountries = [];
         try {
             const configs = await prisma.systemConfig.findMany({
-                where: { key: { in: ['manual_enabled', 'manual_countries'] } }
+                where: { key: { in: ['manual_enabled', 'manual_countries', 'manual_disallowed_countries'] } }
             });
             for (const c of configs) {
                 if (c.key === 'manual_enabled') {
@@ -341,6 +342,9 @@ class ManualPaymentService {
                 }
                 if (c.key === 'manual_countries' && c.value && c.value.trim()) {
                     countries = c.value.split(',').map(cc => cc.trim().toUpperCase()).filter(Boolean);
+                }
+                if (c.key === 'manual_disallowed_countries' && c.value && c.value.trim()) {
+                    disallowedCountries = c.value.split(',').map(cc => cc.trim().toUpperCase()).filter(Boolean);
                 }
             }
         } catch (e) {
@@ -358,7 +362,8 @@ class ManualPaymentService {
             isAvailable: isEnabled,
             requiresProof: true,
             processingTime: '1-24 hours',
-            countries
+            countries,
+            disallowedCountries
         };
     }
 }

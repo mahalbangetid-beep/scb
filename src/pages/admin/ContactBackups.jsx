@@ -18,7 +18,9 @@ import {
     Eye,
     Shield,
     Globe,
-    Zap
+    Zap,
+    Copy,
+    ClipboardCheck
 } from 'lucide-react'
 import api from '../../services/api'
 import { formatDistanceToNow, format } from 'date-fns'
@@ -42,6 +44,7 @@ export default function ContactBackups() {
     const [allBackups, setAllBackups] = useState([])
     const [backupAllLoading, setBackupAllLoading] = useState(false)
     const [exportLoading, setExportLoading] = useState(false)
+    const [copySuccess, setCopySuccess] = useState(false)
 
     const fetchDevices = async () => {
         try {
@@ -833,9 +836,36 @@ export default function ContactBackups() {
 
                             {/* Contacts Preview */}
                             <div style={{ marginBottom: 'var(--spacing-lg)' }}>
-                                <h4 style={{ fontSize: '0.9rem', fontWeight: 600, marginBottom: 'var(--spacing-sm)' }}>
-                                    Contacts Preview (first 20)
-                                </h4>
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 'var(--spacing-sm)' }}>
+                                    <h4 style={{ fontSize: '0.9rem', fontWeight: 600 }}>
+                                        Contacts Preview (first 20)
+                                    </h4>
+                                    {(viewBackup.contacts || []).length > 0 && (
+                                        <button
+                                            className="btn btn-sm"
+                                            style={{
+                                                display: 'flex', alignItems: 'center', gap: '4px',
+                                                background: copySuccess ? 'rgba(34, 197, 94, 0.15)' : 'rgba(99, 102, 241, 0.1)',
+                                                color: copySuccess ? '#22c55e' : 'var(--primary-500)',
+                                                border: 'none', padding: '6px 12px', borderRadius: '8px',
+                                                cursor: 'pointer', fontSize: '0.75rem', fontWeight: 600
+                                            }}
+                                            onClick={() => {
+                                                const numbers = (viewBackup.contacts || [])
+                                                    .map(c => c.phone || c.jid || '')
+                                                    .filter(n => n && !n.includes('@g.us'))
+                                                    .join('\n')
+                                                navigator.clipboard.writeText(numbers).then(() => {
+                                                    setCopySuccess(true)
+                                                    setTimeout(() => setCopySuccess(false), 2000)
+                                                })
+                                            }}
+                                        >
+                                            {copySuccess ? <ClipboardCheck size={14} /> : <Copy size={14} />}
+                                            {copySuccess ? 'Copied!' : `Copy All Numbers (${(viewBackup.contacts || []).filter(c => !(c.phone || c.jid || '').includes('@g.us')).length})`}
+                                        </button>
+                                    )}
+                                </div>
                                 <div style={{
                                     maxHeight: '200px',
                                     overflow: 'auto',

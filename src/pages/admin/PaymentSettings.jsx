@@ -42,12 +42,14 @@ const PaymentSettings = () => {
         esewa_secret_key: '',
         esewa_sandbox: true,
         esewa_countries: 'NP',
+        esewa_disallowed_countries: '',
 
         // Cryptomus
         cryptomus_enabled: false,
         cryptomus_merchant_id: '',
         cryptomus_api_key: '',
         cryptomus_countries: '*',
+        cryptomus_disallowed_countries: '',
 
         // Binance Pay
         binance_enabled: false,
@@ -60,6 +62,7 @@ const PaymentSettings = () => {
         binance_name: '',
         binance_currency: 'USDT',
         binance_countries: '*',
+        binance_disallowed_countries: '',
 
         // Manual Payment
         manual_enabled: true,
@@ -69,6 +72,7 @@ const PaymentSettings = () => {
         manual_paypal_email: '',
         manual_instructions: '',
         manual_countries: '*',
+        manual_disallowed_countries: '',
 
         // General
         min_deposit: 5,
@@ -357,6 +361,16 @@ const PaymentSettings = () => {
                                 />
                                 <small className="form-hint">Comma-separated ISO country codes. Use * for all countries.</small>
                             </div>
+                            <div className="form-group">
+                                <label><Globe size={16} /> Disallowed Countries</label>
+                                <input
+                                    type="text"
+                                    value={settings.esewa_disallowed_countries || ''}
+                                    onChange={(e) => handleChange('esewa_disallowed_countries', e.target.value)}
+                                    placeholder="e.g. IN,CN"
+                                />
+                                <small className="form-hint">Comma-separated ISO codes. These countries will be BLOCKED even if in allowed list.</small>
+                            </div>
                         </div>
                     </div>
                 )}
@@ -414,6 +428,16 @@ const PaymentSettings = () => {
                                     placeholder="*"
                                 />
                                 <small className="form-hint">Comma-separated ISO country codes. Use * for all countries.</small>
+                            </div>
+                            <div className="form-group">
+                                <label><Globe size={16} /> Disallowed Countries</label>
+                                <input
+                                    type="text"
+                                    value={settings.cryptomus_disallowed_countries || ''}
+                                    onChange={(e) => handleChange('cryptomus_disallowed_countries', e.target.value)}
+                                    placeholder="e.g. IN,CN"
+                                />
+                                <small className="form-hint">Comma-separated ISO codes. These countries will be BLOCKED even if in allowed list.</small>
                             </div>
                         </div>
                     </div>
@@ -581,6 +605,16 @@ const PaymentSettings = () => {
                             />
                             <small className="form-hint">Comma-separated ISO country codes. Use * for all countries.</small>
                         </div>
+                        <div className="form-group">
+                            <label><Globe size={16} /> Disallowed Countries</label>
+                            <input
+                                type="text"
+                                value={settings.binance_disallowed_countries || ''}
+                                onChange={(e) => handleChange('binance_disallowed_countries', e.target.value)}
+                                placeholder="e.g. IN,CN"
+                            />
+                            <small className="form-hint">Comma-separated ISO codes. These countries will be BLOCKED even if in allowed list.</small>
+                        </div>
                     </div>
                 )}
 
@@ -665,6 +699,16 @@ const PaymentSettings = () => {
                                 placeholder="*"
                             />
                             <small className="form-hint">Comma-separated ISO country codes. Use * for all countries.</small>
+                        </div>
+                        <div className="form-group">
+                            <label><Globe size={16} /> Disallowed Countries</label>
+                            <input
+                                type="text"
+                                value={settings.manual_disallowed_countries || ''}
+                                onChange={(e) => handleChange('manual_disallowed_countries', e.target.value)}
+                                placeholder="e.g. IN,CN"
+                            />
+                            <small className="form-hint">Comma-separated ISO codes. These countries will be BLOCKED even if in allowed list.</small>
                         </div>
                     </div>
                 )}

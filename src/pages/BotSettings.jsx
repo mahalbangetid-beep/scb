@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Settings, Shield, Zap, MessageSquare, AlertTriangle, RotateCcw, Save, ChevronDown, ChevronRight, Bell, Package, Users, Search, Phone, ShieldAlert } from 'lucide-react';
+import { Settings, Shield, Zap, MessageSquare, AlertTriangle, RotateCcw, Save, ChevronDown, ChevronRight, Bell, Package, Users, Search, Phone, ShieldAlert, Plus, Trash2, UserCheck } from 'lucide-react';
 import api from '../services/api';
 import ScopeSelector from '../components/ScopeSelector';
 
@@ -11,6 +11,9 @@ const BotSettings = () => {
     const [success, setSuccess] = useState('');
     const [searchQuery, setSearchQuery] = useState('');
     const [scope, setScope] = useState({ deviceId: null, panelId: null });
+    const [staffOverride, setStaffOverride] = useState({ enabled: false, groups: [] });
+    const [staffOverrideLoading, setStaffOverrideLoading] = useState(false);
+    const [newGroupJid, setNewGroupJid] = useState('');
     const [expandedSections, setExpandedSections] = useState({
         commands: true,
         highRisk: false,
@@ -20,13 +23,15 @@ const BotSettings = () => {
         fallback: true,
         callResponse: true,
         spamProtection: true,
-        massTemplates: false
+        massTemplates: false,
+        staffOverride: true
     });
 
     useEffect(() => {
         setError('');
         setSuccess('');
         fetchToggles();
+        fetchStaffOverride();
     }, [scope.deviceId, scope.panelId]);
 
     const fetchToggles = async () => {
@@ -91,6 +96,77 @@ const BotSettings = () => {
             setError('Failed to reset settings');
         } finally {
             setSaving(false);
+        }
+    };
+
+    // ==================== STAFF OVERRIDE (separate API) ====================
+
+    const fetchStaffOverride = async () => {
+        try {
+            setStaffOverrideLoading(true);
+            const response = await api.get('/settings/staff-override-groups');
+            setStaffOverride({
+                enabled: response.data?.enabled || false,
+                groups: response.data?.groups || []
+            });
+        } catch (err) {
+            console.error('Failed to load staff override config:', err);
+        } finally {
+            setStaffOverrideLoading(false);
+        }
+    };
+
+    const handleToggleStaffOverride = async () => {
+        try {
+            const response = await api.put('/settings/staff-override-groups', {
+                enabled: !staffOverride.enabled,
+                groups: staffOverride.groups
+            });
+            setStaffOverride({
+                enabled: response.data?.enabled || false,
+                groups: response.data?.groups || []
+            });
+            setSuccess(`Staff override ${!staffOverride.enabled ? 'enabled' : 'disabled'}`);
+            setTimeout(() => setSuccess(''), 3000);
+        } catch (err) {
+            setError('Failed to update staff override');
+        }
+    };
+
+    const handleAddStaffGroup = async () => {
+        const jid = newGroupJid.trim();
+        if (!jid) return;
+
+        // Auto-append @g.us if not present
+        const groupJid = jid.includes('@') ? jid : `${jid}@g.us`;
+
+        try {
+            const response = await api.post('/settings/staff-override-groups/add', { groupJid });
+            setStaffOverride(prev => ({
+                ...prev,
+                groups: response.data?.groups || [...prev.groups, groupJid]
+            }));
+            setNewGroupJid('');
+            setSuccess('Staff override group added');
+            setTimeout(() => setSuccess(''), 3000);
+        } catch (err) {
+            setError(err.response?.data?.message || 'Failed to add group');
+        }
+    };
+
+    const handleRemoveStaffGroup = async (groupJid) => {
+        if (!window.confirm(`Remove group ${groupJid} from staff override?`)) return;
+
+        try {
+            const response = await api.delete(`/settings/staff-override-groups/${encodeURIComponent(groupJid)}`);
+            setStaffOverride(prev => ({
+                ...prev,
+                groups: response.data?.groups || prev.groups.filter(g => g !== groupJid)
+            }));
+            setSuccess('Staff override group removed');
+            setTimeout(() => setSuccess(''), 3000);
+        } catch (err) {
+            setError('Failed to remove group');
         }
     };
 
@@ -680,6 +756,105 @@ Total: {total} | ✅ {success_count} | ❌ {failed_count}`}
                         toggleKey="allowTicketAutoReply"
                     />
                 </Section>
+
+                {/* Staff Override Groups */}
+                <Section
+                    id="staffOverride"
+                    title="Staff Override Groups"
+                    icon={UserCheck}
+                    description="Groups where ALL security checks are bypassed — any user can send commands for any order"
+                >
+                    <div className="warning-banner">
+                        <AlertTriangle size={20} />
+                        <span>Groups in this list bypass ALL security checks: rate limit, cooldown, username validation, and order ownership. Only add trusted staff groups.</span>
+                    </div>
+
+                    <div className="toggle-row">
+                        <div className="toggle-info">
+                            <span className="toggle-label">Enable Staff Override</span>
+                            <span className="toggle-description">When enabled, configured groups bypass all security checks</span>
+                        </div>
+                        <Toggle
+                            checked={staffOverride.enabled}
+                            onChange={handleToggleStaffOverride}
+                            disabled={staffOverrideLoading}
+                        />
+                    </div>
+
+                    {staffOverride.enabled && (
+                        <>
+                            <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.75rem' }}>
+                                <input
+                                    type="text"
+                                    className="form-input compact"
+                                    value={newGroupJid}
+                                    onChange={(e) => setNewGroupJid(e.target.value)}
+                                    placeholder="Enter Group JID (e.g. 120363xxx@g.us)"
+                                    onKeyDown={(e) => e.key === 'Enter' && handleAddStaffGroup()}
+                                    style={{ flex: 1 }}
+                                />
+                                <button
+                                    className="btn btn-primary"
+                                    onClick={handleAddStaffGroup}
+                                    disabled={!newGroupJid.trim()}
+                                    style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', whiteSpace: 'nowrap' }}
+                                >
+                                    <Plus size={16} /> Add Group
+                                </button>
+                            </div>
+
+                            {staffOverride.groups.length === 0 ? (
+                                <div style={{ color: 'var(--text-secondary)', fontStyle: 'italic', padding: '0.75rem 0', fontSize: '0.875rem' }}>
+                                    No staff override groups configured. Add a group JID above.
+                                </div>
+                            ) : (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                                    {staffOverride.groups.map((jid, idx) => (
+                                        <div
+                                            key={idx}
+                                            style={{
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'space-between',
+                                                padding: '0.5rem 0.75rem',
+                                                background: 'var(--bg-secondary)',
+                                                borderRadius: '0.5rem',
+                                                border: '1px solid var(--border-color)',
+                                                fontSize: '0.875rem'
+                                            }}
+                                        >
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                                <Users size={14} style={{ color: 'var(--text-secondary)' }} />
+                                                <code style={{ fontSize: '0.8rem', color: 'var(--text-primary)' }}>{jid}</code>
+                                            </div>
+                                            <button
+                                                onClick={() => handleRemoveStaffGroup(jid)}
+                                                style={{
+                                                    background: 'none',
+                                                    border: 'none',
+                                                    color: 'var(--danger)',
+                                                    cursor: 'pointer',
+                                                    padding: '0.25rem',
+                                                    borderRadius: '0.25rem',
+                                                    display: 'flex',
+                                                    alignItems: 'center'
+                                                }}
+                                                title="Remove group"
+                                            >
+                                                <Trash2 size={16} />
+                                            </button>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+
+                            <div style={{ marginTop: '0.75rem', padding: '0.5rem', background: 'var(--bg-tertiary)', borderRadius: '0.375rem', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                                💡 <strong>Tip:</strong> You can find group JIDs from the Support Groups page. Copy the JID and paste it here.
+                            </div>
+                        </>
+                    )}
+                </Section>
+
             </div>
 
             <style>{`

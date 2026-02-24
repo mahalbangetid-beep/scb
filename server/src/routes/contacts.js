@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const prisma = require('../utils/prisma');
-const { authenticate } = require('../middleware/auth');
+const { authenticate, getEffectiveUserId } = require('../middleware/auth');
 const { AppError } = require('../middleware/errorHandler');
 const { successResponse, paginatedResponse, parsePagination } = require('../utils/response');
 
@@ -11,8 +11,10 @@ router.get('/', authenticate, async (req, res, next) => {
         const { page, limit, skip } = parsePagination(req.query);
         const { search, tag } = req.query;
 
+        const effectiveUserId = await getEffectiveUserId(req);
+
         const where = {
-            userId: req.user.id
+            userId: effectiveUserId
         };
 
         if (search) {
@@ -71,10 +73,11 @@ router.get('/', authenticate, async (req, res, next) => {
 // GET /api/contacts/:id
 router.get('/:id', authenticate, async (req, res, next) => {
     try {
+        const effectiveUserId = await getEffectiveUserId(req);
         const contact = await prisma.contact.findFirst({
             where: {
                 id: req.params.id,
-                userId: req.user.id
+                userId: effectiveUserId
             },
             include: {
                 tags: { include: { tag: true } }
@@ -105,6 +108,8 @@ router.post('/', authenticate, async (req, res, next) => {
             throw new AppError('name and phone are required', 400);
         }
 
+        const effectiveUserId = await getEffectiveUserId(req);
+
         // Create contact and link tags atomically
         const contact = await prisma.$transaction(async (tx) => {
             const newContact = await tx.contact.create({
@@ -112,7 +117,7 @@ router.post('/', authenticate, async (req, res, next) => {
                     name,
                     phone,
                     email,
-                    userId: req.user.id
+                    userId: effectiveUserId
                 }
             });
 
@@ -124,13 +129,13 @@ router.post('/', authenticate, async (req, res, next) => {
                         where: {
                             name_userId: {
                                 name: tagName,
-                                userId: req.user.id
+                                userId: effectiveUserId
                             }
                         },
                         update: {},
                         create: {
                             name: tagName,
-                            userId: req.user.id
+                            userId: effectiveUserId
                         }
                     });
 
@@ -158,8 +163,10 @@ router.put('/:id', authenticate, async (req, res, next) => {
     try {
         const { name, phone, email, tags: tagNames } = req.body;
 
+        const effectiveUserId = await getEffectiveUserId(req);
+
         const existing = await prisma.contact.findFirst({
-            where: { id: req.params.id, userId: req.user.id }
+            where: { id: req.params.id, userId: effectiveUserId }
         });
 
         if (!existing) {
@@ -185,13 +192,13 @@ router.put('/:id', authenticate, async (req, res, next) => {
                         where: {
                             name_userId: {
                                 name: tagName,
-                                userId: req.user.id
+                                userId: effectiveUserId
                             }
                         },
                         update: {},
                         create: {
                             name: tagName,
-                            userId: req.user.id
+                            userId: effectiveUserId
                         }
                     });
 
@@ -216,8 +223,9 @@ router.put('/:id', authenticate, async (req, res, next) => {
 // DELETE /api/contacts/:id
 router.delete('/:id', authenticate, async (req, res, next) => {
     try {
+        const effectiveUserId = await getEffectiveUserId(req);
         const contact = await prisma.contact.findFirst({
-            where: { id: req.params.id, userId: req.user.id }
+            where: { id: req.params.id, userId: effectiveUserId }
         });
 
         if (!contact) {
@@ -237,6 +245,7 @@ router.delete('/:id', authenticate, async (req, res, next) => {
 // POST /api/contacts/import - Bulk import (JSON body or CSV file upload)
 router.post('/import', authenticate, async (req, res, next) => {
     try {
+        const effectiveUserId = await getEffectiveUserId(req);
         let contactItems = [];
 
         // Check if this is a CSV text upload (sent as { csv: "...", tags: [...] })
@@ -356,7 +365,7 @@ router.post('/import', authenticate, async (req, res, next) => {
             // Fetch existing tags for this user
             const existingTags = await prisma.tag.findMany({
                 where: {
-                    userId: req.user.id,
+                    userId: effectiveUserId,
                     name: { in: [...allTagNames] }
                 },
                 select: { id: true, name: true }
@@ -372,7 +381,7 @@ router.post('/import', authenticate, async (req, res, next) => {
                 await prisma.tag.createMany({
                     data: missingTags.map(name => ({
                         name,
-                        userId: req.user.id
+                        userId: effectiveUserId
                     })),
                     skipDuplicates: true
                 });
@@ -380,7 +389,7 @@ router.post('/import', authenticate, async (req, res, next) => {
                 // Re-fetch to get IDs of newly created tags
                 const newTags = await prisma.tag.findMany({
                     where: {
-                        userId: req.user.id,
+                        userId: effectiveUserId,
                         name: { in: missingTags }
                     },
                     select: { id: true, name: true }
@@ -425,7 +434,7 @@ router.post('/import', authenticate, async (req, res, next) => {
                     const phones = validItems.map(v => v.phone);
                     const existingContacts = await tx.contact.findMany({
                         where: {
-                            userId: req.user.id,
+                            userId: effectiveUserId,
                             phone: { in: phones }
                         },
                         select: { id: true, phone: true }
@@ -456,7 +465,7 @@ router.post('/import', authenticate, async (req, res, next) => {
                                 phone: item.phone,
                                 email: item.email || null,
                                 notes: item.notes || null,
-                                userId: req.user.id
+                                userId: effectiveUserId
                             })),
                             skipDuplicates: true
                         });
@@ -464,7 +473,7 @@ router.post('/import', authenticate, async (req, res, next) => {
                         // Fetch IDs of newly created contacts (needed for tag linking)
                         const createdContacts = await tx.contact.findMany({
                             where: {
-                                userId: req.user.id,
+                                userId: effectiveUserId,
                                 phone: { in: toCreate.map(c => c.phone) }
                             },
                             select: { id: true, phone: true }

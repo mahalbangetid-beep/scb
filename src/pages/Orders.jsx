@@ -3,7 +3,7 @@ import {
     Package, Search, Filter, RefreshCw, RotateCcw, XCircle,
     Zap, CheckCircle2, Clock, AlertCircle, Loader2, X,
     ChevronDown, ExternalLink, Copy, ArrowUpDown, Users, Hash, UserCheck,
-    FileText, Save, Link2, ClipboardCopy, Send
+    FileText, Save, Link2, ClipboardCopy, Send, History
 } from 'lucide-react'
 import api from '../services/api'
 
@@ -37,6 +37,8 @@ export default function Orders() {
     const [memoText, setMemoText] = useState('')
     const [memoSaving, setMemoSaving] = useState(false)
     const [statusOverriding, setStatusOverriding] = useState(false)
+    const [commandHistory, setCommandHistory] = useState([])
+    const [commandHistoryLoading, setCommandHistoryLoading] = useState(false)
     const copyMenuRef = useRef(null)
 
     // Close copy menu when clicking outside
@@ -59,6 +61,15 @@ export default function Orders() {
     useEffect(() => {
         fetchOrders()
     }, [filters, pagination.page])
+
+    // Fetch command history when detail modal opens
+    useEffect(() => {
+        if (showDetailModal?.id) {
+            fetchCommandHistory(showDetailModal.id)
+        } else {
+            setCommandHistory([])
+        }
+    }, [showDetailModal?.id])
 
     const fetchPanels = async () => {
         try {
@@ -99,6 +110,19 @@ export default function Orders() {
             setError(err.message || 'Failed to fetch orders')
         } finally {
             setLoading(false)
+        }
+    }
+
+    const fetchCommandHistory = async (orderId) => {
+        try {
+            setCommandHistoryLoading(true)
+            const res = await api.get(`/orders/${orderId}/commands`)
+            setCommandHistory(res.data || [])
+        } catch (err) {
+            console.error('Failed to fetch command history:', err)
+            setCommandHistory([])
+        } finally {
+            setCommandHistoryLoading(false)
         }
     }
 
@@ -881,6 +905,97 @@ export default function Orders() {
                                     </div>
                                 </div>
                             </div>
+
+                            {/* Command History Section */}
+                            <div className="detail-section">
+                                <h4><History size={16} /> Command History</h4>
+                                {commandHistoryLoading ? (
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.75rem 0', color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
+                                        <Loader2 className="animate-spin" size={14} /> Loading commands...
+                                    </div>
+                                ) : commandHistory.length === 0 ? (
+                                    <p style={{ color: 'var(--text-muted)', fontStyle: 'italic', fontSize: '0.8125rem', margin: '0.5rem 0' }}>
+                                        No commands have been sent for this order.
+                                    </p>
+                                ) : (
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                                        {commandHistory.map((cmd) => (
+                                            <div
+                                                key={cmd.id}
+                                                style={{
+                                                    display: 'flex',
+                                                    alignItems: 'flex-start',
+                                                    justifyContent: 'space-between',
+                                                    padding: '0.5rem 0.75rem',
+                                                    background: 'var(--bg-tertiary)',
+                                                    borderRadius: 'var(--radius-md)',
+                                                    border: '1px solid var(--border-color)',
+                                                    fontSize: '0.8125rem',
+                                                    gap: '0.75rem'
+                                                }}
+                                            >
+                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', flex: 1 }}>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                                                        <span
+                                                            style={{
+                                                                padding: '0.125rem 0.5rem',
+                                                                borderRadius: '0.25rem',
+                                                                fontSize: '0.75rem',
+                                                                fontWeight: 600,
+                                                                background: cmd.command === 'REFILL' ? 'rgba(59,130,246,0.15)' :
+                                                                    cmd.command === 'CANCEL' ? 'rgba(239,68,68,0.15)' :
+                                                                        cmd.command === 'SPEED_UP' ? 'rgba(245,158,11,0.15)' :
+                                                                            'rgba(139,92,246,0.15)',
+                                                                color: cmd.command === 'REFILL' ? '#3b82f6' :
+                                                                    cmd.command === 'CANCEL' ? '#ef4444' :
+                                                                        cmd.command === 'SPEED_UP' ? '#f59e0b' :
+                                                                            '#8b5cf6'
+                                                            }}
+                                                        >
+                                                            {cmd.command}
+                                                        </span>
+                                                        <span
+                                                            style={{
+                                                                padding: '0.125rem 0.375rem',
+                                                                borderRadius: '0.25rem',
+                                                                fontSize: '0.7rem',
+                                                                fontWeight: 500,
+                                                                background: cmd.status === 'SUCCESS' ? 'rgba(34,197,94,0.15)' :
+                                                                    cmd.status === 'FAILED' ? 'rgba(239,68,68,0.15)' :
+                                                                        cmd.status === 'PROCESSING' ? 'rgba(245,158,11,0.15)' :
+                                                                            'rgba(107,114,128,0.15)',
+                                                                color: cmd.status === 'SUCCESS' ? '#22c55e' :
+                                                                    cmd.status === 'FAILED' ? '#ef4444' :
+                                                                        cmd.status === 'PROCESSING' ? '#f59e0b' :
+                                                                            '#6b7280'
+                                                            }}
+                                                        >
+                                                            {cmd.status}
+                                                        </span>
+                                                        <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>
+                                                            by {cmd.requestedBy || 'Unknown'}
+                                                        </span>
+                                                    </div>
+                                                    {cmd.error && (
+                                                        <span style={{ color: '#ef4444', fontSize: '0.75rem' }}>
+                                                            Error: {cmd.error}
+                                                        </span>
+                                                    )}
+                                                    {cmd.forwardedTo && (
+                                                        <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>
+                                                            Forwarded to: {cmd.forwardedTo}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                <span style={{ color: 'var(--text-muted)', fontSize: '0.7rem', whiteSpace: 'nowrap', flexShrink: 0 }}>
+                                                    {cmd.createdAt ? new Date(cmd.createdAt).toLocaleString() : ''}
+                                                </span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+
                         </div>
                         <div className="modal-footer">
                             <button className="btn btn-secondary" onClick={() => setShowDetailModal(null)}>

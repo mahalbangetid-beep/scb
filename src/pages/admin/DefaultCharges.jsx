@@ -20,7 +20,7 @@ export default function DefaultCharges() {
         loginFees: { wa_login_fee: 5.00, tg_login_fee: 5.00 },
         subscriptionFees: { DEVICE: 5.00, TELEGRAM_BOT: 3.00, SMM_PANEL: 2.00 },
         creditPackages: [],
-        other: { low_balance_threshold: 5.00, default_user_credit: 0 }
+        other: { low_balance_threshold: 5.00, default_user_credit: 0, free_signup_credits: 100 }
     })
 
     // Original charges for diff checking
@@ -443,7 +443,24 @@ export default function DefaultCharges() {
                                     onChange={e => updateField('other', 'default_user_credit', e.target.value)}
                                 />
                             </div>
-                            <span className="dc-field-hint">Initial credit for new user accounts</span>
+                            <span className="dc-field-hint">Initial wallet credit for new user accounts</span>
+                        </div>
+                        <div className="dc-field">
+                            <label>
+                                <MessageSquare size={14} />
+                                Free Signup Message Credits
+                            </label>
+                            <div className="dc-input-group">
+                                <span className="dc-input-prefix">🎁</span>
+                                <input
+                                    type="number"
+                                    step="1"
+                                    min="0"
+                                    value={charges.other.free_signup_credits}
+                                    onChange={e => updateField('other', 'free_signup_credits', e.target.value)}
+                                />
+                            </div>
+                            <span className="dc-field-hint">Free message credits given to new users on signup</span>
                         </div>
                     </div>
                 </div>

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { CreditCard, Calendar, AlertTriangle, Zap, Play, Pause, XCircle, RefreshCw, DollarSign, Search } from 'lucide-react';
+import { CreditCard, Calendar, AlertTriangle, Zap, Play, Pause, XCircle, RefreshCw, DollarSign, Search, ToggleLeft, ToggleRight } from 'lucide-react';
 import api from '../services/api';
 
 const Subscriptions = () => {
@@ -57,6 +57,20 @@ const Subscriptions = () => {
             setTimeout(() => setSuccess(''), 3000);
         } catch (err) {
             setError(err.error?.message || err.message || 'Failed to cancel');
+        } finally {
+            setActionLoading(null);
+        }
+    };
+
+    const handleToggleAutoRenew = async (id, currentValue) => {
+        try {
+            setActionLoading(id);
+            await api.patch(`/subscriptions/${id}/auto-renew`, { autoRenew: !currentValue });
+            setSuccess(`Auto-renew ${!currentValue ? 'enabled' : 'disabled'}`);
+            fetchData();
+            setTimeout(() => setSuccess(''), 3000);
+        } catch (err) {
+            setError(err.error?.message || err.message || 'Failed to toggle auto-renew');
         } finally {
             setActionLoading(null);
         }
@@ -241,6 +255,18 @@ const Subscriptions = () => {
                                         </div>
 
                                         <div className="subscription-actions">
+                                            {sub.status !== 'CANCELLED' && (
+                                                <button
+                                                    className="btn btn-sm btn-ghost"
+                                                    onClick={() => handleToggleAutoRenew(sub.id, sub.autoRenew)}
+                                                    disabled={actionLoading === sub.id}
+                                                    title={sub.autoRenew ? 'Disable auto-renew' : 'Enable auto-renew'}
+                                                    style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', color: sub.autoRenew ? 'var(--success-color)' : 'var(--text-muted)' }}
+                                                >
+                                                    {sub.autoRenew ? <ToggleRight size={18} /> : <ToggleLeft size={18} />}
+                                                    <span style={{ fontSize: '0.75rem' }}>{sub.autoRenew ? 'Auto' : 'Manual'}</span>
+                                                </button>
+                                            )}
                                             {sub.status === 'PAUSED' && (
                                                 <button
                                                     className="btn btn-sm btn-primary"

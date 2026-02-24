@@ -401,6 +401,17 @@ class EsewaService {
             }
         } catch (e) { /* use default */ }
 
+        // Read disallowed countries from config
+        let disallowedCountries = [];
+        try {
+            const dcConfig = await prisma.systemConfig.findFirst({
+                where: { key: 'esewa_disallowed_countries' }
+            });
+            if (dcConfig && dcConfig.value && dcConfig.value.trim()) {
+                disallowedCountries = dcConfig.value.split(',').map(c => c.trim().toUpperCase()).filter(Boolean);
+            }
+        } catch (e) { /* use default */ }
+
         return {
             id: 'esewa',
             name: 'eSewa',
@@ -412,6 +423,7 @@ class EsewaService {
             isAvailable: config.enabled,
             isSandbox: config.isSandbox,
             countries,
+            disallowedCountries,
             testCredentials: config.isSandbox ? {
                 esewaIds: '9806800001 - 9806800005',
                 password: 'Nepal@123',

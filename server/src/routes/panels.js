@@ -3,7 +3,7 @@ const router = express.Router();
 const prisma = require('../utils/prisma');
 const { successResponse, createdResponse, paginatedResponse, parsePagination } = require('../utils/response');
 const { AppError } = require('../middleware/errorHandler');
-const { authenticate } = require('../middleware/auth');
+const { authenticate, getEffectiveUserId } = require('../middleware/auth');
 const { encrypt, decrypt, mask } = require('../utils/encryption');
 const smmPanelService = require('../services/smmPanel');
 const smartPanelScanner = require('../services/smartPanelScanner');
@@ -12,6 +12,16 @@ const { activityLogService, ACTIONS } = require('../services/activityLog');
 
 // All routes require authentication
 router.use(authenticate);
+
+// Resolve effective userId (staff → owner's ID, others → own ID)
+router.use(async (req, res, next) => {
+    try {
+        req.effectiveUserId = await getEffectiveUserId(req);
+        next();
+    } catch (err) {
+        next(err);
+    }
+});
 
 // ==================== PANEL CONNECTION HISTORY ====================
 
@@ -23,7 +33,7 @@ router.get('/history', async (req, res, next) => {
         const skip = ((parseInt(page) || 1) - 1) * take;
 
         const where = {
-            userId: req.user.id,
+            userId: req.effectiveUserId,
             category: 'panel'
         };
 
@@ -143,7 +153,7 @@ router.post('/detect-and-add', async (req, res, next) => {
         const existing = await prisma.smmPanel.findFirst({
             where: {
                 url: url.trim(),
-                userId: req.user.id
+                userId: req.effectiveUserId
             }
         });
 
@@ -162,7 +172,7 @@ router.post('/detect-and-add', async (req, res, next) => {
         // If setting as primary, unset other primaries
         if (isPrimary) {
             await prisma.smmPanel.updateMany({
-                where: { userId: req.user.id },
+                where: { userId: req.effectiveUserId },
                 data: { isPrimary: false }
             });
         }
@@ -196,7 +206,7 @@ router.post('/detect-and-add', async (req, res, next) => {
                 currency: 'USD',
                 isPrimary: isPrimary || false,
                 isActive: true,
-                userId: req.user.id,
+                userId: req.effectiveUserId,
                 lastSyncAt: new Date()
             },
             select: {
@@ -251,7 +261,7 @@ router.get('/', async (req, res, next) => {
 
         const [panels, total] = await Promise.all([
             prisma.smmPanel.findMany({
-                where: { userId: req.user.id },
+                where: { userId: req.effectiveUserId },
                 select: {
                     id: true,
                     name: true,
@@ -285,7 +295,7 @@ router.get('/', async (req, res, next) => {
                 skip
             }),
             prisma.smmPanel.count({
-                where: { userId: req.user.id }
+                where: { userId: req.effectiveUserId }
             })
         ]);
 
@@ -301,7 +311,7 @@ router.get('/:id', async (req, res, next) => {
         const panel = await prisma.smmPanel.findFirst({
             where: {
                 id: req.params.id,
-                userId: req.user.id
+                userId: req.effectiveUserId
             },
             include: {
                 _count: {
@@ -388,7 +398,7 @@ router.post('/', async (req, res, next) => {
         const existing = await prisma.smmPanel.findFirst({
             where: {
                 url: url.trim(),
-                userId: req.user.id
+                userId: req.effectiveUserId
             }
         });
 
@@ -443,7 +453,7 @@ router.post('/', async (req, res, next) => {
         // If setting as primary, unset other primaries
         if (isPrimary) {
             await prisma.smmPanel.updateMany({
-                where: { userId: req.user.id },
+                where: { userId: req.effectiveUserId },
                 data: { isPrimary: false }
             });
         }
@@ -472,7 +482,7 @@ router.post('/', async (req, res, next) => {
                 currency: currency,
                 isPrimary: isPrimary || false,
                 isActive: true,
-                userId: req.user.id,
+                userId: req.effectiveUserId,
                 lastSyncAt: balance !== null ? new Date() : null
             },
             select: {
@@ -515,7 +525,7 @@ router.put('/:id', async (req, res, next) => {
         const existing = await prisma.smmPanel.findFirst({
             where: {
                 id: req.params.id,
-                userId: req.user.id
+                userId: req.effectiveUserId
             }
         });
 
@@ -551,7 +561,7 @@ router.put('/:id', async (req, res, next) => {
         if (isPrimary && !existing.isPrimary) {
             await prisma.smmPanel.updateMany({
                 where: {
-                    userId: req.user.id,
+                    userId: req.effectiveUserId,
                     id: { not: req.params.id }
                 },
                 data: { isPrimary: false }
@@ -602,7 +612,7 @@ router.delete('/:id', async (req, res, next) => {
         const panel = await prisma.smmPanel.findFirst({
             where: {
                 id: req.params.id,
-                userId: req.user.id
+                userId: req.effectiveUserId
             }
         });
 
@@ -648,7 +658,7 @@ router.post('/:id/test', async (req, res, next) => {
         const panel = await prisma.smmPanel.findFirst({
             where: {
                 id: req.params.id,
-                userId: req.user.id
+                userId: req.effectiveUserId
             }
         });
 
@@ -689,7 +699,7 @@ router.get('/:id/balance', async (req, res, next) => {
         const panel = await prisma.smmPanel.findFirst({
             where: {
                 id: req.params.id,
-                userId: req.user.id
+                userId: req.effectiveUserId
             }
         });
 
@@ -722,7 +732,7 @@ router.get('/:id/services', async (req, res, next) => {
         const panel = await prisma.smmPanel.findFirst({
             where: {
                 id: req.params.id,
-                userId: req.user.id
+                userId: req.effectiveUserId
             }
         });
 
@@ -743,7 +753,7 @@ router.post('/:id/sync', async (req, res, next) => {
         const panel = await prisma.smmPanel.findFirst({
             where: {
                 id: req.params.id,
-                userId: req.user.id
+                userId: req.effectiveUserId
             }
         });
 
@@ -751,7 +761,7 @@ router.post('/:id/sync', async (req, res, next) => {
             throw new AppError('Panel not found', 404);
         }
 
-        const result = await smmPanelService.syncOrderStatus(req.user.id, req.params.id);
+        const result = await smmPanelService.syncOrderStatus(req.effectiveUserId, req.params.id);
 
         // Update last sync time
         await prisma.smmPanel.update({
@@ -778,7 +788,7 @@ router.patch('/:id/manual-endpoint', async (req, res, next) => {
         const panel = await prisma.smmPanel.findFirst({
             where: {
                 id: req.params.id,
-                userId: req.user.id
+                userId: req.effectiveUserId
             }
         });
 
@@ -836,7 +846,7 @@ router.post('/:id/scan-endpoint', async (req, res, next) => {
         const panel = await prisma.smmPanel.findFirst({
             where: {
                 id: req.params.id,
-                userId: req.user.id
+                userId: req.effectiveUserId
             }
         });
 
@@ -855,7 +865,7 @@ router.post('/:id/scan-endpoint', async (req, res, next) => {
         const needsOrderId = ['status', 'ordersEditLink', 'ordersSetPartial', 'providerInfo'].includes(serviceType);
         if (!orderIdToUse && needsOrderId) {
             const testOrder = await prisma.order.findFirst({
-                where: { panelId: panel.id, userId: req.user.id },
+                where: { panelId: panel.id, userId: req.effectiveUserId },
                 orderBy: { createdAt: 'desc' }
             });
             orderIdToUse = testOrder?.externalOrderId;
@@ -894,7 +904,7 @@ router.post('/:id/auto-detect', async (req, res, next) => {
         const panel = await prisma.smmPanel.findFirst({
             where: {
                 id: req.params.id,
-                userId: req.user.id
+                userId: req.effectiveUserId
             }
         });
 
@@ -951,7 +961,7 @@ router.post('/:id/scan-section', async (req, res, next) => {
         const panel = await prisma.smmPanel.findFirst({
             where: {
                 id: req.params.id,
-                userId: req.user.id
+                userId: req.effectiveUserId
             }
         });
 
@@ -969,7 +979,7 @@ router.post('/:id/scan-section', async (req, res, next) => {
         let orderIdToUse = testOrderId;
         if (!orderIdToUse && ['orders', 'provider'].includes(section)) {
             const testOrder = await prisma.order.findFirst({
-                where: { panelId: panel.id, userId: req.user.id },
+                where: { panelId: panel.id, userId: req.effectiveUserId },
                 orderBy: { createdAt: 'desc' }
             });
             orderIdToUse = testOrder?.externalOrderId;
@@ -1037,7 +1047,7 @@ router.post('/:id/sync-all', async (req, res, next) => {
         const panel = await prisma.smmPanel.findFirst({
             where: {
                 id: req.params.id,
-                userId: req.user.id
+                userId: req.effectiveUserId
             }
         });
 
@@ -1049,7 +1059,7 @@ router.post('/:id/sync-all', async (req, res, next) => {
 
         // Get a test order ID for status/provider endpoint testing
         const testOrder = await prisma.order.findFirst({
-            where: { panelId: panel.id, userId: req.user.id },
+            where: { panelId: panel.id, userId: req.effectiveUserId },
             orderBy: { createdAt: 'desc' }
         });
         const testOrderId = testOrder?.externalOrderId;
@@ -1201,7 +1211,7 @@ router.post('/:id/import-orders', async (req, res, next) => {
         const panel = await prisma.smmPanel.findFirst({
             where: {
                 id: req.params.id,
-                userId: req.user.id
+                userId: req.effectiveUserId
             }
         });
 
@@ -1210,7 +1220,7 @@ router.post('/:id/import-orders', async (req, res, next) => {
         }
 
         const result = await smmPanelService.importOrders(
-            req.user.id,
+            req.effectiveUserId,
             req.params.id,
             orders
         );
@@ -1229,7 +1239,7 @@ router.post('/:id/test-admin', async (req, res, next) => {
         const panel = await prisma.smmPanel.findFirst({
             where: {
                 id: req.params.id,
-                userId: req.user.id
+                userId: req.effectiveUserId
             }
         });
 
@@ -1256,7 +1266,7 @@ router.get('/:id/providers', async (req, res, next) => {
         const panel = await prisma.smmPanel.findFirst({
             where: {
                 id: req.params.id,
-                userId: req.user.id
+                userId: req.effectiveUserId
             }
         });
 
@@ -1286,7 +1296,7 @@ router.post('/:id/sync-providers', async (req, res, next) => {
         const panel = await prisma.smmPanel.findFirst({
             where: {
                 id: req.params.id,
-                userId: req.user.id
+                userId: req.effectiveUserId
             }
         });
 
@@ -1324,7 +1334,7 @@ router.post('/:id/sync-provider-info', async (req, res, next) => {
         const panel = await prisma.smmPanel.findFirst({
             where: {
                 id: req.params.id,
-                userId: req.user.id
+                userId: req.effectiveUserId
             }
         });
 
@@ -1345,7 +1355,7 @@ router.post('/:id/sync-provider-info', async (req, res, next) => {
             const orders = await prisma.order.findMany({
                 where: {
                     panelId: req.params.id,
-                    userId: req.user.id,
+                    userId: req.effectiveUserId,
                     providerName: null // Only orders without provider info
                 },
                 take: 100, // Limit to 100 at a time
@@ -1387,7 +1397,7 @@ router.put('/:id/admin-api', async (req, res, next) => {
         const panel = await prisma.smmPanel.findFirst({
             where: {
                 id: req.params.id,
-                userId: req.user.id
+                userId: req.effectiveUserId
             }
         });
 
@@ -1441,7 +1451,7 @@ router.get('/:id/order/:orderId/provider-info', async (req, res, next) => {
         const panel = await prisma.smmPanel.findFirst({
             where: {
                 id: panelId,
-                userId: req.user.id
+                userId: req.effectiveUserId
             }
         });
 

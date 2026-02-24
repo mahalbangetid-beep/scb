@@ -51,29 +51,61 @@ class UserMappingService {
             // Normalize phone numbers
             whatsappNumbers = whatsappNumbers.map(n => this.normalizePhone(n));
 
-            // Cross-panel duplicate check: ensure WA number isn't already linked to a DIFFERENT panel
+            // Duplicate check: only block if number is already linked to the SAME panel with a different username
+            // Cross-panel mappings are ALLOWED (one mapping per panel per phone number)
             for (const phone of whatsappNumbers) {
-                const existingMapping = await prisma.userPanelMapping.findFirst({
+                const existingMappings = await prisma.userPanelMapping.findMany({
                     where: {
                         userId,
                         whatsappNumbers: { contains: phone }
                     }
                 });
-                if (existingMapping) {
+                for (const existingMapping of existingMappings) {
                     const parsed = this.parseMapping(existingMapping);
                     if (parsed.whatsappNumbers.includes(phone)) {
-                        // Allow if same panel, block if different panel
                         const existingPanelId = existingMapping.panelId;
                         const newPanelId = data.panelId || null;
-                        if (existingPanelId !== newPanelId || existingMapping.panelUsername !== data.panelUsername) {
+
+                        // Block if SAME panel but different username (true duplicate)
+                        if (existingPanelId === newPanelId && existingMapping.panelUsername !== data.panelUsername) {
                             let panelName = existingMapping.panelUsername;
                             if (existingPanelId) {
                                 const panel = await prisma.smmPanel.findUnique({ where: { id: existingPanelId }, select: { alias: true, name: true } });
                                 if (panel) panelName = `${existingMapping.panelUsername} (${panel.alias || panel.name})`;
                             }
-                            throw new Error(`WhatsApp number ${phone} is already registered under mapping "${panelName}". A number cannot be linked to multiple panels.`);
+                            throw new Error(`WhatsApp number ${phone} is already registered under mapping "${panelName}" on this panel.`);
                         }
+
+                        // Block if SAME panel AND same username (exact duplicate)
+                        if (existingPanelId === newPanelId && existingMapping.panelUsername === data.panelUsername) {
+                            throw new Error(`WhatsApp number ${phone} is already registered with username "${data.panelUsername}" on this panel.`);
+                        }
+
+                        // DIFFERENT panel → ALLOW (cross-panel mapping is OK)
                     }
+                }
+            }
+        }
+
+        // Telegram ID duplicate check: block if same telegramId on same panel
+        // Cross-panel is allowed (consistent with WhatsApp duplicate rules)
+        if (data.telegramId) {
+            const tgDups = await prisma.userPanelMapping.findMany({
+                where: {
+                    userId,
+                    telegramId: data.telegramId
+                }
+            });
+            for (const dup of tgDups) {
+                const dupPanelId = dup.panelId || null;
+                const newPanelId = data.panelId || null;
+                if (dupPanelId === newPanelId) {
+                    let panelInfo = dup.panelUsername;
+                    if (dupPanelId) {
+                        const panel = await prisma.smmPanel.findUnique({ where: { id: dupPanelId }, select: { alias: true, name: true } });
+                        if (panel) panelInfo = `${dup.panelUsername} (${panel.alias || panel.name})`;
+                    }
+                    throw new Error(`Telegram ID ${data.telegramId} is already registered under mapping "${panelInfo}" on this panel. Please contact support team.`);
                 }
             }
         }
@@ -271,30 +303,54 @@ class UserMappingService {
                 ? data.whatsappNumbers.map(n => this.normalizePhone(n))
                 : [this.normalizePhone(data.whatsappNumbers)];
 
-            // Cross-panel duplicate check for new numbers
+            // Same-panel duplicate check for new numbers (cross-panel is allowed)
             for (const phone of numbers) {
                 if (existing.whatsappNumbers.includes(phone)) continue; // Already in this mapping, skip
-                const dup = await prisma.userPanelMapping.findFirst({
+                const targetPanelId = updateData.panelId !== undefined ? updateData.panelId : existing.panelId;
+                const dups = await prisma.userPanelMapping.findMany({
                     where: {
                         userId,
                         whatsappNumbers: { contains: phone },
                         NOT: { id }
                     }
                 });
-                if (dup) {
+                for (const dup of dups) {
                     const parsed = this.parseMapping(dup);
-                    if (parsed.whatsappNumbers.includes(phone)) {
+                    if (parsed.whatsappNumbers.includes(phone) && dup.panelId === targetPanelId) {
+                        // Only block if same panel (cross-panel is OK)
                         let panelName = dup.panelUsername;
                         if (dup.panelId) {
                             const panel = await prisma.smmPanel.findUnique({ where: { id: dup.panelId }, select: { alias: true, name: true } });
                             if (panel) panelName = `${dup.panelUsername} (${panel.alias || panel.name})`;
                         }
-                        throw new Error(`WhatsApp number ${phone} is already registered under mapping "${panelName}". A number cannot be linked to multiple panels.`);
+                        throw new Error(`WhatsApp number ${phone} is already registered under mapping "${panelName}" on this panel.`);
                     }
                 }
             }
 
             updateData.whatsappNumbers = JSON.stringify(numbers);
+        }
+
+        // Telegram ID duplicate check (same-panel only, cross-panel allowed)
+        if (data.telegramId !== undefined && data.telegramId) {
+            const targetPanelId = updateData.panelId !== undefined ? updateData.panelId : existing.panelId;
+            const tgDups = await prisma.userPanelMapping.findMany({
+                where: {
+                    userId,
+                    telegramId: data.telegramId,
+                    NOT: { id }
+                }
+            });
+            for (const dup of tgDups) {
+                if ((dup.panelId || null) === (targetPanelId || null)) {
+                    let panelInfo = dup.panelUsername;
+                    if (dup.panelId) {
+                        const panel = await prisma.smmPanel.findUnique({ where: { id: dup.panelId }, select: { alias: true, name: true } });
+                        if (panel) panelInfo = `${dup.panelUsername} (${panel.alias || panel.name})`;
+                    }
+                    throw new Error(`Telegram ID ${data.telegramId} is already registered under mapping "${panelInfo}" on this panel. Please contact support team.`);
+                }
+            }
         }
 
         if (data.groupIds !== undefined) {
@@ -323,23 +379,24 @@ class UserMappingService {
             throw new Error('Phone number already exists in this mapping');
         }
 
-        // Cross-panel duplicate check
-        const existingMapping = await prisma.userPanelMapping.findFirst({
+        // Same-panel duplicate check (cross-panel is allowed)
+        const existingMappings = await prisma.userPanelMapping.findMany({
             where: {
                 userId,
                 whatsappNumbers: { contains: normalizedPhone },
                 NOT: { id } // Exclude current mapping
             }
         });
-        if (existingMapping) {
+        for (const existingMapping of existingMappings) {
             const parsed = this.parseMapping(existingMapping);
-            if (parsed.whatsappNumbers.includes(normalizedPhone)) {
+            if (parsed.whatsappNumbers.includes(normalizedPhone) && existingMapping.panelId === mapping.panelId) {
+                // Only block if same panel (cross-panel is OK)
                 let panelName = existingMapping.panelUsername;
                 if (existingMapping.panelId) {
                     const panel = await prisma.smmPanel.findUnique({ where: { id: existingMapping.panelId }, select: { alias: true, name: true } });
                     if (panel) panelName = `${existingMapping.panelUsername} (${panel.alias || panel.name})`;
                 }
-                throw new Error(`WhatsApp number ${normalizedPhone} is already registered under mapping "${panelName}". A number cannot be linked to multiple panels.`);
+                throw new Error(`WhatsApp number ${normalizedPhone} is already registered under mapping "${panelName}" on this panel.`);
             }
         }
 
