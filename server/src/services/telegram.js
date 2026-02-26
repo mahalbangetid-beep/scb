@@ -291,6 +291,7 @@ class TelegramService {
 
     /**
      * Handle incoming message from Telegram
+     * Routes through botMessageHandler for full feature parity with WhatsApp
      */
     async handleIncomingMessage(botRecord, ctx) {
         const message = ctx.message;
@@ -300,12 +301,12 @@ class TelegramService {
 
         // Detect if message is from a group/supergroup/channel
         const isGroup = message.chat.type !== 'private';
-        const chatType = message.chat.type; // private, group, supergroup, channel
 
         // In groups, get actual sender ID (different from chat ID)
         const senderNumber = isGroup
             ? `tg_${fromUser.id}`
             : `tg_${chatId}`;
+        const senderName = `${fromUser.first_name || ''} ${fromUser.last_name || ''}`.trim();
 
         // Log message to database
         await prisma.message.create({
@@ -314,7 +315,7 @@ class TelegramService {
                 platform: 'TELEGRAM',
                 type: 'incoming',
                 from: senderNumber,
-                fromName: `${fromUser.first_name || ''} ${fromUser.last_name || ''}`.trim(),
+                fromName: senderName,
                 message: text,
                 status: 'received'
             }
@@ -326,14 +327,53 @@ class TelegramService {
             data: { lastActive: new Date() }
         });
 
-        // Check if it's an SMM command using the same parser as WhatsApp
-        const commandParser = require('./commandParser');
+        // Route through botMessageHandler for full feature parity
+        const botMessageHandler = require('./botMessageHandler');
+        const panelId = botRecord.panelId || null;
 
-        if (commandParser.isCommandMessage(text)) {
-            await this.handleSmmCommand(botRecord, ctx, text);
-        } else {
-            // Check auto-reply rules
-            await this.checkAutoReply(botRecord, ctx, text);
+        const result = await botMessageHandler.handleMessage({
+            deviceId: botRecord.id,
+            userId: botRecord.userId,
+            panelId: panelId,
+            panelIds: panelId ? [panelId] : [],
+            message: text,
+            senderNumber: senderNumber,
+            senderName: senderName,
+            isGroup: isGroup,
+            groupJid: isGroup ? chatId : null,
+            platform: 'TELEGRAM'
+        });
+
+        // Send response if handler returned one
+        if (result.handled && result.response) {
+            try {
+                const replyOptions = { parse_mode: 'Markdown' };
+
+                // In groups, quote the original message for context
+                if (isGroup) {
+                    replyOptions.reply_to_message_id = ctx.message.message_id;
+                }
+
+                await ctx.reply(result.response, replyOptions);
+            } catch (replyErr) {
+                // Markdown parse error fallback — send as plain text
+                if (replyErr.message && replyErr.message.includes("can't parse")) {
+                    try {
+                        const plainOptions = {};
+                        if (isGroup) plainOptions.reply_to_message_id = ctx.message.message_id;
+                        await ctx.reply(result.response, plainOptions);
+                    } catch (plainErr) {
+                        console.error(`[Telegram] Failed to send plain text reply:`, plainErr.message);
+                    }
+                } else {
+                    console.error(`[Telegram] Failed to send reply:`, replyErr.message);
+                }
+            }
+        }
+
+        // Log result type for debugging
+        if (result.type) {
+            console.log(`[Telegram] Message handled: type=${result.type}, handled=${result.handled}, from=${senderNumber}`);
         }
     }
 

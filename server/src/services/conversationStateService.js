@@ -386,6 +386,7 @@ john123
         const userMappingService = require('./userMappingService');
 
         // Step 1: Check if username already linked to another WA number
+        // Only block for SAME panel — cross-panel registration is allowed
         const existingMapping = await userMappingService.findByUsername(userId, normalizedUsername);
         if (existingMapping) {
             const existingNumbers = existingMapping.whatsappNumbers || [];
@@ -400,23 +401,31 @@ john123
                 };
             }
 
-            // Linked to another number
-            await this.completeConversation(conversation.id);
+            // Linked to another number — only block if SAME panel (cross-panel is allowed)
+            const targetPanelIds = context.panelIds || [];
+            const existingPanelId = existingMapping.panelId;
+            const isSamePanel = targetPanelIds.length === 0 || targetPanelIds.includes(existingPanelId);
 
-            // Load custom messages
-            const msgs = await this._getRegistrationMessages(userId);
-            const supportMsg = msgs.supportNumber
-                ? `Please contact WhatsApp support team at ${msgs.supportNumber}.`
-                : 'Please contact the support team.';
+            if (isSamePanel) {
+                await this.completeConversation(conversation.id);
 
-            const alreadyLinkedMsg = msgs.alreadyLinked
-                ? this._replaceVars(msgs.alreadyLinked, { username: normalizedUsername, support_number: msgs.supportNumber })
-                : `❌ This username is already linked with another WhatsApp number.\n\n${supportMsg}`;
+                // Load custom messages
+                const msgs = await this._getRegistrationMessages(userId);
+                const supportMsg = msgs.supportNumber
+                    ? `Please contact WhatsApp support team at ${msgs.supportNumber}.`
+                    : 'Please contact the support team.';
 
-            return {
-                success: false,
-                message: alreadyLinkedMsg
-            };
+                const alreadyLinkedMsg = msgs.alreadyLinked
+                    ? this._replaceVars(msgs.alreadyLinked, { username: normalizedUsername, support_number: msgs.supportNumber })
+                    : `❌ This username is already linked with another WhatsApp number.\n\n${supportMsg}`;
+
+                return {
+                    success: false,
+                    message: alreadyLinkedMsg
+                };
+            }
+            // Different panel — allow registration to continue
+            console.log(`[Registration] Username "${normalizedUsername}" exists on panel ${existingPanelId} but target panels are [${targetPanelIds.join(', ')}] — allowing cross-panel registration`);
         }
 
         // Step 2: Validate username exists in panel via Admin API
@@ -485,9 +494,9 @@ john123
         // Step 3: Create mapping
         try {
             const normalizedSender = userMappingService.normalizePhone(senderPhone);
-            // Use defaultPanelId (from device settings) > matchedPanelId (from validation) > first panel
-            const targetPanelId = context.defaultPanelId || matchedPanelId || (panelIds.length > 0 ? panelIds[0] : null);
-            console.log(`[Registration] Creating mapping with panelId: ${targetPanelId} (default: ${context.defaultPanelId}, matched: ${matchedPanelId}, first: ${panelIds[0] || 'none'})`);
+            // Use matchedPanelId (panel where username was FOUND) > defaultPanelId (device setting) > first panel
+            const targetPanelId = matchedPanelId || context.defaultPanelId || (panelIds.length > 0 ? panelIds[0] : null);
+            console.log(`[Registration] Creating mapping with panelId: ${targetPanelId} (matched: ${matchedPanelId}, default: ${context.defaultPanelId}, first: ${panelIds[0] || 'none'})`);
             const newMapping = await userMappingService.createMapping(userId, {
                 panelUsername: normalizedUsername,
                 panelId: targetPanelId,

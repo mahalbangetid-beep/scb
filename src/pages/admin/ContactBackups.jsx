@@ -145,6 +145,31 @@ export default function ContactBackups() {
         }
     }
 
+    const handleBackupAllMyDevices = async () => {
+        const connected = connectedDevices.length
+        if (connected === 0) {
+            alert('No connected devices found. Please connect a device first.')
+            return
+        }
+        if (!confirm(`Backup all ${connected} connected device(s)?`)) return
+        setBackupAllLoading(true)
+        try {
+            const res = await api.post('/contact-backup/backup-all-my-devices')
+            const data = res.data?.data || res.data || {}
+            const msg = [`Backup completed!`, ``]
+            if (data.successful > 0) msg.push(`✅ ${data.successful} backed up`)
+            if (data.skipped > 0) msg.push(`⏭ ${data.skipped} skipped (already backed up within 1 hour)`)
+            if (data.failed > 0) msg.push(`❌ ${data.failed} failed`)
+            alert(msg.join('\n'))
+            await Promise.all([fetchDevices(), fetchStats()])
+        } catch (error) {
+            console.error('Backup all my devices failed:', error)
+            alert(error?.response?.data?.error?.message || error?.message || 'Backup failed')
+        } finally {
+            setBackupAllLoading(false)
+        }
+    }
+
     const handleExportAll = async () => {
         setExportLoading(true)
         try {
@@ -283,26 +308,38 @@ export default function ContactBackups() {
                         {isMasterAdmin ? 'Master Admin: Backup ALL users\' WhatsApp contacts' : 'Automatic backup of WhatsApp contacts and groups'}
                     </p>
                 </div>
-                {isMasterAdmin && (
-                    <div style={{ display: 'flex', gap: 'var(--spacing-sm)' }}>
-                        <button
-                            className="btn btn-secondary"
-                            onClick={handleExportAll}
-                            disabled={exportLoading}
-                        >
-                            {exportLoading ? <Loader2 className="animate-spin" size={16} /> : <Download size={16} />}
-                            Export All
-                        </button>
+                <div style={{ display: 'flex', gap: 'var(--spacing-sm)' }}>
+                    {isMasterAdmin && (
+                        <>
+                            <button
+                                className="btn btn-secondary"
+                                onClick={handleExportAll}
+                                disabled={exportLoading}
+                            >
+                                {exportLoading ? <Loader2 className="animate-spin" size={16} /> : <Download size={16} />}
+                                Export All
+                            </button>
+                            <button
+                                className="btn btn-primary"
+                                onClick={handleBackupAll}
+                                disabled={backupAllLoading}
+                            >
+                                {backupAllLoading ? <Loader2 className="animate-spin" size={16} /> : <Zap size={16} />}
+                                Backup All Users
+                            </button>
+                        </>
+                    )}
+                    {!isMasterAdmin && (
                         <button
                             className="btn btn-primary"
-                            onClick={handleBackupAll}
-                            disabled={backupAllLoading}
+                            onClick={handleBackupAllMyDevices}
+                            disabled={backupAllLoading || connectedDevices.length === 0}
                         >
                             {backupAllLoading ? <Loader2 className="animate-spin" size={16} /> : <Zap size={16} />}
-                            Backup All Devices
+                            Backup All Devices ({connectedDevices.length})
                         </button>
-                    </div>
-                )}
+                    )}
+                </div>
             </div>
 
             {/* Master Admin Tabs */}

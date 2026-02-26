@@ -29,16 +29,17 @@ class UserMappingService {
             throw new Error('Panel username is required');
         }
 
-        // Check for existing mapping
+        // Check for existing mapping (scoped by panelId — cross-panel allowed)
         const existing = await prisma.userPanelMapping.findFirst({
             where: {
                 userId,
-                panelUsername: data.panelUsername
+                panelUsername: data.panelUsername,
+                panelId: data.panelId || null
             }
         });
 
         if (existing) {
-            throw new Error('Mapping for this panel username already exists');
+            throw new Error('Mapping for this panel username already exists on this panel');
         }
 
         // Parse and validate WhatsApp numbers
@@ -242,17 +243,22 @@ class UserMappingService {
 
     /**
      * Find mapping by panel username
+     * @param {string} userId
+     * @param {string} panelUsername
+     * @param {string|null} [panelId=undefined] - If provided, scopes search to specific panel. If omitted, searches across ALL panels.
      */
-    async findByUsername(userId, panelUsername) {
-        const mapping = await prisma.userPanelMapping.findFirst({
-            where: {
-                userId,
-                panelUsername: {
-                    equals: panelUsername,
-                    mode: 'insensitive'
-                }
+    async findByUsername(userId, panelUsername, panelId = undefined) {
+        const where = {
+            userId,
+            panelUsername: {
+                equals: panelUsername,
+                mode: 'insensitive'
             }
-        });
+        };
+        if (panelId !== undefined) {
+            where.panelId = panelId;
+        }
+        const mapping = await prisma.userPanelMapping.findFirst({ where });
 
         return mapping ? this.parseMapping(mapping) : null;
     }

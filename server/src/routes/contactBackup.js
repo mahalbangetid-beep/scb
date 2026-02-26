@@ -147,16 +147,46 @@ router.get('/export-all', async (req, res, next) => {
 /**
  * GET /api/contact-backup/all-contacts
  * Get ALL contacts from ALL backups merged into single deduplicated list
+ * Auto-triggers backup for connected devices without a recent backup (24h)
  * Returns: unique phone numbers across all device backups
  */
 router.get('/all-contacts', async (req, res, next) => {
     try {
-        // Get latest backup from each device
+        // Get all devices for this user
         const devices = await prisma.device.findMany({
             where: { userId: req.effectiveUserId },
-            select: { id: true, name: true }
+            select: { id: true, name: true, status: true, isSystemBot: true }
         });
 
+        const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+
+        // Auto-trigger backup for connected devices without recent backup
+        const whatsappService = req.app.get('whatsapp');
+        if (whatsappService) {
+            contactBackupService.setWhatsAppService(whatsappService);
+            for (const device of devices) {
+                if (device.status !== 'connected' || device.isSystemBot) continue;
+                const recentBackup = await prisma.contactBackup.findFirst({
+                    where: {
+                        userId: req.effectiveUserId,
+                        deviceId: device.id,
+                        status: 'COMPLETED',
+                        createdAt: { gte: twentyFourHoursAgo }
+                    }
+                });
+                if (!recentBackup) {
+                    try {
+                        await contactBackupService.createBackup(device.id, req.effectiveUserId, 'AUTO');
+                        logger.info(`Auto-backup triggered for device ${device.name || device.id} during contact retrieve`);
+                    } catch (backupErr) {
+                        logger.warn(`Auto-backup failed for device ${device.id}: ${backupErr.message}`);
+                        // Continue — don't block the retrieve if auto-backup fails
+                    }
+                }
+            }
+        }
+
+        // Now get latest backup from each device (including freshly created ones)
         const allContacts = new Map(); // phone => { name, device, jid }
         let totalFromBackups = 0;
 
@@ -188,10 +218,101 @@ router.get('/all-contacts', async (req, res, next) => {
 
         successResponse(res, {
             totalDevices: devices.length,
+            connectedDevices: devices.filter(d => d.status === 'connected').length,
             totalFromBackups,
             uniqueContacts: contactsList.length,
             contacts: contactsList
         });
+    } catch (error) {
+        next(error);
+    }
+});
+
+/**
+ * POST /api/contact-backup/backup-all-my-devices
+ * Backup ALL connected devices for the current user (any role)
+ * Skips devices already backed up within the last 1 hour
+ * Skips system bots
+ */
+router.post('/backup-all-my-devices', async (req, res, next) => {
+    try {
+        const whatsappService = req.app.get('whatsapp');
+        if (!whatsappService) {
+            throw new AppError('WhatsApp service not available', 500);
+        }
+
+        contactBackupService.setWhatsAppService(whatsappService);
+
+        // Get all connected devices for this user
+        const devices = await prisma.device.findMany({
+            where: {
+                userId: req.effectiveUserId,
+                status: 'connected',
+                isSystemBot: { not: true }
+            },
+            select: { id: true, name: true, phone: true }
+        });
+
+        if (devices.length === 0) {
+            throw new AppError('No connected devices found. Please connect a device first.', 400);
+        }
+
+        const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+        const results = [];
+        let successful = 0;
+        let skipped = 0;
+        let failed = 0;
+
+        for (const device of devices) {
+            // Skip if recently backed up (within 1 hour)
+            const recentBackup = await prisma.contactBackup.findFirst({
+                where: {
+                    userId: req.effectiveUserId,
+                    deviceId: device.id,
+                    status: 'COMPLETED',
+                    createdAt: { gte: oneHourAgo }
+                }
+            });
+
+            if (recentBackup) {
+                skipped++;
+                results.push({
+                    deviceId: device.id,
+                    deviceName: device.name,
+                    status: 'skipped',
+                    reason: 'Already backed up within the last hour'
+                });
+                continue;
+            }
+
+            try {
+                const backup = await contactBackupService.createBackup(device.id, req.effectiveUserId, 'MANUAL');
+                successful++;
+                results.push({
+                    deviceId: device.id,
+                    deviceName: device.name,
+                    status: 'success',
+                    totalContacts: backup.totalContacts,
+                    totalGroups: backup.totalGroups
+                });
+            } catch (err) {
+                failed++;
+                results.push({
+                    deviceId: device.id,
+                    deviceName: device.name,
+                    status: 'failed',
+                    error: err.message
+                });
+            }
+        }
+
+        successResponse(res, {
+            totalDevices: devices.length,
+            successful,
+            skipped,
+            failed,
+            results
+        }, `Backup completed: ${successful} success, ${skipped} skipped, ${failed} failed`);
     } catch (error) {
         next(error);
     }

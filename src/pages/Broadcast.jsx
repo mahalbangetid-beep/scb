@@ -632,7 +632,12 @@ export default function Broadcast() {
                                                     const data = res.data?.data || res.data || {}
                                                     const contacts = data.contacts || []
                                                     if (contacts.length === 0) {
-                                                        alert('No contacts found. Please backup your devices first in Contact Backups page.')
+                                                        const connected = data.connectedDevices || 0
+                                                        if (connected === 0) {
+                                                            alert('No connected devices found.\n\nPlease connect a WhatsApp device first, then try again.')
+                                                        } else {
+                                                            alert(`No contacts found from ${data.totalDevices || 0} device(s).\n\nThe system attempted to auto-backup your connected devices. If this is your first time, please wait a moment and try again.`)
+                                                        }
                                                         return
                                                     }
                                                     const phones = contacts.map(c => c.phone).filter(Boolean)
@@ -642,9 +647,10 @@ export default function Broadcast() {
                                                             ? prev.recipients + '\n' + phones.join('\n')
                                                             : phones.join('\n')
                                                     }))
-                                                    alert(`Retrieved ${phones.length} contacts from ${data.totalDevices || 0} device(s)`)
+                                                    alert(`Retrieved ${phones.length} unique contacts from ${data.connectedDevices || data.totalDevices || 0} device(s)`)
                                                 } catch (error) {
-                                                    alert(error.response?.data?.message || 'Failed to retrieve contacts')
+                                                    const msg = error?.response?.data?.error?.message || error?.response?.data?.message || error?.message || 'Failed to retrieve contacts'
+                                                    alert(`Failed to retrieve contacts:\n${msg}`)
                                                 } finally {
                                                     setRetrievingContacts(false)
                                                 }
