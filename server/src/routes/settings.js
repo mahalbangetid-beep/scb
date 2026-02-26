@@ -1,15 +1,27 @@
 const express = require('express');
 const router = express.Router();
 const prisma = require('../utils/prisma');
-const { authenticate } = require('../middleware/auth');
+const { authenticate, getEffectiveUserId } = require('../middleware/auth');
 const { successResponse } = require('../utils/response');
 const { AppError } = require('../middleware/errorHandler');
 
+// All routes require authentication
+router.use(authenticate);
+// Resolve effective userId (staff → owner's ID, others → own ID)
+router.use(async (req, res, next) => {
+    try {
+        req.effectiveUserId = await getEffectiveUserId(req);
+        next();
+    } catch (err) {
+        next(err);
+    }
+});
+
 // GET /api/settings - Get all settings for user
-router.get('/', authenticate, async (req, res, next) => {
+router.get('/', async (req, res, next) => {
     try {
         const settings = await prisma.setting.findMany({
-            where: { userId: req.user.id }
+            where: { userId: req.effectiveUserId }
         });
 
         // Convert array to object
@@ -29,9 +41,9 @@ router.get('/', authenticate, async (req, res, next) => {
 // like /stats/dashboard, /bot-security, /bot-toggles, etc.
 
 // GET /api/settings/stats/dashboard - Enhanced Dashboard statistics
-router.get('/stats/dashboard', authenticate, async (req, res, next) => {
+router.get('/stats/dashboard', async (req, res, next) => {
     try {
-        const userId = req.user.id;
+        const userId = req.effectiveUserId;
         const now = new Date();
         const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
         const startOfYesterday = new Date(startOfToday);
@@ -263,9 +275,9 @@ router.get('/stats/dashboard', authenticate, async (req, res, next) => {
 const securityService = require('../services/securityService');
 
 // GET /api/settings/bot-security - Get bot security settings
-router.get('/bot-security', authenticate, async (req, res, next) => {
+router.get('/bot-security', async (req, res, next) => {
     try {
-        const settings = await securityService.getUserSettings(req.user.id);
+        const settings = await securityService.getUserSettings(req.effectiveUserId);
 
         successResponse(res, {
             orderClaimMode: settings.orderClaimMode,
@@ -288,7 +300,7 @@ router.get('/bot-security', authenticate, async (req, res, next) => {
 });
 
 // PUT /api/settings/bot-security - Update bot security settings
-router.put('/bot-security', authenticate, async (req, res, next) => {
+router.put('/bot-security', async (req, res, next) => {
     try {
         const {
             orderClaimMode,
@@ -371,7 +383,7 @@ router.put('/bot-security', authenticate, async (req, res, next) => {
             updates.statusResponseMode = statusResponseMode;
         }
 
-        const settings = await securityService.updateUserSettings(req.user.id, updates);
+        const settings = await securityService.updateUserSettings(req.effectiveUserId, updates);
 
         successResponse(res, {
             orderClaimMode: settings.orderClaimMode,
@@ -395,7 +407,7 @@ router.put('/bot-security', authenticate, async (req, res, next) => {
 
 
 // POST /api/settings/cleanup-cooldowns - Manual cooldown cleanup
-router.post('/cleanup-cooldowns', authenticate, async (req, res, next) => {
+router.post('/cleanup-cooldowns', async (req, res, next) => {
     try {
         const count = await securityService.cleanupExpiredCooldowns();
 
@@ -411,9 +423,9 @@ router.post('/cleanup-cooldowns', authenticate, async (req, res, next) => {
 const binancePayService = require('../services/paymentGateway/binancePay');
 
 // GET /api/settings/binance - Get Binance payment config
-router.get('/binance', authenticate, async (req, res, next) => {
+router.get('/binance', async (req, res, next) => {
     try {
-        const config = await binancePayService.getUserConfig(req.user.id);
+        const config = await binancePayService.getUserConfig(req.effectiveUserId);
         successResponse(res, config, 'Binance configuration retrieved');
     } catch (error) {
         next(error);
@@ -421,9 +433,9 @@ router.get('/binance', authenticate, async (req, res, next) => {
 });
 
 // PUT /api/settings/binance - Update Binance payment config
-router.put('/binance', authenticate, async (req, res, next) => {
+router.put('/binance', async (req, res, next) => {
     try {
-        const result = await binancePayService.saveUserConfig(req.user.id, req.body);
+        const result = await binancePayService.saveUserConfig(req.effectiveUserId, req.body);
         successResponse(res, result.config, result.message);
     } catch (error) {
         next(error);
@@ -433,13 +445,13 @@ router.put('/binance', authenticate, async (req, res, next) => {
 // ==================== BOT FEATURE TOGGLES ====================
 
 // GET /api/settings/bot-toggles - Get bot feature toggles
-router.get('/bot-toggles', authenticate, async (req, res, next) => {
+router.get('/bot-toggles', async (req, res, next) => {
     try {
         const botFeatureService = require('../services/botFeatureService');
         const scope = {};
         if (req.query.deviceId) scope.deviceId = req.query.deviceId;
         if (req.query.panelId) scope.panelId = req.query.panelId;
-        const toggles = await botFeatureService.getToggles(req.user.id, scope);
+        const toggles = await botFeatureService.getToggles(req.effectiveUserId, scope);
 
         successResponse(res, toggles, 'Bot feature toggles retrieved');
     } catch (error) {
@@ -448,7 +460,7 @@ router.get('/bot-toggles', authenticate, async (req, res, next) => {
 });
 
 // PUT /api/settings/bot-toggles - Update bot feature toggles
-router.put('/bot-toggles', authenticate, async (req, res, next) => {
+router.put('/bot-toggles', async (req, res, next) => {
     try {
         const botFeatureService = require('../services/botFeatureService');
         const { replyToAllMessages, fallbackMessage, ...otherToggles } = req.body;
@@ -515,7 +527,7 @@ router.put('/bot-toggles', authenticate, async (req, res, next) => {
         const scope = {};
         if (req.query.deviceId) scope.deviceId = req.query.deviceId;
         if (req.query.panelId) scope.panelId = req.query.panelId;
-        const toggles = await botFeatureService.updateToggles(req.user.id, updateData, scope);
+        const toggles = await botFeatureService.updateToggles(req.effectiveUserId, updateData, scope);
 
         successResponse(res, toggles, 'Bot feature toggles updated');
     } catch (error) {
@@ -526,10 +538,10 @@ router.put('/bot-toggles', authenticate, async (req, res, next) => {
 // ==================== STAFF OVERRIDE GROUP (Section 5) ====================
 
 // GET /api/settings/staff-override-groups - Get staff override group config
-router.get('/staff-override-groups', authenticate, async (req, res, next) => {
+router.get('/staff-override-groups', async (req, res, next) => {
     try {
         const securityService = require('../services/securityService');
-        const config = await securityService.getStaffOverrideConfig(req.user.id);
+        const config = await securityService.getStaffOverrideConfig(req.effectiveUserId);
         successResponse(res, config, 'Staff override groups retrieved');
     } catch (error) {
         next(error);
@@ -537,11 +549,11 @@ router.get('/staff-override-groups', authenticate, async (req, res, next) => {
 });
 
 // PUT /api/settings/staff-override-groups - Update staff override group config
-router.put('/staff-override-groups', authenticate, async (req, res, next) => {
+router.put('/staff-override-groups', async (req, res, next) => {
     try {
         const securityService = require('../services/securityService');
         const { enabled, groups } = req.body;
-        const updated = await securityService.updateStaffOverrideConfig(req.user.id, { enabled, groups });
+        const updated = await securityService.updateStaffOverrideConfig(req.effectiveUserId, { enabled, groups });
         successResponse(res, {
             enabled: updated.staffOverrideEnabled,
             groups: updated.staffOverrideGroups || []
@@ -552,14 +564,14 @@ router.put('/staff-override-groups', authenticate, async (req, res, next) => {
 });
 
 // POST /api/settings/staff-override-groups/add - Add a group JID
-router.post('/staff-override-groups/add', authenticate, async (req, res, next) => {
+router.post('/staff-override-groups/add', async (req, res, next) => {
     try {
         const securityService = require('../services/securityService');
         const { groupJid } = req.body;
         if (!groupJid || typeof groupJid !== 'string') {
             throw new AppError('groupJid is required', 400);
         }
-        const groups = await securityService.addStaffOverrideGroup(req.user.id, groupJid.trim());
+        const groups = await securityService.addStaffOverrideGroup(req.effectiveUserId, groupJid.trim());
         successResponse(res, { groups }, 'Staff override group added');
     } catch (error) {
         next(error);
@@ -567,14 +579,14 @@ router.post('/staff-override-groups/add', authenticate, async (req, res, next) =
 });
 
 // DELETE /api/settings/staff-override-groups/:groupJid - Remove a group JID
-router.delete('/staff-override-groups/:groupJid', authenticate, async (req, res, next) => {
+router.delete('/staff-override-groups/:groupJid', async (req, res, next) => {
     try {
         const securityService = require('../services/securityService');
         const groupJid = decodeURIComponent(req.params.groupJid);
         if (!groupJid) {
             throw new AppError('groupJid is required', 400);
         }
-        const groups = await securityService.removeStaffOverrideGroup(req.user.id, groupJid);
+        const groups = await securityService.removeStaffOverrideGroup(req.effectiveUserId, groupJid);
         successResponse(res, { groups }, 'Staff override group removed');
     } catch (error) {
         next(error);
@@ -582,7 +594,7 @@ router.delete('/staff-override-groups/:groupJid', authenticate, async (req, res,
 });
 
 // POST /api/settings - Update or create multiple settings
-router.post('/', authenticate, async (req, res, next) => {
+router.post('/', async (req, res, next) => {
     try {
         const settings = req.body; // Expecting { key: value, ... }
 
@@ -606,14 +618,14 @@ router.post('/', authenticate, async (req, res, next) => {
                 where: {
                     key_userId: {
                         key,
-                        userId: req.user.id
+                        userId: req.effectiveUserId
                     }
                 },
                 update: { value },
                 create: {
                     key,
                     value,
-                    userId: req.user.id
+                    userId: req.effectiveUserId
                 }
             });
         });
@@ -636,7 +648,7 @@ router.post('/', authenticate, async (req, res, next) => {
 const RESERVED_PREFIXES = ['stats', 'bot-security', 'binance', 'bot-toggles', 'staff-override-groups', 'cleanup-cooldowns'];
 
 // GET /api/settings/:key - Get specific setting (MUST BE AFTER NAMED ROUTES)
-router.get('/:key', authenticate, async (req, res, next) => {
+router.get('/:key', async (req, res, next) => {
     try {
         const key = req.params.key;
 
@@ -653,7 +665,7 @@ router.get('/:key', authenticate, async (req, res, next) => {
             where: {
                 key_userId: {
                     key,
-                    userId: req.user.id
+                    userId: req.effectiveUserId
                 }
             }
         });
@@ -669,7 +681,7 @@ router.get('/:key', authenticate, async (req, res, next) => {
 });
 
 // PUT /api/settings/:key - Update or create specific setting (MUST BE AFTER NAMED ROUTES)
-router.put('/:key', authenticate, async (req, res, next) => {
+router.put('/:key', async (req, res, next) => {
     try {
         const key = req.params.key;
 
@@ -688,14 +700,14 @@ router.put('/:key', authenticate, async (req, res, next) => {
             where: {
                 key_userId: {
                     key: req.params.key,
-                    userId: req.user.id
+                    userId: req.effectiveUserId
                 }
             },
             update: { value },
             create: {
                 key: req.params.key,
                 value,
-                userId: req.user.id
+                userId: req.effectiveUserId
             }
         });
 

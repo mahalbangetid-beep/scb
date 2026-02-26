@@ -8,7 +8,7 @@
 const express = require('express');
 const router = express.Router();
 const keywordResponseService = require('../services/keywordResponseService');
-const { authenticate } = require('../middleware/auth');
+const { authenticate, getEffectiveUserId } = require('../middleware/auth');
 const { successResponse, createdResponse, paginatedResponse, parsePagination } = require('../utils/response');
 const { AppError } = require('../middleware/errorHandler');
 
@@ -24,6 +24,16 @@ const safeJSONParse = (str, defaultValue = {}) => {
 // All routes require authentication
 router.use(authenticate);
 
+// Resolve effective userId (staff → owner's ID, others → own ID)
+router.use(async (req, res, next) => {
+    try {
+        req.effectiveUserId = await getEffectiveUserId(req);
+        next();
+    } catch (err) {
+        next(err);
+    }
+});
+
 /**
  * GET /api/keyword-responses
  * Get all keyword responses for current user
@@ -37,7 +47,7 @@ router.get('/', async (req, res, next) => {
         if (platform) options.platform = platform;
         if (active !== undefined) options.isActive = active === 'true';
 
-        const responses = await keywordResponseService.getAll(req.user.id, options);
+        const responses = await keywordResponseService.getAll(req.effectiveUserId, options);
 
         // Parse actionConfig for each response
         const parsed = responses.map(r => ({
@@ -57,7 +67,7 @@ router.get('/', async (req, res, next) => {
  */
 router.get('/stats', async (req, res, next) => {
     try {
-        const stats = await keywordResponseService.getStats(req.user.id);
+        const stats = await keywordResponseService.getStats(req.effectiveUserId);
         successResponse(res, stats);
     } catch (error) {
         next(error);
@@ -77,7 +87,7 @@ router.post('/test', async (req, res, next) => {
             throw new AppError('Message is required', 400);
         }
 
-        const match = await keywordResponseService.findMatch(req.user.id, message, {
+        const match = await keywordResponseService.findMatch(req.effectiveUserId, message, {
             platform: platform || 'WHATSAPP',
             isGroup: isGroup || false
         });
@@ -128,7 +138,7 @@ router.post('/bulk', async (req, res, next) => {
                     continue;
                 }
 
-                const response = await keywordResponseService.create(req.user.id, item);
+                const response = await keywordResponseService.create(req.effectiveUserId, item);
                 results.push(response);
             } catch (error) {
                 errors.push({ item, error: error.message });
@@ -171,7 +181,7 @@ router.post('/bulk-action', async (req, res, next) => {
 
         // Verify all IDs belong to the current user
         const owned = await prisma.keywordResponse.findMany({
-            where: { id: { in: ids }, userId: req.user.id },
+            where: { id: { in: ids }, userId: req.effectiveUserId },
             select: { id: true }
         });
 
@@ -244,7 +254,7 @@ router.post('/copy-to-device', async (req, res, next) => {
         // Verify target device belongs to user (if specified)
         if (targetDeviceId) {
             const targetDevice = await prisma.device.findFirst({
-                where: { id: targetDeviceId, userId: req.user.id }
+                where: { id: targetDeviceId, userId: req.effectiveUserId }
             });
             if (!targetDevice) {
                 throw new AppError('Target device not found', 404);
@@ -253,7 +263,7 @@ router.post('/copy-to-device', async (req, res, next) => {
 
         // Fetch the owned keyword responses
         const originals = await prisma.keywordResponse.findMany({
-            where: { id: { in: ids }, userId: req.user.id }
+            where: { id: { in: ids }, userId: req.effectiveUserId }
         });
 
         if (originals.length === 0) {
@@ -274,7 +284,7 @@ router.post('/copy-to-device', async (req, res, next) => {
             for (const orig of originals) {
                 await prisma.keywordResponse.create({
                     data: {
-                        userId: req.user.id,
+                        userId: req.effectiveUserId,
                         keyword: orig.keyword,
                         matchType: orig.matchType,
                         caseSensitive: orig.caseSensitive,
@@ -312,7 +322,7 @@ router.post('/copy-to-device', async (req, res, next) => {
  */
 router.get('/:id', async (req, res, next) => {
     try {
-        const response = await keywordResponseService.getById(req.params.id, req.user.id);
+        const response = await keywordResponseService.getById(req.params.id, req.effectiveUserId);
 
         if (!response) {
             throw new AppError('Keyword response not found', 404);
@@ -346,7 +356,7 @@ router.post('/', async (req, res, next) => {
             throw new AppError('Response text is required', 400);
         }
 
-        const response = await keywordResponseService.create(req.user.id, {
+        const response = await keywordResponseService.create(req.effectiveUserId, {
             keyword,
             responseText,
             ...rest
@@ -369,7 +379,7 @@ router.put('/:id', async (req, res, next) => {
     try {
         const response = await keywordResponseService.update(
             req.params.id,
-            req.user.id,
+            req.effectiveUserId,
             req.body
         );
 
@@ -388,7 +398,7 @@ router.put('/:id', async (req, res, next) => {
  */
 router.delete('/:id', async (req, res, next) => {
     try {
-        await keywordResponseService.delete(req.params.id, req.user.id);
+        await keywordResponseService.delete(req.params.id, req.effectiveUserId);
         successResponse(res, null, 'Keyword response deleted');
     } catch (error) {
         next(error);
@@ -401,7 +411,7 @@ router.delete('/:id', async (req, res, next) => {
  */
 router.post('/:id/toggle', async (req, res, next) => {
     try {
-        const response = await keywordResponseService.toggleActive(req.params.id, req.user.id);
+        const response = await keywordResponseService.toggleActive(req.params.id, req.effectiveUserId);
         successResponse(res, response, `Keyword response ${response.isActive ? 'activated' : 'deactivated'}`);
     } catch (error) {
         next(error);

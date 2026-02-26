@@ -7,7 +7,7 @@
 const express = require('express');
 const router = express.Router();
 const contactBackupService = require('../services/contactBackupService');
-const { authenticate, requireMasterAdmin } = require('../middleware/auth');
+const { authenticate, requireMasterAdmin, getEffectiveUserId } = require('../middleware/auth');
 const { successResponse, paginatedResponse, parsePagination } = require('../utils/response');
 const { AppError } = require('../middleware/errorHandler');
 const prisma = require('../utils/prisma');
@@ -15,6 +15,15 @@ const logger = require('../utils/logger').service('ContactBackupAPI');
 
 // All routes require authentication
 router.use(authenticate);
+// Resolve effective userId (staff → owner's ID, others → own ID)
+router.use(async (req, res, next) => {
+    try {
+        req.effectiveUserId = await getEffectiveUserId(req);
+        next();
+    } catch (err) {
+        next(err);
+    }
+});
 
 /**
  * GET /api/contact-backup/stats
@@ -22,7 +31,7 @@ router.use(authenticate);
  */
 router.get('/stats', async (req, res, next) => {
     try {
-        const stats = await contactBackupService.getBackupStats(req.user.id);
+        const stats = await contactBackupService.getBackupStats(req.effectiveUserId);
         successResponse(res, stats);
     } catch (error) {
         next(error);
@@ -40,7 +49,7 @@ router.get('/device/:deviceId', async (req, res, next) => {
 
         // Verify device ownership
         const device = await prisma.device.findFirst({
-            where: { id: deviceId, userId: req.user.id }
+            where: { id: deviceId, userId: req.effectiveUserId }
         });
 
         if (!device) {
@@ -49,7 +58,7 @@ router.get('/device/:deviceId', async (req, res, next) => {
 
         const backups = await contactBackupService.getBackupHistory(
             deviceId,
-            req.user.id,
+            req.effectiveUserId,
             parseInt(limit)
         );
 
@@ -72,7 +81,7 @@ router.post('/device/:deviceId', async (req, res, next) => {
 
         // Verify device ownership
         const device = await prisma.device.findFirst({
-            where: { id: deviceId, userId: req.user.id }
+            where: { id: deviceId, userId: req.effectiveUserId }
         });
 
         if (!device) {
@@ -98,7 +107,7 @@ router.post('/device/:deviceId', async (req, res, next) => {
         contactBackupService.setWhatsAppService(whatsappService);
 
         // Create backup
-        const backup = await contactBackupService.createBackup(deviceId, req.user.id, 'MANUAL');
+        const backup = await contactBackupService.createBackup(deviceId, req.effectiveUserId, 'MANUAL');
 
         successResponse(res, {
             message: 'Backup created successfully',
@@ -122,7 +131,7 @@ router.post('/device/:deviceId', async (req, res, next) => {
  */
 router.get('/export-all', async (req, res, next) => {
     try {
-        const exportData = await contactBackupService.getUserComprehensiveExport(req.user.id);
+        const exportData = await contactBackupService.getUserComprehensiveExport(req.effectiveUserId);
 
         const filename = `comprehensive_backup_${req.user.username || 'user'}_${new Date().toISOString().split('T')[0]}.json`;
 
@@ -144,7 +153,7 @@ router.get('/all-contacts', async (req, res, next) => {
     try {
         // Get latest backup from each device
         const devices = await prisma.device.findMany({
-            where: { userId: req.user.id },
+            where: { userId: req.effectiveUserId },
             select: { id: true, name: true }
         });
 
@@ -153,7 +162,7 @@ router.get('/all-contacts', async (req, res, next) => {
 
         for (const device of devices) {
             const latestBackup = await prisma.contactBackup.findFirst({
-                where: { userId: req.user.id, deviceId: device.id, status: 'COMPLETED' },
+                where: { userId: req.effectiveUserId, deviceId: device.id, status: 'COMPLETED' },
                 orderBy: { createdAt: 'desc' }
             });
 
@@ -196,7 +205,7 @@ router.get('/:backupId', async (req, res, next) => {
     try {
         const { backupId } = req.params;
 
-        const backup = await contactBackupService.getBackup(backupId, req.user.id);
+        const backup = await contactBackupService.getBackup(backupId, req.effectiveUserId);
 
         if (!backup) {
             throw new AppError('Backup not found', 404);
@@ -216,7 +225,7 @@ router.get('/:backupId/download', async (req, res, next) => {
     try {
         const { backupId } = req.params;
 
-        const backup = await contactBackupService.getBackup(backupId, req.user.id);
+        const backup = await contactBackupService.getBackup(backupId, req.effectiveUserId);
 
         if (!backup) {
             throw new AppError('Backup not found', 404);
@@ -250,7 +259,7 @@ router.delete('/:backupId', async (req, res, next) => {
     try {
         const { backupId } = req.params;
 
-        const result = await contactBackupService.deleteBackup(backupId, req.user.id);
+        const result = await contactBackupService.deleteBackup(backupId, req.effectiveUserId);
 
         if (result.count === 0) {
             throw new AppError('Backup not found', 404);
@@ -272,14 +281,14 @@ router.get('/device/:deviceId/latest', async (req, res, next) => {
 
         // Verify device ownership
         const device = await prisma.device.findFirst({
-            where: { id: deviceId, userId: req.user.id }
+            where: { id: deviceId, userId: req.effectiveUserId }
         });
 
         if (!device) {
             throw new AppError('Device not found', 404);
         }
 
-        const backup = await contactBackupService.getLatestBackup(deviceId, req.user.id);
+        const backup = await contactBackupService.getLatestBackup(deviceId, req.effectiveUserId);
 
         if (!backup) {
             return successResponse(res, null, 'No backup found for this device');

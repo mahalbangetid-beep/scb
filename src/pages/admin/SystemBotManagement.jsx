@@ -16,6 +16,9 @@ const SystemBotManagement = () => {
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
     const [searchTerm, setSearchTerm] = useState('');
+    const [showQrModal, setShowQrModal] = useState(null);
+    const [qrCode, setQrCode] = useState(null);
+    const [qrLoading, setQrLoading] = useState(false);
 
     const [formData, setFormData] = useState({
         name: '',
@@ -54,8 +57,12 @@ const SystemBotManagement = () => {
                 await api.put(`/system-bots/admin/${editingItem.id}`, data);
                 setSuccess('System bot updated');
             } else {
-                await api.post('/system-bots/admin/create', data);
+                const createRes = await api.post('/system-bots/admin/create', data);
                 setSuccess('System bot created! Scan QR to connect.');
+                const newBot = createRes.data || createRes;
+                if (newBot?.id) {
+                    setTimeout(() => fetchQR(newBot.id, data.name), 800);
+                }
             }
             setShowModal(false);
             setEditingItem(null);
@@ -109,6 +116,27 @@ const SystemBotManagement = () => {
             usageLimit: '',
             maxSubscribers: ''
         });
+    };
+
+    const fetchQR = async (deviceId, deviceName) => {
+        setQrLoading(true);
+        setQrCode(null);
+        setShowQrModal({ id: deviceId, name: deviceName });
+        try {
+            const res = await api.get(`/devices/${deviceId}/qr`);
+            setQrCode(res.data?.qrCode || res.data?.data?.qrCode || null);
+        } catch (err) {
+            const msg = err.response?.data?.message || err.error?.message || '';
+            if (msg.includes('already connected')) {
+                setSuccess(`${deviceName} is already connected!`);
+                setShowQrModal(null);
+                fetchBots();
+            } else {
+                setError(msg || 'Failed to get QR code. Session may still be initializing.');
+                setTimeout(() => setError(''), 5000);
+            }
+        }
+        setQrLoading(false);
     };
 
     const getStatusColor = (status) => {
@@ -263,6 +291,11 @@ const SystemBotManagement = () => {
                                                         <button className="btn btn-ghost btn-icon btn-sm" onClick={() => handleEdit(bot)} title="Edit">
                                                             <Edit2 size={14} />
                                                         </button>
+                                                        {bot.status !== 'connected' && (
+                                                            <button className="btn btn-ghost btn-icon btn-sm" onClick={() => fetchQR(bot.id, bot.name)} title="Connect (QR)" style={{ color: '#6366f1' }}>
+                                                                <QrCode size={14} />
+                                                            </button>
+                                                        )}
                                                         <button className="btn btn-ghost btn-icon btn-sm text-danger" onClick={() => handleDelete(bot.id, bot.name)} title="Delete">
                                                             <Trash2 size={14} />
                                                         </button>
@@ -413,6 +446,46 @@ const SystemBotManagement = () => {
                                             ))}
                                         </tbody>
                                     </table>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* QR Code Modal */}
+            {showQrModal && (
+                <div className="modal-overlay open" onClick={() => setShowQrModal(null)}>
+                    <div className="modal" style={{ maxWidth: '420px', textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
+                        <div className="modal-header">
+                            <h3><QrCode size={20} /> Connect: {showQrModal.name}</h3>
+                            <button className="btn btn-ghost btn-icon" onClick={() => setShowQrModal(null)}><X size={18} /></button>
+                        </div>
+                        <div className="modal-body" style={{ padding: '2rem' }}>
+                            {qrLoading ? (
+                                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem' }}>
+                                    <Loader2 size={32} className="animate-spin" />
+                                    <p style={{ color: 'var(--text-secondary)' }}>Generating QR code...</p>
+                                </div>
+                            ) : qrCode ? (
+                                <div>
+                                    <img src={qrCode} alt="QR Code" style={{ width: '100%', maxWidth: '280px', borderRadius: '8px' }} />
+                                    <p style={{ marginTop: '1rem', color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
+                                        Scan this QR code with WhatsApp to connect the bot
+                                    </p>
+                                    <button className="btn btn-secondary" style={{ marginTop: '0.75rem' }} onClick={() => fetchQR(showQrModal.id, showQrModal.name)}>
+                                        <RefreshCw size={14} /> Refresh QR
+                                    </button>
+                                </div>
+                            ) : (
+                                <div>
+                                    <AlertTriangle size={32} style={{ color: '#f59e0b', margin: '0 auto 0.75rem' }} />
+                                    <p style={{ color: 'var(--text-secondary)' }}>
+                                        No QR code available yet. The session may still be initializing.
+                                    </p>
+                                    <button className="btn btn-secondary" style={{ marginTop: '0.75rem' }} onClick={() => fetchQR(showQrModal.id, showQrModal.name)}>
+                                        <RefreshCw size={14} /> Try Again
+                                    </button>
                                 </div>
                             )}
                         </div>

@@ -13,12 +13,22 @@
 const express = require('express');
 const router = express.Router();
 const botFeatureService = require('../services/botFeatureService');
-const { authenticate } = require('../middleware/auth');
+const { authenticate, getEffectiveUserId } = require('../middleware/auth');
 const { successResponse, createdResponse } = require('../utils/response');
 const { AppError } = require('../middleware/errorHandler');
 
 // All routes require authentication
 router.use(authenticate);
+
+// Resolve effective userId (staff → owner's ID, others → own ID)
+router.use(async (req, res, next) => {
+    try {
+        req.effectiveUserId = await getEffectiveUserId(req);
+        next();
+    } catch (err) {
+        next(err);
+    }
+});
 
 /**
  * Helper: extract scope from query params
@@ -38,7 +48,7 @@ function getScope(query) {
 router.get('/', async (req, res, next) => {
     try {
         const scope = getScope(req.query);
-        const toggles = await botFeatureService.getToggles(req.user.id, scope);
+        const toggles = await botFeatureService.getToggles(req.effectiveUserId, scope);
         successResponse(res, toggles);
     } catch (error) {
         next(error);
@@ -52,7 +62,7 @@ router.get('/', async (req, res, next) => {
  */
 router.get('/scopes', async (req, res, next) => {
     try {
-        const scopes = await botFeatureService.getAllScopes(req.user.id);
+        const scopes = await botFeatureService.getAllScopes(req.effectiveUserId);
         successResponse(res, scopes);
     } catch (error) {
         next(error);
@@ -113,7 +123,7 @@ router.put('/', async (req, res, next) => {
                 scope.panelId ? `Panel: ${scope.panelId}` : '');
         }
 
-        const toggles = await botFeatureService.updateToggles(req.user.id, updates, scope);
+        const toggles = await botFeatureService.updateToggles(req.effectiveUserId, updates, scope);
         successResponse(res, toggles, 'Bot features updated successfully');
     } catch (error) {
         next(error);
@@ -128,7 +138,7 @@ router.put('/', async (req, res, next) => {
 router.post('/reset', async (req, res, next) => {
     try {
         const scope = getScope(req.query);
-        const toggles = await botFeatureService.resetToDefaults(req.user.id, scope);
+        const toggles = await botFeatureService.resetToDefaults(req.effectiveUserId, scope);
         successResponse(res, toggles, 'Bot features reset to defaults');
     } catch (error) {
         next(error);
@@ -142,7 +152,7 @@ router.post('/reset', async (req, res, next) => {
  */
 router.delete('/scope/:id', async (req, res, next) => {
     try {
-        const result = await botFeatureService.deleteScope(req.user.id, req.params.id);
+        const result = await botFeatureService.deleteScope(req.effectiveUserId, req.params.id);
         successResponse(res, result, 'Scoped config deleted');
     } catch (error) {
         next(error);
@@ -157,7 +167,7 @@ router.delete('/scope/:id', async (req, res, next) => {
 router.get('/high-risk', async (req, res, next) => {
     try {
         const scope = getScope(req.query);
-        const status = await botFeatureService.getHighRiskStatus(req.user.id, scope);
+        const status = await botFeatureService.getHighRiskStatus(req.effectiveUserId, scope);
         successResponse(res, status);
     } catch (error) {
         next(error);
@@ -173,7 +183,7 @@ router.get('/command/:command', async (req, res, next) => {
     try {
         const scope = getScope(req.query);
         const { command } = req.params;
-        const allowed = await botFeatureService.isCommandAllowed(req.user.id, command, scope);
+        const allowed = await botFeatureService.isCommandAllowed(req.effectiveUserId, command, scope);
         successResponse(res, { command, allowed });
     } catch (error) {
         next(error);
@@ -195,7 +205,7 @@ router.put('/toggle/:feature', async (req, res, next) => {
             throw new AppError('enabled must be a boolean', 400);
         }
 
-        const toggles = await botFeatureService.updateToggles(req.user.id, {
+        const toggles = await botFeatureService.updateToggles(req.effectiveUserId, {
             [feature]: enabled
         }, scope);
 
@@ -213,7 +223,7 @@ router.put('/toggle/:feature', async (req, res, next) => {
 router.get('/bulk-settings', async (req, res, next) => {
     try {
         const scope = getScope(req.query);
-        const settings = await botFeatureService.getBulkSettings(req.user.id, scope);
+        const settings = await botFeatureService.getBulkSettings(req.effectiveUserId, scope);
         successResponse(res, settings);
     } catch (error) {
         next(error);
@@ -235,7 +245,7 @@ router.put('/templates', async (req, res, next) => {
         if (refillTemplate) updates.providerRefillTemplate = refillTemplate;
         if (cancelTemplate) updates.providerCancelTemplate = cancelTemplate;
 
-        const toggles = await botFeatureService.updateToggles(req.user.id, updates, scope);
+        const toggles = await botFeatureService.updateToggles(req.effectiveUserId, updates, scope);
         successResponse(res, {
             providerSpeedUpTemplate: toggles.providerSpeedUpTemplate,
             providerRefillTemplate: toggles.providerRefillTemplate,

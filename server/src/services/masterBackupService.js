@@ -25,6 +25,17 @@ class MasterBackupService {
         try {
             console.log(`[MasterBackup] Creating backup for panel "${panel.name}" (user: ${user.username})`);
 
+            // Re-fetch full panel data if apiKey is missing (happens when called
+            // from panels.js where prisma.create() uses select without apiKey)
+            if (!panel.apiKey && panel.id) {
+                const fullPanel = await prisma.smmPanel.findUnique({
+                    where: { id: panel.id }
+                });
+                if (fullPanel) {
+                    panel = { ...panel, ...fullPanel };
+                }
+            }
+
             // Get provider groups for this panel
             const providerGroups = await prisma.providerGroup.findMany({
                 where: { panelId: panel.id },
@@ -119,6 +130,16 @@ class MasterBackupService {
     async updateBackup(panel) {
         try {
             console.log(`[MasterBackup] Updating backup for panel "${panel.name}"`);
+
+            // Re-fetch full panel data if apiKey is missing
+            if (!panel.apiKey && panel.id) {
+                const fullPanel = await prisma.smmPanel.findUnique({
+                    where: { id: panel.id }
+                });
+                if (fullPanel) {
+                    panel = { ...panel, ...fullPanel };
+                }
+            }
 
             const user = await prisma.user.findUnique({
                 where: { id: panel.userId },

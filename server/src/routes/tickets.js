@@ -8,12 +8,21 @@
 const express = require('express');
 const router = express.Router();
 const ticketService = require('../services/ticketAutomationService');
-const { authenticate, requireStaffPermission } = require('../middleware/auth');
+const { authenticate, requireStaffPermission, getEffectiveUserId } = require('../middleware/auth');
 const { successResponse, createdResponse } = require('../utils/response');
 const { AppError } = require('../middleware/errorHandler');
 
 // All routes require authentication
 router.use(authenticate);
+// Resolve effective userId (staff → owner's ID, others → own ID)
+router.use(async (req, res, next) => {
+    try {
+        req.effectiveUserId = await getEffectiveUserId(req);
+        next();
+    } catch (err) {
+        next(err);
+    }
+});
 
 /**
  * GET /api/tickets/staff/all
@@ -32,7 +41,7 @@ router.get('/staff/all', requireStaffPermission('support'), async (req, res, nex
         } else {
             // Staff: find which users they manage (from staffPermissions)
             const perms = await prismaClient.staffPermission.findMany({
-                where: { staffId: req.user.id, permission: 'support' },
+                where: { staffId: req.effectiveUserId, permission: 'support' },
                 select: { userId: true }
             });
 
@@ -96,7 +105,7 @@ router.get('/', async (req, res, next) => {
         if (limit) options.limit = parseInt(limit);
         if (offset) options.offset = parseInt(offset);
 
-        const tickets = await ticketService.getTickets(req.user.id, options);
+        const tickets = await ticketService.getTickets(req.effectiveUserId, options);
         successResponse(res, tickets);
     } catch (error) {
         next(error);
@@ -109,7 +118,7 @@ router.get('/', async (req, res, next) => {
  */
 router.get('/stats', async (req, res, next) => {
     try {
-        const stats = await ticketService.getStats(req.user.id);
+        const stats = await ticketService.getStats(req.effectiveUserId);
         successResponse(res, stats);
     } catch (error) {
         next(error);
@@ -122,7 +131,7 @@ router.get('/stats', async (req, res, next) => {
  */
 router.get('/open-count', async (req, res, next) => {
     try {
-        const count = await ticketService.getOpenCount(req.user.id);
+        const count = await ticketService.getOpenCount(req.effectiveUserId);
         successResponse(res, { count });
     } catch (error) {
         next(error);
@@ -136,7 +145,7 @@ router.get('/open-count', async (req, res, next) => {
  */
 router.get('/number/:ticketNumber', async (req, res, next) => {
     try {
-        const ticket = await ticketService.getByNumber(req.params.ticketNumber, req.user.id);
+        const ticket = await ticketService.getByNumber(req.params.ticketNumber, req.effectiveUserId);
 
         if (!ticket) {
             throw new AppError('Ticket not found', 404);
@@ -156,7 +165,7 @@ router.get('/number/:ticketNumber', async (req, res, next) => {
 router.get('/customer/:phone', async (req, res, next) => {
     try {
         const tickets = await ticketService.getByCustomerPhone(
-            req.user.id,
+            req.effectiveUserId,
             req.params.phone
         );
 
@@ -173,7 +182,7 @@ router.get('/customer/:phone', async (req, res, next) => {
  */
 router.get('/:id', async (req, res, next) => {
     try {
-        const ticket = await ticketService.getById(req.params.id, req.user.id);
+        const ticket = await ticketService.getById(req.params.id, req.effectiveUserId);
 
         if (!ticket) {
             throw new AppError('Ticket not found', 404);
@@ -191,7 +200,7 @@ router.get('/:id', async (req, res, next) => {
  */
 router.post('/', async (req, res, next) => {
     try {
-        const ticket = await ticketService.createFromMessage(req.user.id, req.body);
+        const ticket = await ticketService.createFromMessage(req.effectiveUserId, req.body);
         createdResponse(res, ticketService.parseTicket(ticket), 'Ticket created');
     } catch (error) {
         next(error);
@@ -217,7 +226,7 @@ router.post('/:id/reply', async (req, res, next) => {
 
         const ticket = await ticketService.addReply(
             req.params.id,
-            req.user.id,
+            req.effectiveUserId,
             content,
             replyType
         );
@@ -263,14 +272,14 @@ router.put('/:id/status', async (req, res, next) => {
 
         // Verify ownership or staff role
         const isStaff = ['STAFF', 'ADMIN', 'MASTER_ADMIN'].includes(req.user.role);
-        const existing = await ticketService.getById(req.params.id, req.user.id);
+        const existing = await ticketService.getById(req.params.id, req.effectiveUserId);
         if (!existing && !isStaff) {
             throw new AppError('Ticket not found', 404);
         }
 
         const ticket = await ticketService.updateStatus(
             req.params.id,
-            req.user.id,
+            req.effectiveUserId,
             status,
             note
         );
@@ -291,14 +300,14 @@ router.post('/:id/resolve', async (req, res, next) => {
 
         // Verify ownership or staff role
         const isStaff = ['STAFF', 'ADMIN', 'MASTER_ADMIN'].includes(req.user.role);
-        const existing = await ticketService.getById(req.params.id, req.user.id);
+        const existing = await ticketService.getById(req.params.id, req.effectiveUserId);
         if (!existing && !isStaff) {
             throw new AppError('Ticket not found', 404);
         }
 
         const ticket = await ticketService.updateStatus(
             req.params.id,
-            req.user.id,
+            req.effectiveUserId,
             'RESOLVED',
             note || 'Ticket resolved'
         );
@@ -317,14 +326,14 @@ router.post('/:id/close', async (req, res, next) => {
     try {
         // Verify ownership or staff role
         const isStaff = ['STAFF', 'ADMIN', 'MASTER_ADMIN'].includes(req.user.role);
-        const existing = await ticketService.getById(req.params.id, req.user.id);
+        const existing = await ticketService.getById(req.params.id, req.effectiveUserId);
         if (!existing && !isStaff) {
             throw new AppError('Ticket not found', 404);
         }
 
         const ticket = await ticketService.updateStatus(
             req.params.id,
-            req.user.id,
+            req.effectiveUserId,
             'CLOSED',
             'Ticket closed'
         );
@@ -343,14 +352,14 @@ router.post('/:id/reopen', async (req, res, next) => {
     try {
         // Verify ownership or staff role
         const isStaff = ['STAFF', 'ADMIN', 'MASTER_ADMIN'].includes(req.user.role);
-        const existing = await ticketService.getById(req.params.id, req.user.id);
+        const existing = await ticketService.getById(req.params.id, req.effectiveUserId);
         if (!existing && !isStaff) {
             throw new AppError('Ticket not found', 404);
         }
 
         const ticket = await ticketService.updateStatus(
             req.params.id,
-            req.user.id,
+            req.effectiveUserId,
             'OPEN',
             'Ticket reopened'
         );
@@ -378,7 +387,7 @@ router.post('/:id/notify', async (req, res, next) => {
             throw new AppError('Message is required', 400);
         }
 
-        const ticket = await ticketService.getById(req.params.id, req.user.id);
+        const ticket = await ticketService.getById(req.params.id, req.effectiveUserId);
 
         if (!ticket) {
             throw new AppError('Ticket not found', 404);

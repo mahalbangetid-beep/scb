@@ -1,18 +1,30 @@
 const express = require('express');
 const router = express.Router();
 const prisma = require('../utils/prisma');
-const { authenticate } = require('../middleware/auth');
+const { authenticate, getEffectiveUserId } = require('../middleware/auth');
 const { AppError } = require('../middleware/errorHandler');
 const { successResponse, paginatedResponse, parsePagination } = require('../utils/response');
 const { watermarkService } = require('../services/watermarkService');
 
+// All routes require authentication
+router.use(authenticate);
+// Resolve effective userId (staff → owner's ID, others → own ID)
+router.use(async (req, res, next) => {
+    try {
+        req.effectiveUserId = await getEffectiveUserId(req);
+        next();
+    } catch (err) {
+        next(err);
+    }
+});
+
 // GET /api/watermarks - Get user's watermarks
-router.get('/', authenticate, async (req, res, next) => {
+router.get('/', async (req, res, next) => {
     try {
         const { page, limit } = parsePagination(req.query);
         const { onlyDetected } = req.query;
 
-        const result = await watermarkService.getUserWatermarks(req.user.id, {
+        const result = await watermarkService.getUserWatermarks(req.effectiveUserId, {
             page,
             limit,
             onlyDetected: onlyDetected === 'true'
@@ -29,9 +41,9 @@ router.get('/', authenticate, async (req, res, next) => {
 });
 
 // GET /api/watermarks/stats - Get watermark stats
-router.get('/stats', authenticate, async (req, res, next) => {
+router.get('/stats', async (req, res, next) => {
     try {
-        const stats = await watermarkService.getUserStats(req.user.id);
+        const stats = await watermarkService.getUserStats(req.effectiveUserId);
         successResponse(res, stats);
     } catch (error) {
         next(error);
@@ -39,7 +51,7 @@ router.get('/stats', authenticate, async (req, res, next) => {
 });
 
 // POST /api/watermarks/check - Check text for watermark
-router.post('/check', authenticate, async (req, res, next) => {
+router.post('/check', async (req, res, next) => {
     try {
         const { text } = req.body;
 
@@ -98,7 +110,7 @@ router.post('/check', authenticate, async (req, res, next) => {
 });
 
 // POST /api/watermarks/embed - Manually embed watermark (for testing)
-router.post('/embed', authenticate, async (req, res, next) => {
+router.post('/embed', async (req, res, next) => {
     try {
         const { text } = req.body;
 
@@ -108,7 +120,7 @@ router.post('/embed', authenticate, async (req, res, next) => {
 
         const { watermarkedText, watermark } = await watermarkService.createAndEmbed({
             text,
-            userId: req.user.id,
+            userId: req.effectiveUserId,
             platform: 'WHATSAPP'
         });
 

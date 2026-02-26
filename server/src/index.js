@@ -222,11 +222,13 @@ app.use('/api/admin/email', emailRoutes);
 app.use('/api/activity-logs', require('./routes/activityLogs'));
 app.use('/api/watermarks', require('./routes/watermarks'));
 app.use('/api/fonepay', require('./routes/fonepay'));
+app.use('/api/fonepay-user', require('./routes/fonepayUser'));
 app.use('/api/marketing-intervals', require('./routes/marketingIntervals'));
 app.use('/api/marketing', require('./routes/marketing'));
 app.use('/api/support-groups', require('./routes/supportGroups')); // Section 7
 app.use('/api/action-logs', require('./routes/actionLogs'));
 app.use('/api/panel-tools', require('./routes/panelTools'));
+app.use('/api/panel-backup-user', require('./routes/panelBackupUser'));
 
 
 // Socket.IO authentication middleware

@@ -1,18 +1,27 @@
 const express = require('express');
 const router = express.Router();
 const prisma = require('../utils/prisma');
-const { authenticate } = require('../middleware/auth');
+const { authenticate, getEffectiveUserId } = require('../middleware/auth');
 const { AppError } = require('../middleware/errorHandler');
 const { successResponse } = require('../utils/response');
 
 // Apply authentication to all routes
 router.use(authenticate);
+// Resolve effective userId (staff → owner's ID, others → own ID)
+router.use(async (req, res, next) => {
+    try {
+        req.effectiveUserId = await getEffectiveUserId(req);
+        next();
+    } catch (err) {
+        next(err);
+    }
+});
 
 // GET /api/marketing-intervals — List all marketing intervals for current user
 router.get('/', async (req, res, next) => {
     try {
         const intervals = await prisma.marketingInterval.findMany({
-            where: { userId: req.user.id },
+            where: { userId: req.effectiveUserId },
             include: {
                 device: {
                     select: { id: true, name: true, phone: true, status: true }
@@ -47,7 +56,7 @@ router.post('/', async (req, res, next) => {
 
         // Verify device belongs to user
         const device = await prisma.device.findFirst({
-            where: { id: deviceId, userId: req.user.id }
+            where: { id: deviceId, userId: req.effectiveUserId }
         });
         if (!device) {
             throw new AppError('Device not found', 404);
@@ -57,7 +66,7 @@ router.post('/', async (req, res, next) => {
         const existing = await prisma.marketingInterval.findUnique({
             where: {
                 userId_deviceId_groupJid: {
-                    userId: req.user.id,
+                    userId: req.effectiveUserId,
                     deviceId,
                     groupJid
                 }
@@ -69,7 +78,7 @@ router.post('/', async (req, res, next) => {
 
         const created = await prisma.marketingInterval.create({
             data: {
-                userId: req.user.id,
+                userId: req.effectiveUserId,
                 deviceId,
                 groupJid,
                 groupName: groupName || null,
@@ -96,7 +105,7 @@ router.put('/:id', async (req, res, next) => {
         const { interval, message, mediaUrl, groupName } = req.body;
 
         const existing = await prisma.marketingInterval.findFirst({
-            where: { id: req.params.id, userId: req.user.id }
+            where: { id: req.params.id, userId: req.effectiveUserId }
         });
         if (!existing) {
             throw new AppError('Marketing interval not found', 404);
@@ -138,7 +147,7 @@ router.put('/:id', async (req, res, next) => {
 router.patch('/:id/toggle', async (req, res, next) => {
     try {
         const existing = await prisma.marketingInterval.findFirst({
-            where: { id: req.params.id, userId: req.user.id }
+            where: { id: req.params.id, userId: req.effectiveUserId }
         });
         if (!existing) {
             throw new AppError('Marketing interval not found', 404);
@@ -159,7 +168,7 @@ router.patch('/:id/toggle', async (req, res, next) => {
 router.patch('/:id/reset', async (req, res, next) => {
     try {
         const existing = await prisma.marketingInterval.findFirst({
-            where: { id: req.params.id, userId: req.user.id }
+            where: { id: req.params.id, userId: req.effectiveUserId }
         });
         if (!existing) {
             throw new AppError('Marketing interval not found', 404);
@@ -180,7 +189,7 @@ router.patch('/:id/reset', async (req, res, next) => {
 router.delete('/:id', async (req, res, next) => {
     try {
         const existing = await prisma.marketingInterval.findFirst({
-            where: { id: req.params.id, userId: req.user.id }
+            where: { id: req.params.id, userId: req.effectiveUserId }
         });
         if (!existing) {
             throw new AppError('Marketing interval not found', 404);

@@ -11,20 +11,29 @@
 
 const express = require('express');
 const router = express.Router();
-const { authenticate } = require('../middleware/auth');
+const { authenticate, getEffectiveUserId } = require('../middleware/auth');
 const { AppError } = require('../middleware/errorHandler');
 const { successResponse } = require('../utils/response');
 const marketingService = require('../services/marketingService');
 
 // Apply authentication to all routes
 router.use(authenticate);
+// Resolve effective userId (staff → owner's ID, others → own ID)
+router.use(async (req, res, next) => {
+    try {
+        req.effectiveUserId = await getEffectiveUserId(req);
+        next();
+    } catch (err) {
+        next(err);
+    }
+});
 
 // ==================== MARKETING CONFIG ====================
 
 // GET /api/marketing/config - Get marketing configuration
 router.get('/config', async (req, res, next) => {
     try {
-        const config = await marketingService.getConfig(req.user.id);
+        const config = await marketingService.getConfig(req.effectiveUserId);
         successResponse(res, {
             autoIdEnabled: config.autoIdEnabled,
             autoIdPrefix: config.autoIdPrefix,
@@ -45,7 +54,7 @@ router.get('/config', async (req, res, next) => {
 // PUT /api/marketing/config - Update marketing configuration
 router.put('/config', async (req, res, next) => {
     try {
-        const updated = await marketingService.updateConfig(req.user.id, req.body);
+        const updated = await marketingService.updateConfig(req.effectiveUserId, req.body);
         successResponse(res, {
             autoIdEnabled: updated.autoIdEnabled,
             autoIdPrefix: updated.autoIdPrefix,
@@ -70,7 +79,7 @@ router.post('/auto-id/reset', async (req, res, next) => {
     try {
         const { startFrom } = req.body;
         const config = await marketingService.resetAutoIdCounter(
-            req.user.id,
+            req.effectiveUserId,
             startFrom || 1
         );
         successResponse(res, {
@@ -85,7 +94,7 @@ router.post('/auto-id/reset', async (req, res, next) => {
 // GET /api/marketing/auto-id/preview - Preview next auto ID
 router.get('/auto-id/preview', async (req, res, next) => {
     try {
-        const config = await marketingService.getConfig(req.user.id);
+        const config = await marketingService.getConfig(req.effectiveUserId);
         const prefix = config.autoIdPrefix || '';
         const nextId = config.autoIdCounter;
         successResponse(res, {
@@ -104,8 +113,8 @@ router.get('/auto-id/preview', async (req, res, next) => {
 // GET /api/marketing/watermarks - List watermark templates
 router.get('/watermarks', async (req, res, next) => {
     try {
-        const templates = await marketingService.getWatermarkTemplates(req.user.id);
-        const config = await marketingService.getConfig(req.user.id);
+        const templates = await marketingService.getWatermarkTemplates(req.effectiveUserId);
+        const config = await marketingService.getConfig(req.effectiveUserId);
         successResponse(res, {
             enabled: config.watermarkEnabled,
             defaultWatermark: config.defaultWatermark,
@@ -129,7 +138,7 @@ router.post('/watermarks', async (req, res, next) => {
         if (text.length > 500) {
             throw new AppError('Watermark text must be 500 characters or less', 400);
         }
-        const templates = await marketingService.saveWatermarkTemplate(req.user.id, name.trim(), text.trim());
+        const templates = await marketingService.saveWatermarkTemplate(req.effectiveUserId, name.trim(), text.trim());
         successResponse(res, { templates }, 'Watermark template saved');
     } catch (error) {
         next(error);
@@ -143,7 +152,7 @@ router.delete('/watermarks/:name', async (req, res, next) => {
         if (!name) {
             throw new AppError('Template name is required', 400);
         }
-        const templates = await marketingService.deleteWatermarkTemplate(req.user.id, name);
+        const templates = await marketingService.deleteWatermarkTemplate(req.effectiveUserId, name);
         successResponse(res, { templates }, 'Watermark template deleted');
     } catch (error) {
         next(error);
@@ -160,7 +169,7 @@ router.post('/dedup', async (req, res, next) => {
             throw new AppError('numbers must be an array', 400);
         }
 
-        const config = await marketingService.getConfig(req.user.id);
+        const config = await marketingService.getConfig(req.effectiveUserId);
         const effectiveCountryCode = countryCode || config.countryCode || null;
 
         const result = marketingService.removeDuplicateNumbers(numbers, effectiveCountryCode);
@@ -173,7 +182,7 @@ router.post('/dedup', async (req, res, next) => {
 // GET /api/marketing/campaign/:id/report - Get full campaign report
 router.get('/campaign/:id/report', async (req, res, next) => {
     try {
-        const report = await marketingService.getCampaignReport(req.params.id, req.user.id);
+        const report = await marketingService.getCampaignReport(req.params.id, req.effectiveUserId);
         if (!report) {
             throw new AppError('Campaign not found', 404);
         }
@@ -192,7 +201,7 @@ router.post('/contacts/backup', async (req, res, next) => {
         }
 
         const contactBackupService = require('../services/contactBackupService');
-        const backup = await contactBackupService.createBackup(deviceId, req.user.id, 'MANUAL');
+        const backup = await contactBackupService.createBackup(deviceId, req.effectiveUserId, 'MANUAL');
         successResponse(res, backup, 'Contact backup created');
     } catch (error) {
         next(error);
@@ -211,7 +220,7 @@ router.post('/compose', async (req, res, next) => {
         }
 
         const finalMessage = await marketingService.composeFinalMessage(
-            req.user.id,
+            req.effectiveUserId,
             message,
             { watermarkText, preview: true }
         );
@@ -231,7 +240,7 @@ router.post('/compose', async (req, res, next) => {
 router.get('/groups/:deviceId', async (req, res, next) => {
     try {
         const whatsappService = req.app.get('whatsapp');
-        const groups = await marketingService.getDeviceGroups(req.params.deviceId, req.user.id, whatsappService);
+        const groups = await marketingService.getDeviceGroups(req.params.deviceId, req.effectiveUserId, whatsappService);
         successResponse(res, groups, 'Device groups retrieved');
     } catch (error) {
         next(error);
@@ -243,7 +252,7 @@ router.get('/groups/:deviceId', async (req, res, next) => {
 // GET /api/marketing/charges - Get charge rates per category
 router.get('/charges', async (req, res, next) => {
     try {
-        const config = await marketingService.getConfig(req.user.id);
+        const config = await marketingService.getConfig(req.effectiveUserId);
         successResponse(res, {
             ownDevice: config.ownDeviceRate,
             systemBot: config.systemBotRate,

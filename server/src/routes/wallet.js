@@ -3,7 +3,7 @@ const router = express.Router();
 const prisma = require('../utils/prisma');
 const { successResponse, createdResponse, paginatedResponse, parsePagination } = require('../utils/response');
 const { AppError } = require('../middleware/errorHandler');
-const { authenticate, requireAdmin, requireMasterAdmin } = require('../middleware/auth');
+const { authenticate, requireAdmin, requireMasterAdmin, getEffectiveUserId } = require('../middleware/auth');
 const { createRateLimiter } = require('../middleware/rateLimiter');
 const creditService = require('../services/creditService');
 const crypto = require('crypto');
@@ -18,6 +18,15 @@ const paymentVerifyLimiter = createRateLimiter({
 
 // All routes require authentication
 router.use(authenticate);
+// Resolve effective userId (staff → owner's ID, others → own ID)
+router.use(async (req, res, next) => {
+    try {
+        req.effectiveUserId = await getEffectiveUserId(req);
+        next();
+    } catch (err) {
+        next(err);
+    }
+});
 
 // ==================== WALLET ====================
 
@@ -25,7 +34,7 @@ router.use(authenticate);
 router.get('/', async (req, res, next) => {
     try {
         const user = await prisma.user.findUnique({
-            where: { id: req.user.id },
+            where: { id: req.effectiveUserId },
             select: {
                 creditBalance: true,
                 discountRate: true,
@@ -47,7 +56,7 @@ router.get('/', async (req, res, next) => {
 
         const todayUsage = await prisma.creditTransaction.aggregate({
             where: {
-                userId: req.user.id,
+                userId: req.effectiveUserId,
                 type: 'DEBIT',
                 createdAt: { gte: today }
             },
@@ -57,7 +66,7 @@ router.get('/', async (req, res, next) => {
         // Get pending payments
         const pendingPayments = await prisma.payment.count({
             where: {
-                userId: req.user.id,
+                userId: req.effectiveUserId,
                 status: 'PENDING'
             }
         });
@@ -80,7 +89,7 @@ router.get('/transactions', async (req, res, next) => {
         const { page, limit, skip } = parsePagination(req.query);
         const { type, startDate, endDate } = req.query;
 
-        const where = { userId: req.user.id };
+        const where = { userId: req.effectiveUserId };
 
         if (type) {
             const validTypes = ['CREDIT', 'DEBIT'];
@@ -132,7 +141,7 @@ router.get('/summary', async (req, res, next) => {
         const [monthlyUsage, weeklyUsage, totalDebit, totalCredit] = await Promise.all([
             prisma.creditTransaction.aggregate({
                 where: {
-                    userId: req.user.id,
+                    userId: req.effectiveUserId,
                     type: 'DEBIT',
                     createdAt: { gte: startOfMonth }
                 },
@@ -141,7 +150,7 @@ router.get('/summary', async (req, res, next) => {
             }),
             prisma.creditTransaction.aggregate({
                 where: {
-                    userId: req.user.id,
+                    userId: req.effectiveUserId,
                     type: 'DEBIT',
                     createdAt: { gte: startOfWeek }
                 },
@@ -149,11 +158,11 @@ router.get('/summary', async (req, res, next) => {
                 _count: true
             }),
             prisma.creditTransaction.aggregate({
-                where: { userId: req.user.id, type: 'DEBIT' },
+                where: { userId: req.effectiveUserId, type: 'DEBIT' },
                 _sum: { amount: true }
             }),
             prisma.creditTransaction.aggregate({
-                where: { userId: req.user.id, type: 'CREDIT' },
+                where: { userId: req.effectiveUserId, type: 'CREDIT' },
                 _sum: { amount: true }
             })
         ]);
@@ -185,7 +194,7 @@ router.get('/payments', async (req, res, next) => {
         const { page, limit, skip } = parsePagination(req.query);
         const { status } = req.query;
 
-        const where = { userId: req.user.id };
+        const where = { userId: req.effectiveUserId };
         if (status) {
             where.status = status;
         }
@@ -229,7 +238,7 @@ router.post('/payments', async (req, res, next) => {
 
         const payment = await prisma.payment.create({
             data: {
-                userId: req.user.id,
+                userId: req.effectiveUserId,
                 amount,
                 method,
                 status: 'PENDING',
@@ -253,7 +262,7 @@ router.get('/payments/:id', async (req, res, next) => {
         const payment = await prisma.payment.findFirst({
             where: {
                 id: req.params.id,
-                userId: req.user.id
+                userId: req.effectiveUserId
             }
         });
 
@@ -274,7 +283,7 @@ const binancePayService = require('../services/paymentGateway/binancePay');
 // GET /api/wallet/binance/info - Get Binance payment info for customer
 router.get('/binance/info', async (req, res, next) => {
     try {
-        const config = await binancePayService.getUserConfig(req.user.id);
+        const config = await binancePayService.getUserConfig(req.effectiveUserId);
 
         if (!config.binanceEnabled) {
             return successResponse(res, {
@@ -311,7 +320,7 @@ router.post('/binance/create', async (req, res, next) => {
             throw new AppError('Invalid amount', 400);
         }
 
-        const config = await binancePayService.getUserConfig(req.user.id);
+        const config = await binancePayService.getUserConfig(req.effectiveUserId);
 
         if (!config.binanceEnabled) {
             throw new AppError('Binance payment is not enabled', 400);
@@ -322,7 +331,7 @@ router.post('/binance/create', async (req, res, next) => {
         }
 
         const result = await binancePayService.createPendingPayment(
-            req.user.id,
+            req.effectiveUserId,
             amount,
             config.binanceCurrency
         );
@@ -351,7 +360,7 @@ router.post('/binance/verify', paymentVerifyLimiter, async (req, res, next) => {
         const payment = await prisma.payment.findFirst({
             where: {
                 id: paymentId,
-                userId: req.user.id,
+                userId: req.effectiveUserId,
                 method: 'BINANCE',
                 status: 'PENDING'
             }
@@ -363,7 +372,7 @@ router.post('/binance/verify', paymentVerifyLimiter, async (req, res, next) => {
 
         // Verify transaction via Binance API
         const verifyResult = await binancePayService.verifyTransaction(
-            req.user.id,
+            req.effectiveUserId,
             transactionId,
             payment.amount
         );
@@ -445,7 +454,7 @@ router.post('/vouchers/redeem', async (req, res, next) => {
             if (voucher.singleUsePerUser) {
                 const existingUsage = await tx.creditTransaction.findFirst({
                     where: {
-                        userId: req.user.id,
+                        userId: req.effectiveUserId,
                         reference: `VOUCHER_${voucher.id}`
                     }
                 });
@@ -456,20 +465,20 @@ router.post('/vouchers/redeem', async (req, res, next) => {
             }
 
             // Get current user balance
-            const user = await tx.user.findUnique({ where: { id: req.user.id }, select: { creditBalance: true } });
+            const user = await tx.user.findUnique({ where: { id: req.effectiveUserId }, select: { creditBalance: true } });
             const balanceBefore = user.creditBalance;
             const balanceAfter = balanceBefore + voucher.amount;
 
             // Add credit
             await tx.user.update({
-                where: { id: req.user.id },
+                where: { id: req.effectiveUserId },
                 data: { creditBalance: { increment: voucher.amount } }
             });
 
             // Create credit transaction
             await tx.creditTransaction.create({
                 data: {
-                    userId: req.user.id,
+                    userId: req.effectiveUserId,
                     type: 'CREDIT',
                     amount: voucher.amount,
                     balanceBefore,
@@ -563,7 +572,7 @@ router.put('/admin/payments/:id/approve', requireAdmin, async (req, res, next) =
                     status: 'COMPLETED',
                     completedAt: new Date(),
                     processedAt: new Date(),
-                    processedBy: req.user.id
+                    processedBy: req.effectiveUserId
                 }
             });
 
@@ -637,7 +646,7 @@ router.put('/admin/payments/:id/reject', requireAdmin, async (req, res, next) =>
                 data: {
                     status: 'REJECTED',
                     processedAt: new Date(),
-                    processedBy: req.user.id,
+                    processedBy: req.effectiveUserId,
                     metadata: JSON.stringify({
                         ...existingMeta,
                         rejectReason: reason

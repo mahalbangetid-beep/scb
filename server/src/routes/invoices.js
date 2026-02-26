@@ -9,14 +9,26 @@
 
 const express = require('express');
 const router = express.Router();
-const { authenticate, requireAdmin } = require('../middleware/auth');
+const { authenticate, requireAdmin, getEffectiveUserId } = require('../middleware/auth');
 const invoiceService = require('../services/invoiceService');
 
+// All routes require authentication
+router.use(authenticate);
+// Resolve effective userId (staff → owner's ID, others → own ID)
+router.use(async (req, res, next) => {
+    try {
+        req.effectiveUserId = await getEffectiveUserId(req);
+        next();
+    } catch (err) {
+        next(err);
+    }
+});
+
 // GET /api/invoices — list user invoices
-router.get('/', authenticate, async (req, res, next) => {
+router.get('/', async (req, res, next) => {
     try {
         const { page = 1, limit = 20 } = req.query;
-        const result = await invoiceService.getUserInvoices(req.user.id, {
+        const result = await invoiceService.getUserInvoices(req.effectiveUserId, {
             page: parseInt(page),
             limit: parseInt(limit)
         });
@@ -38,7 +50,7 @@ router.get('/', authenticate, async (req, res, next) => {
 });
 
 // GET /api/invoices/admin/all — admin: list all invoices
-router.get('/admin/all', authenticate, requireAdmin, async (req, res, next) => {
+router.get('/admin/all', requireAdmin, async (req, res, next) => {
     try {
         const { page = 1, limit = 20, userId, status } = req.query;
         const result = await invoiceService.getAllInvoices({
@@ -65,7 +77,7 @@ router.get('/admin/all', authenticate, requireAdmin, async (req, res, next) => {
 });
 
 // GET /api/invoices/admin/stats — admin: invoice statistics
-router.get('/admin/stats', authenticate, requireAdmin, async (req, res, next) => {
+router.get('/admin/stats', requireAdmin, async (req, res, next) => {
     try {
         const stats = await invoiceService.getStats();
         res.json({ success: true, data: stats });
@@ -76,12 +88,12 @@ router.get('/admin/stats', authenticate, requireAdmin, async (req, res, next) =>
 });
 
 // GET /api/invoices/:id — get single invoice
-router.get('/:id', authenticate, async (req, res, next) => {
+router.get('/:id', async (req, res, next) => {
     try {
         const isAdmin = req.user.role === 'MASTER_ADMIN' || req.user.role === 'ADMIN';
         const invoice = await invoiceService.getInvoice(
             req.params.id,
-            isAdmin ? null : req.user.id
+            isAdmin ? null : req.effectiveUserId
         );
 
         if (!invoice) {
@@ -96,12 +108,12 @@ router.get('/:id', authenticate, async (req, res, next) => {
 });
 
 // POST /api/invoices/:id/download-token — generate short-lived download token
-router.post('/:id/download-token', authenticate, async (req, res, next) => {
+router.post('/:id/download-token', async (req, res, next) => {
     try {
         const jwt = require('jsonwebtoken');
         // Generate a short-lived token scoped for download only (5 min expiry)
         const downloadToken = jwt.sign(
-            { userId: req.user.id, purpose: 'invoice_download', invoiceId: req.params.id },
+            { userId: req.effectiveUserId, purpose: 'invoice_download', invoiceId: req.params.id },
             process.env.JWT_SECRET,
             { expiresIn: '5m' }
         );

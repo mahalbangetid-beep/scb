@@ -12,12 +12,21 @@
 const express = require('express');
 const router = express.Router();
 const prisma = require('../utils/prisma');
-const { authenticate } = require('../middleware/auth');
+const { authenticate, getEffectiveUserId } = require('../middleware/auth');
 const { AppError } = require('../middleware/errorHandler');
 const { successResponse, paginatedResponse, parsePagination } = require('../utils/response');
 
 // All routes require authentication
 router.use(authenticate);
+// Resolve effective userId (staff → owner's ID, others → own ID)
+router.use(async (req, res, next) => {
+    try {
+        req.effectiveUserId = await getEffectiveUserId(req);
+        next();
+    } catch (err) {
+        next(err);
+    }
+});
 
 // ==================== NAMED ROUTES FIRST (before /:id) ====================
 
@@ -32,7 +41,7 @@ router.get('/for/marketing', async (req, res, next) => {
         const { deviceId } = req.query;
 
         const where = {
-            userId: req.user.id,
+            userId: req.effectiveUserId,
             isActive: true,
             purpose: { in: ['marketing', 'both'] }
         };
@@ -70,7 +79,7 @@ router.get('/for/support', async (req, res, next) => {
         const { deviceId } = req.query;
 
         const where = {
-            userId: req.user.id,
+            userId: req.effectiveUserId,
             isActive: true,
             purpose: { in: ['support', 'both'] }
         };
@@ -118,7 +127,7 @@ router.post('/bulk', async (req, res, next) => {
         // Verify device ownership if deviceId provided
         if (deviceId) {
             const device = await prisma.device.findFirst({
-                where: { id: deviceId, userId: req.user.id }
+                where: { id: deviceId, userId: req.effectiveUserId }
             });
             if (!device) {
                 throw new AppError('Device not found', 404);
@@ -140,7 +149,7 @@ router.post('/bulk', async (req, res, next) => {
                 const group = await prisma.supportGroup.upsert({
                     where: {
                         userId_groupJid: {
-                            userId: req.user.id,
+                            userId: req.effectiveUserId,
                             groupJid: normalizedJid
                         }
                     },
@@ -150,7 +159,7 @@ router.post('/bulk', async (req, res, next) => {
                         purpose: effectivePurpose
                     },
                     create: {
-                        userId: req.user.id,
+                        userId: req.effectiveUserId,
                         deviceId: deviceId || null,
                         groupJid: normalizedJid,
                         groupName: g.groupName.trim(),
@@ -188,7 +197,7 @@ router.post('/import/:deviceId', async (req, res, next) => {
 
         // Verify device ownership
         const device = await prisma.device.findFirst({
-            where: { id: deviceId, userId: req.user.id }
+            where: { id: deviceId, userId: req.effectiveUserId }
         });
 
         if (!device) {
@@ -231,7 +240,7 @@ router.post('/import/:deviceId', async (req, res, next) => {
                 const group = await prisma.supportGroup.upsert({
                     where: {
                         userId_groupJid: {
-                            userId: req.user.id,
+                            userId: req.effectiveUserId,
                             groupJid
                         }
                     },
@@ -240,7 +249,7 @@ router.post('/import/:deviceId', async (req, res, next) => {
                         deviceId
                     },
                     create: {
-                        userId: req.user.id,
+                        userId: req.effectiveUserId,
                         deviceId,
                         groupJid,
                         groupName,
@@ -280,7 +289,7 @@ router.get('/', async (req, res, next) => {
         const { page, limit, skip } = parsePagination(req.query);
         const { purpose, deviceId, search } = req.query;
 
-        const where = { userId: req.user.id };
+        const where = { userId: req.effectiveUserId };
 
         // Filter by purpose
         if (purpose && ['marketing', 'support', 'both'].includes(purpose)) {
@@ -352,7 +361,7 @@ router.post('/', async (req, res, next) => {
         // Verify device ownership if deviceId provided
         if (deviceId) {
             const device = await prisma.device.findFirst({
-                where: { id: deviceId, userId: req.user.id }
+                where: { id: deviceId, userId: req.effectiveUserId }
             });
             if (!device) {
                 throw new AppError('Device not found', 404);
@@ -363,7 +372,7 @@ router.post('/', async (req, res, next) => {
         const existing = await prisma.supportGroup.findUnique({
             where: {
                 userId_groupJid: {
-                    userId: req.user.id,
+                    userId: req.effectiveUserId,
                     groupJid: normalizedJid
                 }
             }
@@ -375,7 +384,7 @@ router.post('/', async (req, res, next) => {
 
         const group = await prisma.supportGroup.create({
             data: {
-                userId: req.user.id,
+                userId: req.effectiveUserId,
                 deviceId: deviceId || null,
                 groupJid: normalizedJid,
                 groupName: groupName.trim(),
@@ -406,7 +415,7 @@ router.get('/:id', async (req, res, next) => {
         const group = await prisma.supportGroup.findFirst({
             where: {
                 id: req.params.id,
-                userId: req.user.id
+                userId: req.effectiveUserId
             },
             include: {
                 device: {
@@ -436,7 +445,7 @@ router.put('/:id', async (req, res, next) => {
 
         // Verify ownership
         const existing = await prisma.supportGroup.findFirst({
-            where: { id: req.params.id, userId: req.user.id }
+            where: { id: req.params.id, userId: req.effectiveUserId }
         });
 
         if (!existing) {
@@ -460,7 +469,7 @@ router.put('/:id', async (req, res, next) => {
                 data.deviceId = null;
             } else {
                 const device = await prisma.device.findFirst({
-                    where: { id: deviceId, userId: req.user.id }
+                    where: { id: deviceId, userId: req.effectiveUserId }
                 });
                 if (!device) {
                     throw new AppError('Device not found', 404);
@@ -492,7 +501,7 @@ router.put('/:id', async (req, res, next) => {
 router.delete('/:id', async (req, res, next) => {
     try {
         const existing = await prisma.supportGroup.findFirst({
-            where: { id: req.params.id, userId: req.user.id }
+            where: { id: req.params.id, userId: req.effectiveUserId }
         });
 
         if (!existing) {

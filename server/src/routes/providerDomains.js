@@ -8,12 +8,21 @@
 const express = require('express');
 const router = express.Router();
 const providerDomainService = require('../services/providerDomainService');
-const { authenticate } = require('../middleware/auth');
+const { authenticate, getEffectiveUserId } = require('../middleware/auth');
 const { successResponse, createdResponse } = require('../utils/response');
 const { AppError } = require('../middleware/errorHandler');
 
 // All routes require authentication
 router.use(authenticate);
+// Resolve effective userId (staff → owner's ID, others → own ID)
+router.use(async (req, res, next) => {
+    try {
+        req.effectiveUserId = await getEffectiveUserId(req);
+        next();
+    } catch (err) {
+        next(err);
+    }
+});
 
 /**
  * GET /api/provider-domains
@@ -27,7 +36,7 @@ router.get('/', async (req, res, next) => {
         if (search) options.search = search;
         if (active !== undefined) options.isActive = active === 'true';
 
-        const mappings = await providerDomainService.getMappings(req.user.id, options);
+        const mappings = await providerDomainService.getMappings(req.effectiveUserId, options);
         successResponse(res, mappings);
     } catch (error) {
         next(error);
@@ -40,7 +49,7 @@ router.get('/', async (req, res, next) => {
  */
 router.get('/stats', async (req, res, next) => {
     try {
-        const stats = await providerDomainService.getStats(req.user.id);
+        const stats = await providerDomainService.getStats(req.effectiveUserId);
         successResponse(res, stats);
     } catch (error) {
         next(error);
@@ -53,7 +62,7 @@ router.get('/stats', async (req, res, next) => {
  */
 router.get('/:id', async (req, res, next) => {
     try {
-        const mapping = await providerDomainService.getById(req.params.id, req.user.id, true);
+        const mapping = await providerDomainService.getById(req.params.id, req.effectiveUserId, true);
 
         if (!mapping) {
             throw new AppError('Mapping not found', 404);
@@ -71,7 +80,7 @@ router.get('/:id', async (req, res, next) => {
  */
 router.post('/', async (req, res, next) => {
     try {
-        const mapping = await providerDomainService.createMapping(req.user.id, req.body);
+        const mapping = await providerDomainService.createMapping(req.effectiveUserId, req.body);
         createdResponse(res, providerDomainService.parseMapping(mapping), 'Provider domain mapping created');
     } catch (error) {
         next(error);
@@ -86,7 +95,7 @@ router.put('/:id', async (req, res, next) => {
     try {
         const mapping = await providerDomainService.updateMapping(
             req.params.id,
-            req.user.id,
+            req.effectiveUserId,
             req.body
         );
         successResponse(res, providerDomainService.parseMapping(mapping), 'Mapping updated');
@@ -101,7 +110,7 @@ router.put('/:id', async (req, res, next) => {
  */
 router.delete('/:id', async (req, res, next) => {
     try {
-        await providerDomainService.deleteMapping(req.params.id, req.user.id);
+        await providerDomainService.deleteMapping(req.params.id, req.effectiveUserId);
         successResponse(res, null, 'Mapping deleted');
     } catch (error) {
         next(error);
@@ -114,7 +123,7 @@ router.delete('/:id', async (req, res, next) => {
  */
 router.post('/:id/toggle', async (req, res, next) => {
     try {
-        const mapping = await providerDomainService.toggleActive(req.params.id, req.user.id);
+        const mapping = await providerDomainService.toggleActive(req.params.id, req.effectiveUserId);
         successResponse(res, providerDomainService.parseMapping(mapping),
             `Provider ${mapping.isActive ? 'activated' : 'deactivated'}`);
     } catch (error) {
@@ -133,7 +142,7 @@ router.post('/:id/add-alias', async (req, res, next) => {
             throw new AppError('Alias is required', 400);
         }
 
-        const mapping = await providerDomainService.addAlias(req.params.id, req.user.id, alias);
+        const mapping = await providerDomainService.addAlias(req.params.id, req.effectiveUserId, alias);
         successResponse(res, providerDomainService.parseMapping(mapping), 'Alias added');
     } catch (error) {
         next(error);
@@ -151,7 +160,7 @@ router.post('/:id/remove-alias', async (req, res, next) => {
             throw new AppError('Alias is required', 400);
         }
 
-        const mapping = await providerDomainService.removeAlias(req.params.id, req.user.id, alias);
+        const mapping = await providerDomainService.removeAlias(req.params.id, req.effectiveUserId, alias);
         successResponse(res, providerDomainService.parseMapping(mapping), 'Alias removed');
     } catch (error) {
         next(error);
@@ -164,7 +173,7 @@ router.post('/:id/remove-alias', async (req, res, next) => {
  */
 router.get('/find/:provider', async (req, res, next) => {
     try {
-        const mapping = await providerDomainService.findByProvider(req.user.id, req.params.provider);
+        const mapping = await providerDomainService.findByProvider(req.effectiveUserId, req.params.provider);
 
         if (!mapping) {
             successResponse(res, { found: false, mapping: null });
@@ -187,7 +196,7 @@ router.post('/detect', async (req, res, next) => {
             throw new AppError('Service name is required', 400);
         }
 
-        const result = await providerDomainService.detectFromServiceName(req.user.id, serviceName);
+        const result = await providerDomainService.detectFromServiceName(req.effectiveUserId, serviceName);
 
         successResponse(res, {
             detected: !!result,
@@ -214,7 +223,7 @@ router.post('/bulk-import', async (req, res, next) => {
             throw new AppError('Maximum 50 mappings per import', 400);
         }
 
-        const results = await providerDomainService.bulkImport(req.user.id, mappings);
+        const results = await providerDomainService.bulkImport(req.effectiveUserId, mappings);
         successResponse(res, results, `Imported ${results.success} mappings`);
     } catch (error) {
         next(error);

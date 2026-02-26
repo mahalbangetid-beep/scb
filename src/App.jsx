@@ -40,6 +40,8 @@ import MarketingIntervals from './pages/MarketingIntervals'
 import SupportGroups from './pages/SupportGroups'
 import ProviderAliases from './pages/ProviderAliases'
 import GuaranteeRules from './pages/GuaranteeRules'
+import FonepayUser from './pages/FonepayUser'
+import PanelBackupUser from './pages/PanelBackupUser'
 import './styles/landing.css'
 // Admin Pages
 import UserManagement from './pages/admin/UserManagement'
@@ -218,6 +220,9 @@ function AppContent() {
           <Route path="/support-groups" element={<ProtectedRoute><SupportGroups /></ProtectedRoute>} />
           <Route path="/provider-aliases" element={<ProtectedRoute><ProviderAliases /></ProtectedRoute>} />
           <Route path="/guarantee-rules" element={<ProtectedRoute><GuaranteeRules /></ProtectedRoute>} />
+          <Route path="/fonepay-settings" element={<ProtectedRoute><FonepayUser /></ProtectedRoute>} />
+          <Route path="/contact-backups" element={<ProtectedRoute><ContactBackups /></ProtectedRoute>} />
+          <Route path="/panel-backups" element={<ProtectedRoute><PanelBackupUser /></ProtectedRoute>} />
 
           {/* Admin Routes */}
           <Route path="/admin/dashboard" element={<AdminRoute><AdminDashboard /></AdminRoute>} />

@@ -3,17 +3,26 @@ const router = express.Router();
 const prisma = require('../utils/prisma');
 const { successResponse } = require('../utils/response');
 const { AppError } = require('../middleware/errorHandler');
-const { authenticate, requireAdmin } = require('../middleware/auth');
+const { authenticate, requireAdmin, getEffectiveUserId } = require('../middleware/auth');
 
 // All routes require authentication
 router.use(authenticate);
+// Resolve effective userId (staff → owner's ID, others → own ID)
+router.use(async (req, res, next) => {
+    try {
+        req.effectiveUserId = await getEffectiveUserId(req);
+        next();
+    } catch (err) {
+        next(err);
+    }
+});
 
 // ==================== USER REPORTS ====================
 
 // GET /api/reports/dashboard - Dashboard overview stats
 router.get('/dashboard', async (req, res, next) => {
     try {
-        const userId = req.user.id;
+        const userId = req.effectiveUserId;
         const now = new Date();
         const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
         const thisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -102,7 +111,7 @@ router.get('/dashboard', async (req, res, next) => {
 // GET /api/reports/orders - Order statistics
 router.get('/orders', async (req, res, next) => {
     try {
-        const userId = req.user.id;
+        const userId = req.effectiveUserId;
         const { startDate, endDate, panelId } = req.query;
 
         const where = { userId };
@@ -190,7 +199,7 @@ router.get('/orders', async (req, res, next) => {
 // GET /api/reports/commands - Command statistics
 router.get('/commands', async (req, res, next) => {
     try {
-        const userId = req.user.id;
+        const userId = req.effectiveUserId;
         const { startDate, endDate } = req.query;
 
         const where = { order: { userId } };
@@ -258,7 +267,7 @@ router.get('/commands', async (req, res, next) => {
 // GET /api/reports/credits - Credit usage report
 router.get('/credits', async (req, res, next) => {
     try {
-        const userId = req.user.id;
+        const userId = req.effectiveUserId;
         const { startDate, endDate } = req.query;
 
         const where = { userId };
@@ -324,7 +333,7 @@ router.get('/credits', async (req, res, next) => {
 // GET /api/reports/messages - Message statistics
 router.get('/messages', async (req, res, next) => {
     try {
-        const userId = req.user.id;
+        const userId = req.effectiveUserId;
         const { startDate, endDate } = req.query;
 
         // Use direct relation filter (more efficient than two-step query)

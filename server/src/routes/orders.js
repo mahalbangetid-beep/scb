@@ -109,6 +109,17 @@ router.get('/', async (req, res, next) => {
                             name: true,
                             alias: true
                         }
+                    },
+                    commands: {
+                        select: {
+                            id: true,
+                            command: true,
+                            status: true,
+                            requestedBy: true,
+                            createdAt: true
+                        },
+                        orderBy: { createdAt: 'desc' },
+                        take: 1
                     }
                 },
                 orderBy: { createdAt: 'desc' },
@@ -517,7 +528,31 @@ router.post('/:id/re-request', async (req, res, next) => {
             );
         }
 
-        // Create command record
+        // Pre-flight checks for better error messages (before creating command record)
+        if (!order.providerName) {
+            throw new AppError(
+                'This order has no provider information. Enable Admin API on your panel to get provider data, or check the order status first.',
+                400
+            );
+        }
+
+        // Check if a connected WhatsApp device exists
+        const connectedDevice = await prisma.device.findFirst({
+            where: {
+                userId: req.effectiveUserId,
+                status: 'connected'
+            },
+            select: { id: true }
+        });
+
+        if (!connectedDevice) {
+            throw new AppError(
+                'No connected WhatsApp device found. Please connect a device first before re-forwarding orders.',
+                400
+            );
+        }
+
+        // Create command record (only after pre-flight checks pass)
         const command = await prisma.orderCommand.create({
             data: {
                 orderId: order.id,
@@ -540,7 +575,10 @@ router.post('/:id/re-request', async (req, res, next) => {
             );
 
             if (!forwardResult.success) {
-                throw new Error(forwardResult.error || 'No provider groups responded successfully');
+                const errorMsg = forwardResult.error?.includes('No forwarding destinations')
+                    ? `No provider group configured for "${order.providerName}". Go to Provider Groups page to set up a forwarding destination for this provider.`
+                    : (forwardResult.error || 'Failed to forward to provider group. Please check your provider group configuration.');
+                throw new Error(errorMsg);
             }
 
             // Update command status
@@ -892,7 +930,7 @@ router.post('/bulk-copy', async (req, res, next) => {
             field,
             count: values.length,
             total: orders.length,
-            text: values.join('\n')
+            text: values.join(', ')
         }, `Copied ${values.length} ${field} values`);
     } catch (error) {
         next(error);

@@ -8,12 +8,21 @@
 const express = require('express');
 const router = express.Router();
 const subscriptionService = require('../services/subscriptionService');
-const { authenticate, requireRole } = require('../middleware/auth');
+const { authenticate, requireRole, getEffectiveUserId } = require('../middleware/auth');
 const { successResponse, createdResponse } = require('../utils/response');
 const { AppError } = require('../middleware/errorHandler');
 
 // All routes require authentication
 router.use(authenticate);
+// Resolve effective userId (staff → owner's ID, others → own ID)
+router.use(async (req, res, next) => {
+    try {
+        req.effectiveUserId = await getEffectiveUserId(req);
+        next();
+    } catch (err) {
+        next(err);
+    }
+});
 
 // ==================== USER ROUTES ====================
 
@@ -23,7 +32,7 @@ router.use(authenticate);
  */
 router.get('/', async (req, res, next) => {
     try {
-        const subscriptions = await subscriptionService.getUserSubscriptions(req.user.id);
+        const subscriptions = await subscriptionService.getUserSubscriptions(req.effectiveUserId);
         successResponse(res, subscriptions);
     } catch (error) {
         next(error);
@@ -36,7 +45,7 @@ router.get('/', async (req, res, next) => {
  */
 router.get('/summary', async (req, res, next) => {
     try {
-        const summary = await subscriptionService.getUserSummary(req.user.id);
+        const summary = await subscriptionService.getUserSummary(req.effectiveUserId);
         successResponse(res, summary);
     } catch (error) {
         next(error);
@@ -49,7 +58,7 @@ router.get('/summary', async (req, res, next) => {
  */
 router.get('/active', async (req, res, next) => {
     try {
-        const subscriptions = await subscriptionService.getActiveSubscriptions(req.user.id);
+        const subscriptions = await subscriptionService.getActiveSubscriptions(req.effectiveUserId);
         successResponse(res, subscriptions);
     } catch (error) {
         next(error);
@@ -81,7 +90,7 @@ router.post('/:id/resume', async (req, res, next) => {
     try {
         const subscription = await subscriptionService.resumeSubscription(
             req.params.id,
-            req.user.id
+            req.effectiveUserId
         );
         successResponse(res, subscription, 'Subscription resumed successfully');
     } catch (error) {
@@ -97,7 +106,7 @@ router.post('/:id/cancel', async (req, res, next) => {
     try {
         const subscription = await subscriptionService.cancelSubscription(
             req.params.id,
-            req.user.id
+            req.effectiveUserId
         );
         successResponse(res, subscription, 'Subscription cancelled');
     } catch (error) {
@@ -113,7 +122,7 @@ router.get('/resource/:type/:resourceId', async (req, res, next) => {
     try {
         const { type, resourceId } = req.params;
         const subscription = await subscriptionService.getByResource(
-            req.user.id,
+            req.effectiveUserId,
             type.toUpperCase(),
             resourceId
         );
@@ -143,7 +152,7 @@ router.patch('/:id/auto-renew', async (req, res, next) => {
         const subscription = await prisma.monthlySubscription.findFirst({
             where: {
                 id: req.params.id,
-                userId: req.user.id
+                userId: req.effectiveUserId
             }
         });
 

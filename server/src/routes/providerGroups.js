@@ -3,13 +3,22 @@ const router = express.Router();
 const prisma = require('../utils/prisma');
 const { successResponse, createdResponse, paginatedResponse, parsePagination } = require('../utils/response');
 const { AppError } = require('../middleware/errorHandler');
-const { authenticate } = require('../middleware/auth');
+const { authenticate, getEffectiveUserId } = require('../middleware/auth');
 const groupForwardingService = require('../services/groupForwarding');
 const { safeParseObject } = require('../utils/safeJson');
 const logger = require('../utils/logger').service('ProviderGroups');
 
 // All routes require authentication
 router.use(authenticate);
+// Resolve effective userId (staff → owner's ID, others → own ID)
+router.use(async (req, res, next) => {
+    try {
+        req.effectiveUserId = await getEffectiveUserId(req);
+        next();
+    } catch (err) {
+        next(err);
+    }
+});
 
 // ==================== PROVIDER GROUPS ====================
 
@@ -21,7 +30,7 @@ router.get('/', async (req, res, next) => {
 
         // Simple filter by userId (now stored directly on ProviderGroup)
         const where = {
-            userId: req.user.id
+            userId: req.effectiveUserId
         };
 
         if (panelId) {
@@ -80,7 +89,7 @@ router.post('/forward', async (req, res, next) => {
         const result = await groupForwardingService.forwardToGroup({
             orderId,
             command,
-            userId: req.user.id,
+            userId: req.effectiveUserId,
             deviceId
         });
 
@@ -99,7 +108,7 @@ router.get('/:id/service-id-rules', async (req, res, next) => {
         const group = await prisma.providerGroup.findFirst({
             where: {
                 id: req.params.id,
-                userId: req.user.id
+                userId: req.effectiveUserId
             },
             select: {
                 id: true,
@@ -149,7 +158,7 @@ router.put('/:id/service-id-rules', async (req, res, next) => {
         const existing = await prisma.providerGroup.findFirst({
             where: {
                 id: req.params.id,
-                userId: req.user.id
+                userId: req.effectiveUserId
             }
         });
 
@@ -196,7 +205,7 @@ router.post('/:id/service-id-rules/add', async (req, res, next) => {
         const existing = await prisma.providerGroup.findFirst({
             where: {
                 id: req.params.id,
-                userId: req.user.id
+                userId: req.effectiveUserId
             }
         });
 
@@ -253,7 +262,7 @@ router.delete('/:id/service-id-rules/:serviceId', async (req, res, next) => {
         const existing = await prisma.providerGroup.findFirst({
             where: {
                 id: req.params.id,
-                userId: req.user.id
+                userId: req.effectiveUserId
             }
         });
 
@@ -309,7 +318,7 @@ router.get('/whatsapp-groups/:deviceId', async (req, res, next) => {
         const device = await prisma.device.findFirst({
             where: {
                 id: req.params.deviceId,
-                userId: req.user.id
+                userId: req.effectiveUserId
             }
         });
 
@@ -341,7 +350,7 @@ router.get('/:id', async (req, res, next) => {
         const group = await prisma.providerGroup.findFirst({
             where: {
                 id: req.params.id,
-                userId: req.user.id
+                userId: req.effectiveUserId
             },
             include: {
                 panel: {
@@ -395,7 +404,7 @@ router.post('/', async (req, res, next) => {
             panel = await prisma.smmPanel.findFirst({
                 where: {
                     id: panelId,
-                    userId: req.user.id
+                    userId: req.effectiveUserId
                 }
             });
 
@@ -409,7 +418,7 @@ router.post('/', async (req, res, next) => {
             const device = await prisma.device.findFirst({
                 where: {
                     id: deviceId,
-                    userId: req.user.id
+                    userId: req.effectiveUserId
                 }
             });
 
@@ -445,7 +454,7 @@ router.post('/', async (req, res, next) => {
 
         const group = await prisma.providerGroup.create({
             data: {
-                userId: req.user.id,
+                userId: req.effectiveUserId,
                 panelId: panelId || null,
                 deviceId: deviceId || null,
                 providerName: provName,
@@ -485,7 +494,7 @@ router.put('/:id', async (req, res, next) => {
         const existing = await prisma.providerGroup.findFirst({
             where: {
                 id: req.params.id,
-                userId: req.user.id
+                userId: req.effectiveUserId
             }
         });
 
@@ -559,7 +568,7 @@ router.delete('/:id', async (req, res, next) => {
         const group = await prisma.providerGroup.findFirst({
             where: {
                 id: req.params.id,
-                userId: req.user.id
+                userId: req.effectiveUserId
             }
         });
 
@@ -585,7 +594,7 @@ router.patch('/:id/toggle', async (req, res, next) => {
         const group = await prisma.providerGroup.findFirst({
             where: {
                 id: req.params.id,
-                userId: req.user.id
+                userId: req.effectiveUserId
             }
         });
 
@@ -615,7 +624,7 @@ router.post('/:id/test', async (req, res, next) => {
         const group = await prisma.providerGroup.findFirst({
             where: {
                 id: req.params.id,
-                userId: req.user.id
+                userId: req.effectiveUserId
             },
             include: {
                 panel: true,

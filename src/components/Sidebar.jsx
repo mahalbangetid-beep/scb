@@ -79,6 +79,7 @@ const financeNavigation = [
     { name: 'Invoices', icon: FileText, path: '/invoices' },
     { name: 'Subscriptions', icon: CreditCard, path: '/subscriptions' },
     { name: 'Reports', icon: BarChart3, path: '/reports' },
+    { name: 'FonePay', icon: Zap, path: '/fonepay-settings' },
 ]
 
 // Marketing - Broadcast & campaigns
@@ -93,6 +94,8 @@ const settingsNavigation = [
     { name: 'My Staff', icon: Shield, path: '/my-staff' },
     { name: 'Activity Log', icon: Activity, path: '/activity-logs' },
     { name: 'Watermarks', icon: Fingerprint, path: '/watermarks' },
+    { name: 'Contact Backups', icon: Database, path: '/contact-backups' },
+    { name: 'Panel Backups', icon: Shield, path: '/panel-backups' },
 ]
 
 // Admin section

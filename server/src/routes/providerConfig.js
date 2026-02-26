@@ -7,7 +7,7 @@
 
 const express = require('express');
 const router = express.Router();
-const { authenticate } = require('../middleware/auth');
+const { authenticate, getEffectiveUserId } = require('../middleware/auth');
 const { successResponse } = require('../utils/response');
 const prisma = require('../utils/prisma');
 const providerForwardingService = require('../services/providerForwardingService');
@@ -16,10 +16,22 @@ const providerForwardingService = require('../services/providerForwardingService
  * GET /api/provider-config
  * Get all provider configurations for the user
  */
-router.get('/', authenticate, async (req, res, next) => {
+// All routes require authentication
+router.use(authenticate);
+// Resolve effective userId (staff → owner's ID, others → own ID)
+router.use(async (req, res, next) => {
+    try {
+        req.effectiveUserId = await getEffectiveUserId(req);
+        next();
+    } catch (err) {
+        next(err);
+    }
+});
+
+router.get('/', async (req, res, next) => {
     try {
         const configs = await prisma.providerConfig.findMany({
-            where: { userId: req.user.id },
+            where: { userId: req.effectiveUserId },
             orderBy: [{ priority: 'asc' }, { providerName: 'asc' }]
         });
 
@@ -34,11 +46,11 @@ router.get('/', authenticate, async (req, res, next) => {
  * Get forwarding logs
  * NOTE: This route MUST be defined before /:id to prevent "logs" being matched as an id
  */
-router.get('/logs', authenticate, async (req, res, next) => {
+router.get('/logs', async (req, res, next) => {
     try {
         const { limit = 50, offset = 0, orderId, requestType } = req.query;
 
-        const where = { userId: req.user.id };
+        const where = { userId: req.effectiveUserId };
         if (orderId) where.orderId = orderId;
         if (requestType) where.requestType = requestType;
 
@@ -62,12 +74,12 @@ router.get('/logs', authenticate, async (req, res, next) => {
  * GET /api/provider-config/manual-destination
  * Get the manual service destination config for a panel
  */
-router.get('/manual-destination', authenticate, async (req, res, next) => {
+router.get('/manual-destination', async (req, res, next) => {
     try {
         console.log(`[ManualDest] GET - userId=${req.user.id}, panelId=${req.query.panelId}`);
         const config = await prisma.providerConfig.findFirst({
             where: {
-                userId: req.user.id,
+                userId: req.effectiveUserId,
                 providerName: 'MANUAL',
                 isActive: true
             }
@@ -84,7 +96,7 @@ router.get('/manual-destination', authenticate, async (req, res, next) => {
  * POST /api/provider-config/manual-destination
  * Create or update the manual service destination config
  */
-router.post('/manual-destination', authenticate, async (req, res, next) => {
+router.post('/manual-destination', async (req, res, next) => {
     try {
         const {
             deviceId, whatsappNumber, whatsappGroupJid, telegramChatId,
@@ -96,7 +108,7 @@ router.post('/manual-destination', authenticate, async (req, res, next) => {
 
         const config = await prisma.providerConfig.upsert({
             where: {
-                userId_providerName: { userId: req.user.id, providerName: 'MANUAL' }
+                userId_providerName: { userId: req.effectiveUserId, providerName: 'MANUAL' }
             },
             update: {
                 deviceId: deviceId || null,
@@ -114,7 +126,7 @@ router.post('/manual-destination', authenticate, async (req, res, next) => {
                 isActive: true
             },
             create: {
-                userId: req.user.id,
+                userId: req.effectiveUserId,
                 providerName: 'MANUAL',
                 alias: 'Manual Service Destination',
                 deviceId: deviceId || null,
@@ -146,12 +158,12 @@ router.post('/manual-destination', authenticate, async (req, res, next) => {
  * GET /api/provider-config/:id
  * Get a specific provider configuration
  */
-router.get('/:id', authenticate, async (req, res, next) => {
+router.get('/:id', async (req, res, next) => {
     try {
         const config = await prisma.providerConfig.findFirst({
             where: {
                 id: req.params.id,
-                userId: req.user.id
+                userId: req.effectiveUserId
             }
         });
 
@@ -172,7 +184,7 @@ router.get('/:id', authenticate, async (req, res, next) => {
  * POST /api/provider-config
  * Create a new provider configuration
  */
-router.post('/', authenticate, async (req, res, next) => {
+router.post('/', async (req, res, next) => {
     try {
         const {
             providerName,
@@ -208,7 +220,7 @@ router.post('/', authenticate, async (req, res, next) => {
         // Check if already exists
         const existing = await prisma.providerConfig.findUnique({
             where: {
-                userId_providerName: { userId: req.user.id, providerName }
+                userId_providerName: { userId: req.effectiveUserId, providerName }
             }
         });
 
@@ -221,7 +233,7 @@ router.post('/', authenticate, async (req, res, next) => {
 
         const config = await prisma.providerConfig.create({
             data: {
-                userId: req.user.id,
+                userId: req.effectiveUserId,
                 providerName,
                 alias,
                 providerDomain,
@@ -256,13 +268,13 @@ router.post('/', authenticate, async (req, res, next) => {
  * PUT /api/provider-config/:id
  * Update a provider configuration
  */
-router.put('/:id', authenticate, async (req, res, next) => {
+router.put('/:id', async (req, res, next) => {
     try {
         const { id } = req.params;
 
         // Check ownership
         const existing = await prisma.providerConfig.findFirst({
-            where: { id, userId: req.user.id }
+            where: { id, userId: req.effectiveUserId }
         });
 
         if (!existing) {
@@ -304,13 +316,13 @@ router.put('/:id', authenticate, async (req, res, next) => {
  * DELETE /api/provider-config/:id
  * Delete a provider configuration
  */
-router.delete('/:id', authenticate, async (req, res, next) => {
+router.delete('/:id', async (req, res, next) => {
     try {
         const { id } = req.params;
 
         // Check ownership
         const existing = await prisma.providerConfig.findFirst({
-            where: { id, userId: req.user.id }
+            where: { id, userId: req.effectiveUserId }
         });
 
         if (!existing) {
@@ -332,13 +344,13 @@ router.delete('/:id', authenticate, async (req, res, next) => {
  * POST /api/provider-config/:id/test
  * Test forwarding to a provider configuration
  */
-router.post('/:id/test', authenticate, async (req, res, next) => {
+router.post('/:id/test', async (req, res, next) => {
     try {
         const { id } = req.params;
         const { platform, deviceId } = req.body;
 
         const config = await prisma.providerConfig.findFirst({
-            where: { id, userId: req.user.id }
+            where: { id, userId: req.effectiveUserId }
         });
 
         if (!config) {
@@ -370,7 +382,7 @@ router.post('/:id/test', authenticate, async (req, res, next) => {
         }
 
         const result = await providerForwardingService.testForward({
-            userId: req.user.id,
+            userId: req.effectiveUserId,
             deviceId,
             platform: platform.startsWith('whatsapp') ? 'whatsapp' : 'telegram',
             destination,

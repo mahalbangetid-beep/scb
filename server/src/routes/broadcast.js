@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const prisma = require('../utils/prisma');
-const { authenticate } = require('../middleware/auth');
+const { authenticate, getEffectiveUserId } = require('../middleware/auth');
 const { AppError } = require('../middleware/errorHandler');
 const { successResponse, paginatedResponse, parsePagination } = require('../utils/response');
 const multer = require('multer');
@@ -45,8 +45,20 @@ const upload = multer({
         }
     }
 });
+// All routes require authentication
+router.use(authenticate);
+// Resolve effective userId (staff → owner's ID, others → own ID)
+router.use(async (req, res, next) => {
+    try {
+        req.effectiveUserId = await getEffectiveUserId(req);
+        next();
+    } catch (err) {
+        next(err);
+    }
+});
+
 // GET /api/broadcast - List all campaigns for user
-router.get('/', authenticate, async (req, res, next) => {
+router.get('/', async (req, res, next) => {
     try {
         const { page, limit, skip } = parsePagination(req.query);
         const { status, platform } = req.query;
@@ -54,8 +66,8 @@ router.get('/', authenticate, async (req, res, next) => {
         // Support both WA (device-based) and Telegram (bot-based) campaigns
         const where = {
             OR: [
-                { device: { userId: req.user.id } },
-                { telegramBot: { userId: req.user.id } }
+                { device: { userId: req.effectiveUserId } },
+                { telegramBot: { userId: req.effectiveUserId } }
             ]
         };
 
@@ -87,14 +99,14 @@ router.get('/', authenticate, async (req, res, next) => {
 });
 
 // GET /api/broadcast/:id
-router.get('/:id', authenticate, async (req, res, next) => {
+router.get('/:id', async (req, res, next) => {
     try {
         const campaign = await prisma.broadcast.findFirst({
             where: {
                 id: req.params.id,
                 OR: [
-                    { device: { userId: req.user.id } },
-                    { telegramBot: { userId: req.user.id } }
+                    { device: { userId: req.effectiveUserId } },
+                    { telegramBot: { userId: req.effectiveUserId } }
                 ]
             },
             include: {
@@ -118,7 +130,7 @@ router.get('/:id', authenticate, async (req, res, next) => {
 });
 
 // POST /api/broadcast - Create and send broadcast
-router.post('/', authenticate, upload.single('media'), async (req, res, next) => {
+router.post('/', upload.single('media'), async (req, res, next) => {
     try {
         const { name, deviceId, telegramBotId, message, scheduledAt } = req.body;
         let { recipients, mediaUrl, broadcastType, targetGroups, watermarkText, autoIdEnabled, chargeCategory } = req.body;
@@ -180,7 +192,7 @@ router.post('/', authenticate, upload.single('media'), async (req, res, next) =>
         // Section 6.3: Auto duplicate removal with country code normalization
         const marketingService = require('../services/marketingService');
         // Pre-fetch config (needed for dedup, auto ID, watermark, charges)
-        const mktConfig = await marketingService.getConfig(req.user.id);
+        const mktConfig = await marketingService.getConfig(req.effectiveUserId);
 
         if (recipients && recipients.length > 0) {
             // Validate and clean recipient phone numbers
@@ -213,13 +225,13 @@ router.post('/', authenticate, upload.single('media'), async (req, res, next) =>
 
         if (platform === 'WHATSAPP') {
             device = await prisma.device.findFirst({
-                where: { id: deviceId, userId: req.user.id }
+                where: { id: deviceId, userId: req.effectiveUserId }
             });
             if (!device) throw new AppError('Device not found', 404);
             if (device.status !== 'connected') throw new AppError('Device is not connected', 400);
         } else if (platform === 'TELEGRAM') {
             telegramBot = await prisma.telegramBot.findFirst({
-                where: { id: telegramBotId, userId: req.user.id }
+                where: { id: telegramBotId, userId: req.effectiveUserId }
             });
             if (!telegramBot) throw new AppError('Telegram bot not found', 404);
             if (telegramBot.status !== 'connected') throw new AppError('Telegram bot is not connected', 400);
@@ -239,7 +251,7 @@ router.post('/', authenticate, upload.single('media'), async (req, res, next) =>
             // BUG #9 fix: Immediately reserve the ID range by advancing the counter
             // This prevents duplicate IDs when multiple broadcasts are created concurrently
             await prisma.marketingConfig.update({
-                where: { userId: req.user.id },
+                where: { userId: req.effectiveUserId },
                 data: { autoIdCounter: { increment: totalRecipients } }
             });
         }
@@ -293,10 +305,10 @@ router.post('/', authenticate, upload.single('media'), async (req, res, next) =>
         // Process broadcast in background (don't await) — platform-aware (Bug 5.1)
         if (!scheduledAt) {
             if (platform === 'TELEGRAM') {
-                processTelegramBroadcast(campaign.id, telegramBotId, message, mediaUrl, req.user.id)
+                processTelegramBroadcast(campaign.id, telegramBotId, message, mediaUrl, req.effectiveUserId)
                     .catch(err => console.error('[Broadcast/TG] Error:', err.message));
             } else {
-                processBroadcast(req.app.get('whatsapp'), campaign.id, deviceId, message, mediaUrl, req.user.id)
+                processBroadcast(req.app.get('whatsapp'), campaign.id, deviceId, message, mediaUrl, req.effectiveUserId)
                     .catch(err => console.error('[Broadcast] Error:', err.message));
             }
         }
@@ -591,14 +603,14 @@ async function processTelegramBroadcast(broadcastId, telegramBotId, message, med
 }
 
 // POST /api/broadcast/:id/cancel - Cancel pending broadcast
-router.post('/:id/cancel', authenticate, async (req, res, next) => {
+router.post('/:id/cancel', async (req, res, next) => {
     try {
         const campaign = await prisma.broadcast.findFirst({
             where: {
                 id: req.params.id,
                 OR: [
-                    { device: { userId: req.user.id } },
-                    { telegramBot: { userId: req.user.id } }
+                    { device: { userId: req.effectiveUserId } },
+                    { telegramBot: { userId: req.effectiveUserId } }
                 ]
             }
         });
@@ -623,7 +635,7 @@ router.post('/:id/cancel', authenticate, async (req, res, next) => {
 });
 
 // GET /api/broadcast/:id/recipients - Get recipients status
-router.get('/:id/recipients', authenticate, async (req, res, next) => {
+router.get('/:id/recipients', async (req, res, next) => {
     try {
         const { page, limit, skip } = parsePagination(req.query);
 
@@ -631,8 +643,8 @@ router.get('/:id/recipients', authenticate, async (req, res, next) => {
             broadcastId: req.params.id,
             broadcast: {
                 OR: [
-                    { device: { userId: req.user.id } },
-                    { telegramBot: { userId: req.user.id } }
+                    { device: { userId: req.effectiveUserId } },
+                    { telegramBot: { userId: req.effectiveUserId } }
                 ]
             }
         };
@@ -654,14 +666,14 @@ router.get('/:id/recipients', authenticate, async (req, res, next) => {
 });
 
 // GET /api/broadcast/:id/failed-export - Export failed recipients as CSV (Bug 5.4)
-router.get('/:id/failed-export', authenticate, async (req, res, next) => {
+router.get('/:id/failed-export', async (req, res, next) => {
     try {
         const campaign = await prisma.broadcast.findFirst({
             where: {
                 id: req.params.id,
                 OR: [
-                    { device: { userId: req.user.id } },
-                    { telegramBot: { userId: req.user.id } }
+                    { device: { userId: req.effectiveUserId } },
+                    { telegramBot: { userId: req.effectiveUserId } }
                 ]
             }
         });

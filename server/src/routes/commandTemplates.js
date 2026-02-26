@@ -11,13 +11,22 @@
 
 const express = require('express');
 const router = express.Router();
-const { authenticate } = require('../middleware/auth');
+const { authenticate, getEffectiveUserId } = require('../middleware/auth');
 const { successResponse } = require('../utils/response');
 const { AppError } = require('../middleware/errorHandler');
 const commandTemplateService = require('../services/commandTemplateService');
 
 // All routes require authentication
 router.use(authenticate);
+// Resolve effective userId (staff → owner's ID, others → own ID)
+router.use(async (req, res, next) => {
+    try {
+        req.effectiveUserId = await getEffectiveUserId(req);
+        next();
+    } catch (err) {
+        next(err);
+    }
+});
 
 /**
  * Helper: extract scope from query params
@@ -39,7 +48,7 @@ function getScope(query) {
 router.get('/', async (req, res, next) => {
     try {
         const scope = getScope(req.query);
-        const templates = await commandTemplateService.getTemplates(req.user.id, scope);
+        const templates = await commandTemplateService.getTemplates(req.effectiveUserId, scope);
         const variables = commandTemplateService.getAvailableVariables();
         const commandList = commandTemplateService.getCommandList();
 
@@ -89,7 +98,7 @@ router.get('/:command', async (req, res, next) => {
     try {
         const scope = getScope(req.query);
         const { command } = req.params;
-        const template = await commandTemplateService.getTemplate(req.user.id, command, scope);
+        const template = await commandTemplateService.getTemplate(req.effectiveUserId, command, scope);
         const defaults = commandTemplateService.getDefaultTemplates();
 
         if (!defaults[command]) {
@@ -132,7 +141,7 @@ router.put('/:command', async (req, res, next) => {
         }
 
         const result = await commandTemplateService.saveTemplate(
-            req.user.id,
+            req.effectiveUserId,
             command,
             template,
             isActive !== false,
@@ -188,7 +197,7 @@ router.delete('/:command', async (req, res, next) => {
             throw new AppError(`Unknown command: ${command}`, 400);
         }
 
-        const result = await commandTemplateService.resetTemplate(req.user.id, command, scope);
+        const result = await commandTemplateService.resetTemplate(req.effectiveUserId, command, scope);
 
         successResponse(res, {
             ...result,
@@ -207,7 +216,7 @@ router.delete('/:command', async (req, res, next) => {
 router.delete('/', async (req, res, next) => {
     try {
         const scope = getScope(req.query);
-        const templates = await commandTemplateService.resetAllTemplates(req.user.id, scope);
+        const templates = await commandTemplateService.resetAllTemplates(req.effectiveUserId, scope);
 
         successResponse(res, {
             templates,
@@ -242,7 +251,7 @@ router.post('/bulk', async (req, res, next) => {
             if (!defaults[item.command]) continue;
 
             const result = await commandTemplateService.saveTemplate(
-                req.user.id,
+                req.effectiveUserId,
                 item.command,
                 item.template,
                 item.isActive !== false,

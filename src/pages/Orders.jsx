@@ -503,6 +503,7 @@ export default function Orders() {
                             <th>Qty</th>
                             <th>Status</th>
                             <th>Charge</th>
+                            <th><Send size={14} title="Last Request" /></th>
                             <th><FileText size={14} title="Memo" /></th>
                             <th>Actions</th>
                         </tr>
@@ -510,7 +511,7 @@ export default function Orders() {
                     <tbody>
                         {loading ? (
                             <tr>
-                                <td colSpan="11" className="loading-cell">
+                                <td colSpan="12" className="loading-cell">
                                     <div>
                                         <Loader2 className="animate-spin" size={32} />
                                         <span>Loading orders...</span>
@@ -519,7 +520,7 @@ export default function Orders() {
                             </tr>
                         ) : orders.length === 0 ? (
                             <tr>
-                                <td colSpan="11" className="empty-cell">
+                                <td colSpan="12" className="empty-cell">
                                     <div>
                                         <Package size={48} />
                                         <span>No orders found</span>
@@ -554,13 +555,13 @@ export default function Orders() {
                                         {order.providerName ? (
                                             <>
                                                 <span className="provider-name">{order.providerName}</span>
-                                                {order.externalProviderId && (
+                                                {order.providerOrderId && (
                                                     <div className="provider-id">
                                                         <Hash size={10} />
-                                                        <span>{order.externalProviderId}</span>
+                                                        <span>{order.providerOrderId}</span>
                                                         <button
                                                             className="btn-icon"
-                                                            onClick={() => copyToClipboard(order.externalProviderId)}
+                                                            onClick={() => copyToClipboard(order.providerOrderId)}
                                                             title="Copy Provider Order ID"
                                                         >
                                                             <Copy size={10} />
@@ -603,6 +604,29 @@ export default function Orders() {
                                     </span>
                                 </td>
                                 <td>${order.charge?.toFixed(2) || '0.00'}</td>
+                                {/* Last Request indicator */}
+                                <td>
+                                    {order.commands?.[0] && (
+                                        <div style={{ fontSize: '0.7rem', lineHeight: '1.3' }}>
+                                            <span style={{
+                                                display: 'inline-block',
+                                                padding: '1px 5px',
+                                                borderRadius: '3px',
+                                                background: 'rgba(139, 92, 246, 0.1)',
+                                                color: '#a78bfa',
+                                                fontWeight: 600,
+                                                fontSize: '0.65rem'
+                                            }}>
+                                                {order.commands[0].command}
+                                            </span>
+                                            <div style={{ color: 'var(--text-muted)', marginTop: '1px' }}>
+                                                {order.commands[0].requestedBy?.length > 12
+                                                    ? order.commands[0].requestedBy.substring(0, 12) + '…'
+                                                    : order.commands[0].requestedBy || '—'}
+                                            </div>
+                                        </div>
+                                    )}
+                                </td>
                                 {/* Memo indicator */}
                                 <td>
                                     {order.staffMemo && (
@@ -825,9 +849,9 @@ export default function Orders() {
                                         <div className="detail-item">
                                             <span className="detail-label">Provider Order ID</span>
                                             <div className="detail-value copyable highlight">
-                                                <span>{showDetailModal.externalProviderId || 'N/A'}</span>
-                                                {showDetailModal.externalProviderId && (
-                                                    <button className="btn-icon" onClick={() => copyToClipboard(showDetailModal.externalProviderId)}>
+                                                <span>{showDetailModal.providerOrderId || 'N/A'}</span>
+                                                {showDetailModal.providerOrderId && (
+                                                    <button className="btn-icon" onClick={() => copyToClipboard(showDetailModal.providerOrderId)}>
                                                         <Copy size={12} />
                                                     </button>
                                                 )}

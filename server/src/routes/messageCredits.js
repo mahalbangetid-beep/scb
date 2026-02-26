@@ -12,7 +12,7 @@ const express = require('express');
 const router = express.Router();
 const { successResponse, paginatedResponse, parsePagination } = require('../utils/response');
 const { AppError } = require('../middleware/errorHandler');
-const { authenticate, requireRole } = require('../middleware/auth');
+const { authenticate, requireRole, getEffectiveUserId } = require('../middleware/auth');
 const messageCreditService = require('../services/messageCreditService');
 
 // ==================== USER ENDPOINTS ====================
@@ -21,9 +21,21 @@ const messageCreditService = require('../services/messageCreditService');
  * GET /api/message-credits/balance
  * Get user's both balances (dollar and message credits)
  */
-router.get('/balance', authenticate, async (req, res, next) => {
+// All routes require authentication
+router.use(authenticate);
+// Resolve effective userId (staff → owner's ID, others → own ID)
+router.use(async (req, res, next) => {
     try {
-        const balances = await messageCreditService.getBothBalances(req.user.id);
+        req.effectiveUserId = await getEffectiveUserId(req);
+        next();
+    } catch (err) {
+        next(err);
+    }
+});
+
+router.get('/balance', async (req, res, next) => {
+    try {
+        const balances = await messageCreditService.getBothBalances(req.effectiveUserId);
 
         successResponse(res, {
             dollarBalance: balances.dollarBalance,
@@ -43,7 +55,7 @@ router.get('/balance', authenticate, async (req, res, next) => {
  * DISABLED — Per spec 12.2: "No custom exchange allowed."
  * This endpoint is intentionally disabled. Users must buy predefined packages instead.
  */
-router.post('/convert', authenticate, async (req, res) => {
+router.post('/convert', async (req, res) => {
     return res.status(403).json({
         success: false,
         error: {
@@ -56,12 +68,12 @@ router.post('/convert', authenticate, async (req, res) => {
  * GET /api/message-credits/transactions
  * Get message credit transaction history
  */
-router.get('/transactions', authenticate, async (req, res, next) => {
+router.get('/transactions', async (req, res, next) => {
     try {
         const { page, limit } = parsePagination(req.query);
         const { type } = req.query;
 
-        const result = await messageCreditService.getTransactions(req.user.id, {
+        const result = await messageCreditService.getTransactions(req.effectiveUserId, {
             page,
             limit,
             type // CREDIT, DEBIT, CONVERSION, SIGNUP_BONUS
@@ -81,7 +93,7 @@ router.get('/transactions', authenticate, async (req, res, next) => {
  * GET /api/message-credits/config
  * Get message credit configuration (rates, etc)
  */
-router.get('/config', authenticate, async (req, res, next) => {
+router.get('/config', async (req, res, next) => {
     try {
         const config = await messageCreditService.getConfig();
 
@@ -101,7 +113,7 @@ router.get('/config', authenticate, async (req, res, next) => {
  * POST /api/message-credits/admin/add
  * Admin: Add message credits to a user
  */
-router.post('/admin/add', authenticate, requireRole(['MASTER_ADMIN', 'ADMIN']), async (req, res, next) => {
+router.post('/admin/add', requireRole(['MASTER_ADMIN', 'ADMIN']), async (req, res, next) => {
     try {
         const { userId, amount, description } = req.body;
 
@@ -117,7 +129,7 @@ router.post('/admin/add', authenticate, requireRole(['MASTER_ADMIN', 'ADMIN']), 
             userId,
             parseInt(amount),
             description || `Admin grant: ${amount} credits`,
-            `ADMIN_${req.user.id}_${Date.now()}`
+            `ADMIN_${req.effectiveUserId}_${Date.now()}`
         );
 
         successResponse(res, {
@@ -134,7 +146,7 @@ router.post('/admin/add', authenticate, requireRole(['MASTER_ADMIN', 'ADMIN']), 
  * POST /api/message-credits/admin/deduct
  * Admin: Deduct message credits from a user
  */
-router.post('/admin/deduct', authenticate, requireRole(['MASTER_ADMIN', 'ADMIN']), async (req, res, next) => {
+router.post('/admin/deduct', requireRole(['MASTER_ADMIN', 'ADMIN']), async (req, res, next) => {
     try {
         const { userId, amount, description } = req.body;
 
@@ -150,7 +162,7 @@ router.post('/admin/deduct', authenticate, requireRole(['MASTER_ADMIN', 'ADMIN']
             userId,
             parseInt(amount),
             description || `Admin deduct: ${amount} credits`,
-            `ADMIN_DEDUCT_${req.user.id}_${Date.now()}`
+            `ADMIN_DEDUCT_${req.effectiveUserId}_${Date.now()}`
         );
 
         if (!result.success) {
@@ -173,7 +185,7 @@ router.post('/admin/deduct', authenticate, requireRole(['MASTER_ADMIN', 'ADMIN']
  * GET /api/message-credits/admin/user/:userId
  * Admin: Get a user's message credit balance and history
  */
-router.get('/admin/user/:userId', authenticate, requireRole(['MASTER_ADMIN', 'ADMIN']), async (req, res, next) => {
+router.get('/admin/user/:userId', requireRole(['MASTER_ADMIN', 'ADMIN']), async (req, res, next) => {
     try {
         const { userId } = req.params;
         const { page, limit } = parsePagination(req.query);
@@ -197,7 +209,7 @@ router.get('/admin/user/:userId', authenticate, requireRole(['MASTER_ADMIN', 'AD
  * POST /api/message-credits/admin/give-signup-bonus
  * Admin: Manually give signup bonus to a user (if not already given)
  */
-router.post('/admin/give-signup-bonus', authenticate, requireRole(['MASTER_ADMIN', 'ADMIN']), async (req, res, next) => {
+router.post('/admin/give-signup-bonus', requireRole(['MASTER_ADMIN', 'ADMIN']), async (req, res, next) => {
     try {
         const { userId } = req.body;
 

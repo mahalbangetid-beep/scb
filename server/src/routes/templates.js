@@ -7,7 +7,7 @@
 
 const express = require('express');
 const router = express.Router();
-const { authenticate } = require('../middleware/auth');
+const { authenticate, getEffectiveUserId } = require('../middleware/auth');
 const { successResponse } = require('../utils/response');
 const responseTemplateService = require('../services/responseTemplateService');
 
@@ -15,9 +15,21 @@ const responseTemplateService = require('../services/responseTemplateService');
  * GET /api/templates
  * Get all response templates for the logged-in user
  */
-router.get('/', authenticate, async (req, res, next) => {
+// All routes require authentication
+router.use(authenticate);
+// Resolve effective userId (staff → owner's ID, others → own ID)
+router.use(async (req, res, next) => {
     try {
-        const templates = await responseTemplateService.getAllTemplates(req.user.id);
+        req.effectiveUserId = await getEffectiveUserId(req);
+        next();
+    } catch (err) {
+        next(err);
+    }
+});
+
+router.get('/', async (req, res, next) => {
+    try {
+        const templates = await responseTemplateService.getAllTemplates(req.effectiveUserId);
         successResponse(res, templates, 'Templates retrieved successfully');
     } catch (error) {
         next(error);
@@ -29,9 +41,9 @@ router.get('/', authenticate, async (req, res, next) => {
  * Reset all templates to default
  * NOTE: This route MUST be defined before /:command
  */
-router.post('/reset-all', authenticate, async (req, res, next) => {
+router.post('/reset-all', async (req, res, next) => {
     try {
-        const resetCommands = await responseTemplateService.resetAllTemplates(req.user.id);
+        const resetCommands = await responseTemplateService.resetAllTemplates(req.effectiveUserId);
 
         successResponse(res, {
             resetCommands,
@@ -47,7 +59,7 @@ router.post('/reset-all', authenticate, async (req, res, next) => {
  * Preview a template with sample variables
  * NOTE: This route MUST be defined before /:command
  */
-router.post('/preview', authenticate, async (req, res, next) => {
+router.post('/preview', async (req, res, next) => {
     try {
         const { command, template } = req.body;
 
@@ -92,10 +104,10 @@ router.post('/preview', authenticate, async (req, res, next) => {
  * GET /api/templates/:command
  * Get a specific template by command
  */
-router.get('/:command', authenticate, async (req, res, next) => {
+router.get('/:command', async (req, res, next) => {
     try {
         const { command } = req.params;
-        const template = await responseTemplateService.getTemplate(req.user.id, command);
+        const template = await responseTemplateService.getTemplate(req.effectiveUserId, command);
         const variables = responseTemplateService.getVariables(command);
 
         successResponse(res, {
@@ -112,7 +124,7 @@ router.get('/:command', authenticate, async (req, res, next) => {
  * PUT /api/templates/:command
  * Update or create a custom template
  */
-router.put('/:command', authenticate, async (req, res, next) => {
+router.put('/:command', async (req, res, next) => {
     try {
         const { command } = req.params;
         const { template, isActive } = req.body;
@@ -135,7 +147,7 @@ router.put('/:command', authenticate, async (req, res, next) => {
         }
 
         const updated = await responseTemplateService.updateTemplate(
-            req.user.id,
+            req.effectiveUserId,
             command,
             template,
             isActive !== undefined ? isActive : true
@@ -151,10 +163,10 @@ router.put('/:command', authenticate, async (req, res, next) => {
  * DELETE /api/templates/:command
  * Reset a template to default
  */
-router.delete('/:command', authenticate, async (req, res, next) => {
+router.delete('/:command', async (req, res, next) => {
     try {
         const { command } = req.params;
-        const defaultTemplate = await responseTemplateService.resetTemplate(req.user.id, command);
+        const defaultTemplate = await responseTemplateService.resetTemplate(req.effectiveUserId, command);
 
         successResponse(res, {
             command,

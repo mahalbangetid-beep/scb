@@ -1,20 +1,32 @@
 const express = require('express');
 const router = express.Router();
 const prisma = require('../utils/prisma');
-const { authenticate } = require('../middleware/auth');
+const { authenticate, getEffectiveUserId } = require('../middleware/auth');
 const { AppError } = require('../middleware/errorHandler');
 const { successResponse, paginatedResponse, parsePagination } = require('../utils/response');
 
 const validTriggerTypes = ['exact', 'contains', 'startswith', 'regex'];
 
+// All routes require authentication
+router.use(authenticate);
+// Resolve effective userId (staff → owner's ID, others → own ID)
+router.use(async (req, res, next) => {
+    try {
+        req.effectiveUserId = await getEffectiveUserId(req);
+        next();
+    } catch (err) {
+        next(err);
+    }
+});
+
 // GET /api/auto-reply - List all rules for user
-router.get('/', authenticate, async (req, res, next) => {
+router.get('/', async (req, res, next) => {
     try {
         const { page, limit, skip } = parsePagination(req.query);
         const { isActive, deviceId, search } = req.query;
 
         const where = {
-            userId: req.user.id
+            userId: req.effectiveUserId
         };
 
         if (isActive !== undefined) {
@@ -72,12 +84,12 @@ router.get('/', authenticate, async (req, res, next) => {
 });
 
 // GET /api/auto-reply/:id
-router.get('/:id', authenticate, async (req, res, next) => {
+router.get('/:id', async (req, res, next) => {
     try {
         const rule = await prisma.autoReplyRule.findFirst({
             where: {
                 id: req.params.id,
-                userId: req.user.id
+                userId: req.effectiveUserId
             }
         });
 
@@ -92,7 +104,7 @@ router.get('/:id', authenticate, async (req, res, next) => {
 });
 
 // POST /api/auto-reply
-router.post('/', authenticate, async (req, res, next) => {
+router.post('/', async (req, res, next) => {
     try {
         const { name, trigger, triggerType, response, deviceId, priority } = req.body;
 
@@ -128,7 +140,7 @@ router.post('/', authenticate, async (req, res, next) => {
                 response,
                 priority: priority || 0,
                 deviceId: deviceId || null,
-                userId: req.user.id,
+                userId: req.effectiveUserId,
                 isActive: true
             }
         });
@@ -140,12 +152,12 @@ router.post('/', authenticate, async (req, res, next) => {
 });
 
 // PUT /api/auto-reply/:id
-router.put('/:id', authenticate, async (req, res, next) => {
+router.put('/:id', async (req, res, next) => {
     try {
         const { name, trigger, triggerType, response, isActive, priority, deviceId } = req.body;
 
         const existing = await prisma.autoReplyRule.findFirst({
-            where: { id: req.params.id, userId: req.user.id }
+            where: { id: req.params.id, userId: req.effectiveUserId }
         });
 
         if (!existing) {
@@ -193,10 +205,10 @@ router.put('/:id', authenticate, async (req, res, next) => {
 });
 
 // PATCH /api/auto-reply/:id/toggle - Toggle active status
-router.patch('/:id/toggle', authenticate, async (req, res, next) => {
+router.patch('/:id/toggle', async (req, res, next) => {
     try {
         const existing = await prisma.autoReplyRule.findFirst({
-            where: { id: req.params.id, userId: req.user.id }
+            where: { id: req.params.id, userId: req.effectiveUserId }
         });
 
         if (!existing) {
@@ -215,10 +227,10 @@ router.patch('/:id/toggle', authenticate, async (req, res, next) => {
 });
 
 // DELETE /api/auto-reply/:id
-router.delete('/:id', authenticate, async (req, res, next) => {
+router.delete('/:id', async (req, res, next) => {
     try {
         const existing = await prisma.autoReplyRule.findFirst({
-            where: { id: req.params.id, userId: req.user.id }
+            where: { id: req.params.id, userId: req.effectiveUserId }
         });
 
         if (!existing) {
