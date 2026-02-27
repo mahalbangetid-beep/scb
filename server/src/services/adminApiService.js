@@ -1451,14 +1451,10 @@ class AdminApiService {
                         return { exists: true };
                     }
 
-                    // Check for explicit "not found" errors
+                    // Any non-success response = user NOT found (don't fall through)
                     if (response && (response.error || !response.success)) {
-                        const errStr = (response.error || '').toLowerCase();
-                        if (errStr.includes('not found') || errStr.includes('invalid user') ||
-                            errStr.includes('no user') || errStr.includes('bad_username')) {
-                            console.log(`[AdminAPI] V1 getuser: username "${username}" NOT found`);
-                            return { exists: false };
-                        }
+                        console.log(`[AdminAPI] V1 getuser: username "${username}" NOT found (error: ${response.error || 'not success'})`);
+                        return { exists: false };
                     }
                 } catch (getUserErr) {
                     console.log(`[AdminAPI] V1 getuser failed, trying orders fallback: ${getUserErr.message}`);
@@ -1473,14 +1469,24 @@ class AdminApiService {
                     });
 
                     if (response && response.error) {
-                        const errStr = (response.error || '').toLowerCase();
-                        if (errStr.includes('not found') || errStr.includes('invalid user') || errStr.includes('no user')) {
-                            return { exists: false };
-                        }
+                        console.log(`[AdminAPI] V1 getOrders-by-user error for "${username}": ${response.error}`);
+                        return { exists: false };
                     }
 
-                    // Got some response without explicit "not found" = user likely exists
-                    return { exists: true };
+                    // Only confirm exists if actual order data is returned
+                    const resData = response?.data || response;
+                    const orders = Array.isArray(resData) ? resData :
+                        (resData?.orders && Array.isArray(resData.orders)) ? resData.orders :
+                            (resData?.data && Array.isArray(resData.data)) ? resData.data : null;
+
+                    if (orders && orders.length > 0) {
+                        console.log(`[AdminAPI] V1 getOrders-by-user: "${username}" has ${orders.length} orders — exists`);
+                        return { exists: true };
+                    }
+
+                    // Empty or no orders — cannot confirm user exists
+                    console.log(`[AdminAPI] V1 getOrders-by-user: no orders found for "${username}" — rejecting`);
+                    return { exists: false, uncertain: true };
                 } catch (e) {
                     // Both methods failed — cannot confirm user exists
                     console.log(`[AdminAPI] V1 orders fallback also failed for "${username}" — rejecting`);
@@ -1520,7 +1526,17 @@ class AdminApiService {
                     });
 
                     if (response && !response.error) {
-                        return { exists: true };
+                        // Only confirm exists if actual order data is returned
+                        const orderData = response.data || response;
+                        const orders = Array.isArray(orderData) ? orderData :
+                            (orderData?.data && Array.isArray(orderData.data)) ? orderData.data : null;
+
+                        if (orders && orders.length > 0) {
+                            console.log(`[AdminAPI] V2 orders fallback: "${username}" has orders — exists`);
+                            return { exists: true };
+                        }
+                        // Empty results = user may not exist
+                        console.log(`[AdminAPI] V2 orders fallback: no orders for "${username}"`);
                     }
                 } catch (e) {
                     // Ignore
