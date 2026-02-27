@@ -457,6 +457,13 @@ john123
                         matchedPanelId = pId;
                         console.log(`[Registration] ✅ Username "${normalizedUsername}" validated on panel ${panel.alias || panel.name} (${pId})`);
                         break;
+                    } else if (result.noValidation) {
+                        // Panel doesn't support user validation — allow registration
+                        // Security check at command time (checkUserMappingOwnership) will catch mismatches
+                        usernameValid = true;
+                        matchedPanelId = pId;
+                        console.log(`[Registration] ⚠️ Panel ${panel.alias || panel.name} doesn't support username validation — allowing registration (security at command time)`);
+                        break;
                     } else {
                         console.log(`[Registration] ❌ Username "${normalizedUsername}" NOT found on panel ${panel.alias || panel.name} (uncertain: ${result.uncertain || false})`);
                     }

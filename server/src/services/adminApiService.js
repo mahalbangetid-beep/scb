@@ -1487,6 +1487,14 @@ class AdminApiService {
                     console.log(`[AdminAPI] V1 getOrders-by-user raw response for "${username}": ${rawStr}`);
 
                     if (response && response.error) {
+                        const errStr = (response.error || '').toLowerCase();
+
+                        // bad_action = panel doesn't support this action at all
+                        if (errStr.includes('bad_action') || errStr.includes('unknown action') || errStr.includes('incorrect request')) {
+                            console.log(`[AdminAPI] V1 getOrders-by-user: action not supported by panel — cannot validate`);
+                            return { exists: false, noValidation: true };
+                        }
+
                         console.log(`[AdminAPI] V1 getOrders-by-user error for "${username}": ${response.error}`);
                         return { exists: false };
                     }
