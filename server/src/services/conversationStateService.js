@@ -288,9 +288,9 @@ john123
             return false;
         }
 
-        // If it's a single word or short phrase, it could be a username
-        // Usernames are typically alphanumeric, possibly with underscores/dots
-        if (text.length > 0 && text.length <= 50 && !text.includes('\n')) {
+        // Must look like a valid username: 2-50 chars, alphanumeric/underscore/dot, no spaces
+        // This prevents random text like "hello", "ok", "hi bro" from being treated as usernames
+        if (/^[a-zA-Z0-9_.]{2,50}$/.test(text)) {
             return true;
         }
 
@@ -452,10 +452,10 @@ john123
                 }
             } catch (err) {
                 console.error(`[Registration] Username validation error:`, err.message);
-                // If Admin API fails, allow registration anyway (graceful degradation)
-                usernameValid = true;
-                matchedPanelId = panelIds[0];  // Fallback to first panel
-                console.log(`[Registration] Admin API validation failed — allowing registration as fallback`);
+                // If Admin API fails, do NOT silently accept — ask user to try again
+                // (previously: usernameValid = true — this caused fake registrations)
+                usernameValid = false;
+                console.log(`[Registration] Admin API validation failed — rejecting registration (try again)`);
             }
         } else {
             // No panels configured — skip validation

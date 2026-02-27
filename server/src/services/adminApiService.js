@@ -1482,9 +1482,9 @@ class AdminApiService {
                     // Got some response without explicit "not found" = user likely exists
                     return { exists: true };
                 } catch (e) {
-                    // Both methods failed — allow as fallback
-                    console.log(`[AdminAPI] V1 orders fallback also failed for "${username}" — allowing as fallback`);
-                    return { exists: true };
+                    // Both methods failed — cannot confirm user exists
+                    console.log(`[AdminAPI] V1 orders fallback also failed for "${username}" — rejecting`);
+                    return { exists: false, uncertain: true };
                 }
             } else {
                 // V2/Perfect Panel: Try user lookup endpoint
@@ -1526,14 +1526,14 @@ class AdminApiService {
                     // Ignore
                 }
 
-                // Can't determine — allow as fallback
-                console.log(`[AdminAPI] Cannot validate username "${username}" on V2 panel — allowing as fallback`);
-                return { exists: true };
+                // Can't determine — do not assume user exists
+                console.log(`[AdminAPI] Cannot validate username "${username}" on V2 panel — rejecting`);
+                return { exists: false, uncertain: true };
             }
         } catch (error) {
             console.error(`[AdminAPI] validateUsername error for "${username}":`, error.message);
-            // On error, allow registration (graceful degradation)
-            return { exists: true };
+            // On error, do NOT assume user exists — prevents fake registrations
+            return { exists: false, uncertain: true };
         }
     }
 
