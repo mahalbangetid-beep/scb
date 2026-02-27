@@ -1445,6 +1445,10 @@ class AdminApiService {
                         username: username
                     });
 
+                    // LOG the raw response for debugging
+                    const getUserRaw = JSON.stringify(response).substring(0, 500);
+                    console.log(`[AdminAPI] V1 getuser raw response for "${username}": ${getUserRaw}`);
+
                     // If success response with user data → user exists
                     if (response && response.success && response.data) {
                         console.log(`[AdminAPI] V1 getuser: username "${username}" found`);
@@ -1478,28 +1482,52 @@ class AdminApiService {
                         limit: 1
                     });
 
+                    // LOG the raw response so we can debug
+                    const rawStr = JSON.stringify(response).substring(0, 500);
+                    console.log(`[AdminAPI] V1 getOrders-by-user raw response for "${username}": ${rawStr}`);
+
                     if (response && response.error) {
                         console.log(`[AdminAPI] V1 getOrders-by-user error for "${username}": ${response.error}`);
                         return { exists: false };
                     }
 
-                    // Only confirm exists if actual order data is returned
+                    // Check if response contains ANY order data (multiple formats)
                     const resData = response?.data || response;
-                    const orders = Array.isArray(resData) ? resData :
-                        (resData?.orders && Array.isArray(resData.orders)) ? resData.orders :
-                            (resData?.data && Array.isArray(resData.data)) ? resData.data : null;
+                    let hasOrders = false;
 
-                    if (orders && orders.length > 0) {
-                        console.log(`[AdminAPI] V1 getOrders-by-user: "${username}" has ${orders.length} orders — exists`);
+                    // Format 1: Direct array [{ id: 123, ... }]
+                    if (Array.isArray(resData) && resData.length > 0) {
+                        hasOrders = true;
+                    }
+                    // Format 2: { orders: [{ id: 123, ... }] }
+                    else if (resData?.orders && Array.isArray(resData.orders) && resData.orders.length > 0) {
+                        hasOrders = true;
+                    }
+                    // Format 3: { data: [{ id: 123, ... }] }
+                    else if (resData?.data && Array.isArray(resData.data) && resData.data.length > 0) {
+                        hasOrders = true;
+                    }
+                    // Format 4: Object keyed by order ID { "1234": { status: ... }, "5678": { ... } }
+                    else if (resData && typeof resData === 'object' && !Array.isArray(resData)) {
+                        const keys = Object.keys(resData).filter(k =>
+                            k !== 'success' && k !== 'error' && k !== 'status' && k !== 'data' && k !== 'orders'
+                        );
+                        if (keys.length > 0 && typeof resData[keys[0]] === 'object') {
+                            hasOrders = true;
+                        }
+                    }
+
+                    if (hasOrders) {
+                        console.log(`[AdminAPI] V1 getOrders-by-user: "${username}" has orders — exists`);
                         return { exists: true };
                     }
 
                     // Empty or no orders — cannot confirm user exists
-                    console.log(`[AdminAPI] V1 getOrders-by-user: no orders found for "${username}" — rejecting`);
+                    console.log(`[AdminAPI] V1 getOrders-by-user: no orders detected for "${username}" — rejecting`);
                     return { exists: false, uncertain: true };
                 } catch (e) {
                     // Both methods failed — cannot confirm user exists
-                    console.log(`[AdminAPI] V1 orders fallback also failed for "${username}" — rejecting`);
+                    console.log(`[AdminAPI] V1 orders fallback also failed for "${username}": ${e.message} — rejecting`);
                     return { exists: false, uncertain: true };
                 }
             } else {

@@ -434,31 +434,39 @@ john123
         const panelIds = context.panelIds || [];
 
         if (panelIds.length > 0) {
+            console.log(`[Registration] Validating username "${normalizedUsername}" across ${panelIds.length} panel(s): [${panelIds.join(', ')}]`);
             try {
                 const adminApiService = require('./adminApiService');
                 const prismaClient = require('../utils/prisma');
 
                 for (const pId of panelIds) {
                     const panel = await prismaClient.smmPanel.findUnique({ where: { id: pId } });
-                    if (panel && panel.adminApiKey) {
-                        const result = await adminApiService.validateUsername(panel, normalizedUsername);
-                        if (result.exists) {
-                            usernameValid = true;
-                            matchedPanelId = pId;  // Save the panel where username was found
-                            console.log(`[Registration] Username "${normalizedUsername}" validated on panel ${panel.alias || panel.name} (${pId})`);
-                            break;
-                        }
+                    if (!panel) {
+                        console.log(`[Registration] Panel ${pId} not found in DB — skipping`);
+                        continue;
+                    }
+                    if (!panel.adminApiKey) {
+                        console.log(`[Registration] Panel ${panel.alias || panel.name} (${pId}) has NO adminApiKey — skipping`);
+                        continue;
+                    }
+                    console.log(`[Registration] Checking panel ${panel.alias || panel.name} (${pId}), type=${panel.panelType}, hasAdminApiKey=true`);
+                    const result = await adminApiService.validateUsername(panel, normalizedUsername);
+                    console.log(`[Registration] validateUsername result for "${normalizedUsername}" on ${panel.alias || panel.name}: ${JSON.stringify(result)}`);
+                    if (result.exists) {
+                        usernameValid = true;
+                        matchedPanelId = pId;
+                        console.log(`[Registration] ✅ Username "${normalizedUsername}" validated on panel ${panel.alias || panel.name} (${pId})`);
+                        break;
+                    } else {
+                        console.log(`[Registration] ❌ Username "${normalizedUsername}" NOT found on panel ${panel.alias || panel.name} (uncertain: ${result.uncertain || false})`);
                     }
                 }
             } catch (err) {
                 console.error(`[Registration] Username validation error:`, err.message);
-                // If Admin API fails, do NOT silently accept — ask user to try again
-                // (previously: usernameValid = true — this caused fake registrations)
                 usernameValid = false;
                 console.log(`[Registration] Admin API validation failed — rejecting registration (try again)`);
             }
         } else {
-            // No panels configured — cannot validate, block registration
             usernameValid = false;
             console.log(`[Registration] No panel IDs available — cannot validate username, blocking registration`);
         }
