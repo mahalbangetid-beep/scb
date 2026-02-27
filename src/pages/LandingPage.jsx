@@ -5,7 +5,6 @@ import {
     Zap,
     Shield,
     Clock,
-    CreditCard,
     Users,
     ChevronRight,
     Check,
@@ -23,12 +22,19 @@ import {
     BarChart3,
     Lock,
     CheckCircle2,
-    Sparkles
+    Sparkles,
+    Radio,
+    Megaphone,
+    MessageCircle,
+    Target,
+    Calendar,
+    FileText
 } from 'lucide-react';
 
 const LandingPage = () => {
     const navigate = useNavigate();
     const [activeTab, setActiveTab] = useState('refill');
+    const [activePricingTab, setActivePricingTab] = useState('support');
     const [isVisible, setIsVisible] = useState({});
 
     useEffect(() => {
@@ -110,70 +116,117 @@ const LandingPage = () => {
         }
     ];
 
-    const pricingPlans = [
-        {
-            name: 'Starter',
-            price: 'Free',
-            period: 'forever',
-            description: 'Perfect for testing and small operations',
-            features: [
-                '1 WhatsApp Device',
-                '1 SMM Panel',
-                '100 Messages/day',
-                'Basic Auto-Reply',
-                'Email Support',
-                'SMMChatBot Watermark'
-            ],
-            notIncluded: ['Telegram Bots', 'Provider Groups', 'API Access', 'White-label'],
-            cta: 'Start Free',
-            popular: false
-        },
-        {
-            name: 'Professional',
-            price: '$29',
-            period: '/month',
-            description: 'For growing SMM businesses',
-            features: [
-                '5 WhatsApp Devices',
-                '3 SMM Panels',
-                'Unlimited Messages',
-                'Advanced Auto-Reply',
-                '2 Telegram Bots',
-                'Provider Group Forwarding',
-                'Priority Support',
-                'API Access'
-            ],
-            notIncluded: ['White-label', 'Custom Branding'],
-            cta: 'Get Started',
-            popular: true
-        },
-        {
-            name: 'Enterprise',
-            price: '$99',
-            period: '/month',
-            description: 'For agencies and large operations',
-            features: [
-                'Unlimited Devices',
-                'Unlimited Panels',
-                'Unlimited Messages',
-                'All Bot Features',
-                'Unlimited Telegram',
-                'White-label Ready',
-                'Custom Branding',
-                'Dedicated Support',
-                'Custom Integrations'
-            ],
-            notIncluded: [],
-            cta: 'Contact Sales',
-            popular: false
-        }
-    ];
+    // Pricing cards data per tab
+    const pricingData = {
+        support: [
+            {
+                title: 'Basic Support',
+                price: '$9',
+                period: '/mo',
+                description: 'Auto-reply to customer order queries via WhatsApp.',
+                features: ['100 Messages/day', 'Basic Auto-Reply', '1 WhatsApp Device', 'Email Support'],
+                popular: false
+            },
+            {
+                title: 'Pro Support',
+                price: '$29',
+                period: '/mo',
+                description: 'Advanced support with multi-device & keyword responses.',
+                features: ['Unlimited Messages', '5 Devices', 'Keyword Responses', 'Priority Support'],
+                popular: true
+            },
+            {
+                title: 'Business Support',
+                price: '$59',
+                period: '/mo',
+                description: 'Full automation with provider forwarding & group support.',
+                features: ['Unlimited Devices', 'Provider Groups', 'Staff Accounts', 'API Access'],
+                popular: false
+            },
+            {
+                title: 'Enterprise',
+                price: '$99',
+                period: '/mo',
+                description: 'White-label solution with custom branding & integrations.',
+                features: ['White-label Ready', 'Custom Branding', 'Dedicated Support', 'Custom Integration'],
+                popular: false
+            }
+        ],
+        marketing: [
+            {
+                title: 'Starter Broadcast',
+                price: '$15',
+                period: '/mo',
+                description: 'Basic WhatsApp broadcast for small businesses.',
+                features: ['500 Messages/day', 'Contact Manager', 'Basic Templates', 'Send Reports'],
+                popular: false
+            },
+            {
+                title: 'Pro Broadcast',
+                price: '$39',
+                period: '/mo',
+                description: 'Advanced marketing with scheduled campaigns.',
+                features: ['5,000 Messages/day', 'Scheduled Campaigns', 'Image & Video', 'Analytics Dashboard'],
+                popular: true
+            },
+            {
+                title: 'Business Broadcast',
+                price: '$69',
+                period: '/mo',
+                description: 'Multi-device marketing with advanced targeting.',
+                features: ['Unlimited Messages', 'Multi-Device', 'Contact Segments', 'A/B Testing'],
+                popular: false
+            },
+            {
+                title: 'Agency',
+                price: '$129',
+                period: '/mo',
+                description: 'Full marketing suite for agencies managing multiple clients.',
+                features: ['Multi-Client', 'Custom Intervals', 'API Integration', 'White-label Reports'],
+                popular: false
+            }
+        ],
+        telegram: [
+            {
+                title: 'TG Starter',
+                price: '$12',
+                period: '/mo',
+                description: 'Basic Telegram bot for order management.',
+                features: ['1 Telegram Bot', 'Basic Commands', 'Order Status', 'Auto-Reply'],
+                popular: false
+            },
+            {
+                title: 'TG Professional',
+                price: '$35',
+                period: '/mo',
+                description: 'Advanced Telegram with group support & broadcasts.',
+                features: ['3 Telegram Bots', 'Group Commands', 'TG Broadcast', 'Analytics'],
+                popular: true
+            },
+            {
+                title: 'TG Business',
+                price: '$65',
+                period: '/mo',
+                description: 'Full Telegram automation with multi-bot support.',
+                features: ['Unlimited Bots', 'Channel Broadcast', 'Inline Commands', 'Priority Support'],
+                popular: false
+            },
+            {
+                title: 'TG Enterprise',
+                price: '$99',
+                period: '/mo',
+                description: 'Complete Telegram solution with white-label features.',
+                features: ['White-label Bots', 'Custom Commands', 'Webhook Integration', 'Dedicated Support'],
+                popular: false
+            }
+        ]
+    };
 
     const paymentMethods = [
         { name: 'Binance Pay', icon: '₿' },
         { name: 'Cryptomus', icon: '💎' },
         { name: 'Tik Kart', icon: '💳' },
-        { name: 'Esewa', icon: '📱' },
+        { name: 'Helekart', icon: '🏪' },
         { name: 'Bank Transfer', icon: '🏦' }
     ];
 
@@ -242,6 +295,8 @@ const LandingPage = () => {
 ▪️ Remaining: 2,150`
         }
     };
+
+    const currentPricingCards = pricingData[activePricingTab] || pricingData.support;
 
     return (
         <div className="landing-page">
@@ -481,7 +536,7 @@ const LandingPage = () => {
                 </div>
             </section>
 
-            {/* Pricing Section */}
+            {/* Pricing Section - Tabs + Card Slider */}
             <section id="pricing" className="pricing-section">
                 <div className="container">
                     <div className="section-header">
@@ -489,31 +544,117 @@ const LandingPage = () => {
                         <h2>Simple, Transparent Pricing</h2>
                         <p>Choose the plan that fits your business needs</p>
                     </div>
-                    <div className="pricing-grid">
-                        {pricingPlans.map((plan, index) => (
-                            <div key={index} className={`pricing-card ${plan.popular ? 'popular' : ''}`}>
-                                {plan.popular && <div className="popular-badge">Most Popular</div>}
-                                <div className="pricing-header">
-                                    <h3>{plan.name}</h3>
-                                    <div className="price">
-                                        <span className="amount">{plan.price}</span>
-                                        <span className="period">{plan.period}</span>
-                                    </div>
-                                    <p>{plan.description}</p>
+
+                    {/* Pricing Tabs */}
+                    <div className="pricing-tabs">
+                        <button
+                            className={`pricing-tab ${activePricingTab === 'support' ? 'active' : ''}`}
+                            onClick={() => setActivePricingTab('support')}
+                        >
+                            <Headphones size={18} /> Support Message
+                        </button>
+                        <button
+                            className={`pricing-tab ${activePricingTab === 'marketing' ? 'active' : ''}`}
+                            onClick={() => setActivePricingTab('marketing')}
+                        >
+                            <Megaphone size={18} /> Marketing Message
+                        </button>
+                        <button
+                            className={`pricing-tab ${activePricingTab === 'telegram' ? 'active' : ''}`}
+                            onClick={() => setActivePricingTab('telegram')}
+                        >
+                            <Send size={18} /> Telegram Message
+                        </button>
+                    </div>
+
+                    {/* Card Slider */}
+                    <div className="pricing-cards-slider">
+                        {currentPricingCards.map((card, index) => (
+                            <div key={index} className={`pricing-slide-card ${card.popular ? 'popular-card' : ''}`}>
+                                <div className="card-icon">
+                                    {activePricingTab === 'support' ? <Headphones size={24} /> :
+                                        activePricingTab === 'marketing' ? <Megaphone size={24} /> :
+                                            <Send size={24} />}
                                 </div>
-                                <ul className="pricing-features">
-                                    {plan.features.map((feature, idx) => (
-                                        <li key={idx}><Check size={18} className="check" /> {feature}</li>
-                                    ))}
-                                    {plan.notIncluded.map((feature, idx) => (
-                                        <li key={idx} className="not-included"><X size={18} /> {feature}</li>
+                                <h4>{card.title}</h4>
+                                <div className="card-price">{card.price}<span>{card.period}</span></div>
+                                <p className="card-desc">{card.description}</p>
+                                <ul className="card-features">
+                                    {card.features.map((feat, idx) => (
+                                        <li key={idx}><Check size={14} /> {feat}</li>
                                     ))}
                                 </ul>
-                                <button className={`pricing-cta ${plan.popular ? 'primary' : ''}`}>
-                                    {plan.cta}
+                                <button className="card-cta" onClick={() => navigate('/register')}>
+                                    Get Started
                                 </button>
                             </div>
                         ))}
+                    </div>
+                </div>
+            </section>
+
+            {/* Broadcast Section */}
+            <section className="broadcast-section">
+                <div className="container">
+                    <div className="section-header">
+                        <span className="section-badge">Broadcasting</span>
+                        <h2>WhatsApp & Telegram Broadcast</h2>
+                        <p>Reach your customers with powerful multi-platform broadcast tools</p>
+                    </div>
+
+                    <div className="broadcast-content">
+                        <div className="broadcast-info">
+                            <h3>Marketing Automation Made Simple</h3>
+                            <p>
+                                Send targeted messages to thousands of customers across WhatsApp and Telegram
+                                with our powerful broadcast engine. Schedule campaigns, track delivery, and
+                                analyze engagement — all from one dashboard.
+                            </p>
+                            <ul className="broadcast-features">
+                                <li>
+                                    <Check size={18} />
+                                    <div><strong>Scheduled Campaigns</strong> — Set it and forget it. Messages go out at the perfect time.</div>
+                                </li>
+                                <li>
+                                    <Check size={18} />
+                                    <div><strong>Rich Media Support</strong> — Send images, videos, documents, and formatted text.</div>
+                                </li>
+                                <li>
+                                    <Check size={18} />
+                                    <div><strong>Smart Intervals</strong> — Anti-spam protection with configurable send intervals.</div>
+                                </li>
+                                <li>
+                                    <Check size={18} />
+                                    <div><strong>Delivery Reports</strong> — Track delivered, read, and failed messages in real-time.</div>
+                                </li>
+                            </ul>
+                            <button className="btn-primary" onClick={() => navigate('/register')}>
+                                Try Broadcast Free <ArrowRight size={18} />
+                            </button>
+                        </div>
+
+                        <div className="broadcast-cards">
+                            <div className="broadcast-card">
+                                <div className="bc-icon"><MessageCircle size={24} /></div>
+                                <h4>WhatsApp Broadcast</h4>
+                                <p>Bulk messaging with personalized templates</p>
+                            </div>
+                            <div className="broadcast-card">
+                                <div className="bc-icon"><Send size={24} /></div>
+                                <h4>Telegram Broadcast</h4>
+                                <p>Channel & group messaging at scale</p>
+                            </div>
+                            <div className="broadcast-card">
+                                <div className="bc-icon"><Calendar size={24} /></div>
+                                <h4>Scheduled Sends</h4>
+                                <p>Automated campaigns on your schedule</p>
+                            </div>
+                            <div className="broadcast-card">
+                                <div className="bc-icon"><BarChart3 size={24} /></div>
+                                <h4>Analytics</h4>
+                                <p>Delivery tracking & engagement metrics</p>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </section>
