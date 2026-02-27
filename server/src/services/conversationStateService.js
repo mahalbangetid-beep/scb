@@ -458,9 +458,9 @@ john123
                 console.log(`[Registration] Admin API validation failed — rejecting registration (try again)`);
             }
         } else {
-            // No panels configured — skip validation
-            usernameValid = true;
-            console.log(`[Registration] No panel IDs available — skipping username validation`);
+            // No panels configured — cannot validate, block registration
+            usernameValid = false;
+            console.log(`[Registration] No panel IDs available — cannot validate username, blocking registration`);
         }
 
         if (!usernameValid) {
