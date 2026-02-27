@@ -1451,10 +1451,20 @@ class AdminApiService {
                         return { exists: true };
                     }
 
-                    // Any non-success response = user NOT found (don't fall through)
+                    // Check non-success response
                     if (response && (response.error || !response.success)) {
-                        console.log(`[AdminAPI] V1 getuser: username "${username}" NOT found (error: ${response.error || 'not success'})`);
-                        return { exists: false };
+                        const errStr = (response.error || '').toLowerCase();
+
+                        // Username-specific errors → user definitely not found
+                        if (errStr.includes('not found') || errStr.includes('invalid user') ||
+                            errStr.includes('no user') || errStr.includes('bad_username') ||
+                            errStr.includes('user not found') || errStr.includes('does not exist')) {
+                            console.log(`[AdminAPI] V1 getuser: username "${username}" NOT found (error: ${response.error})`);
+                            return { exists: false };
+                        }
+
+                        // Other errors (unknown action, bad request, etc) → fall through to orders fallback
+                        console.log(`[AdminAPI] V1 getuser non-username error: "${response.error}" — trying orders fallback`);
                     }
                 } catch (getUserErr) {
                     console.log(`[AdminAPI] V1 getuser failed, trying orders fallback: ${getUserErr.message}`);
