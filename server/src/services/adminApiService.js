@@ -1441,7 +1441,7 @@ class AdminApiService {
                 // V1/Rental: Use action=getuser to check if user exists
                 try {
                     const response = await this.makeAdminRequest(panel, 'GET', '', {
-                        action: 'getuser',
+                        action: 'getUser',
                         username: username
                     });
 
