@@ -36,6 +36,8 @@ const LandingPage = () => {
     const [activeTab, setActiveTab] = useState('refill');
     const [activePricingTab, setActivePricingTab] = useState('support');
     const [isVisible, setIsVisible] = useState({});
+    const [pricingPackages, setPricingPackages] = useState({});
+    const [pricingLoading, setPricingLoading] = useState(true);
 
     useEffect(() => {
         const observer = new IntersectionObserver(
@@ -54,6 +56,43 @@ const LandingPage = () => {
         });
 
         return () => observer.disconnect();
+    }, []);
+
+    // Fetch credit packages from backend for pricing section
+    useEffect(() => {
+        const fetchPricingPackages = async () => {
+            try {
+                setPricingLoading(true);
+                const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+                const res = await fetch(`${API_URL}/api/public/credit-packages`);
+                if (!res.ok) throw new Error('Failed to fetch packages');
+                const json = await res.json();
+                const packages = json.data || [];
+
+                // Group packages by category for tabs
+                // Backend categories: support, whatsapp_marketing, telegram_marketing
+                // Tab keys:           support, marketing, telegram
+                const grouped = { support: [], marketing: [], telegram: [] };
+                packages.forEach(pkg => {
+                    if (pkg.category === 'whatsapp_marketing') {
+                        grouped.marketing.push(pkg);
+                    } else if (pkg.category === 'telegram_marketing') {
+                        grouped.telegram.push(pkg);
+                    } else {
+                        grouped.support.push(pkg);
+                    }
+                });
+
+                setPricingPackages(grouped);
+            } catch (err) {
+                console.warn('[LandingPage] Failed to fetch pricing packages:', err.message);
+                // pricingPackages stays empty → fallback message shown
+            } finally {
+                setPricingLoading(false);
+            }
+        };
+
+        fetchPricingPackages();
     }, []);
 
     const features = [
@@ -116,111 +155,12 @@ const LandingPage = () => {
         }
     ];
 
-    // Pricing cards data per tab
-    const pricingData = {
-        support: [
-            {
-                title: 'Basic Support',
-                price: '$9',
-                period: '/mo',
-                description: 'Auto-reply to customer order queries via WhatsApp.',
-                features: ['100 Messages/day', 'Basic Auto-Reply', '1 WhatsApp Device', 'Email Support'],
-                popular: false
-            },
-            {
-                title: 'Pro Support',
-                price: '$29',
-                period: '/mo',
-                description: 'Advanced support with multi-device & keyword responses.',
-                features: ['Unlimited Messages', '5 Devices', 'Keyword Responses', 'Priority Support'],
-                popular: true
-            },
-            {
-                title: 'Business Support',
-                price: '$59',
-                period: '/mo',
-                description: 'Full automation with provider forwarding & group support.',
-                features: ['Unlimited Devices', 'Provider Groups', 'Staff Accounts', 'API Access'],
-                popular: false
-            },
-            {
-                title: 'Enterprise',
-                price: '$99',
-                period: '/mo',
-                description: 'White-label solution with custom branding & integrations.',
-                features: ['White-label Ready', 'Custom Branding', 'Dedicated Support', 'Custom Integration'],
-                popular: false
-            }
-        ],
-        marketing: [
-            {
-                title: 'Starter Broadcast',
-                price: '$15',
-                period: '/mo',
-                description: 'Basic WhatsApp broadcast for small businesses.',
-                features: ['500 Messages/day', 'Contact Manager', 'Basic Templates', 'Send Reports'],
-                popular: false
-            },
-            {
-                title: 'Pro Broadcast',
-                price: '$39',
-                period: '/mo',
-                description: 'Advanced marketing with scheduled campaigns.',
-                features: ['5,000 Messages/day', 'Scheduled Campaigns', 'Image & Video', 'Analytics Dashboard'],
-                popular: true
-            },
-            {
-                title: 'Business Broadcast',
-                price: '$69',
-                period: '/mo',
-                description: 'Multi-device marketing with advanced targeting.',
-                features: ['Unlimited Messages', 'Multi-Device', 'Contact Segments', 'A/B Testing'],
-                popular: false
-            },
-            {
-                title: 'Agency',
-                price: '$129',
-                period: '/mo',
-                description: 'Full marketing suite for agencies managing multiple clients.',
-                features: ['Multi-Client', 'Custom Intervals', 'API Integration', 'White-label Reports'],
-                popular: false
-            }
-        ],
-        telegram: [
-            {
-                title: 'TG Starter',
-                price: '$12',
-                period: '/mo',
-                description: 'Basic Telegram bot for order management.',
-                features: ['1 Telegram Bot', 'Basic Commands', 'Order Status', 'Auto-Reply'],
-                popular: false
-            },
-            {
-                title: 'TG Professional',
-                price: '$35',
-                period: '/mo',
-                description: 'Advanced Telegram with group support & broadcasts.',
-                features: ['3 Telegram Bots', 'Group Commands', 'TG Broadcast', 'Analytics'],
-                popular: true
-            },
-            {
-                title: 'TG Business',
-                price: '$65',
-                period: '/mo',
-                description: 'Full Telegram automation with multi-bot support.',
-                features: ['Unlimited Bots', 'Channel Broadcast', 'Inline Commands', 'Priority Support'],
-                popular: false
-            },
-            {
-                title: 'TG Enterprise',
-                price: '$99',
-                period: '/mo',
-                description: 'Complete Telegram solution with white-label features.',
-                features: ['White-label Bots', 'Custom Commands', 'Webhook Integration', 'Dedicated Support'],
-                popular: false
-            }
-        ]
-    };
+    // Get available pricing tabs (only show tabs that have packages)
+    const availablePricingTabs = [
+        { key: 'support', label: 'Support Message', icon: <Headphones size={18} /> },
+        { key: 'marketing', label: 'Marketing Message', icon: <Megaphone size={18} /> },
+        { key: 'telegram', label: 'Telegram Message', icon: <Send size={18} /> }
+    ];
 
     const paymentMethods = [
         { name: 'Binance Pay', icon: '₿' },
@@ -296,7 +236,7 @@ const LandingPage = () => {
         }
     };
 
-    const currentPricingCards = pricingData[activePricingTab] || pricingData.support;
+    const currentPricingCards = pricingPackages[activePricingTab] || [];
 
     return (
         <div className="landing-page">
@@ -545,51 +485,69 @@ const LandingPage = () => {
                         <p>Choose the plan that fits your business needs</p>
                     </div>
 
-                    {/* Pricing Tabs */}
+                    {/* Pricing Tabs — only show tabs that have packages */}
                     <div className="pricing-tabs">
-                        <button
-                            className={`pricing-tab ${activePricingTab === 'support' ? 'active' : ''}`}
-                            onClick={() => setActivePricingTab('support')}
-                        >
-                            <Headphones size={18} /> Support Message
-                        </button>
-                        <button
-                            className={`pricing-tab ${activePricingTab === 'marketing' ? 'active' : ''}`}
-                            onClick={() => setActivePricingTab('marketing')}
-                        >
-                            <Megaphone size={18} /> Marketing Message
-                        </button>
-                        <button
-                            className={`pricing-tab ${activePricingTab === 'telegram' ? 'active' : ''}`}
-                            onClick={() => setActivePricingTab('telegram')}
-                        >
-                            <Send size={18} /> Telegram Message
-                        </button>
-                    </div>
-
-                    {/* Card Slider */}
-                    <div className="pricing-cards-slider">
-                        {currentPricingCards.map((card, index) => (
-                            <div key={index} className={`pricing-slide-card ${card.popular ? 'popular-card' : ''}`}>
-                                <div className="card-icon">
-                                    {activePricingTab === 'support' ? <Headphones size={24} /> :
-                                        activePricingTab === 'marketing' ? <Megaphone size={24} /> :
-                                            <Send size={24} />}
-                                </div>
-                                <h4>{card.title}</h4>
-                                <div className="card-price">{card.price}<span>{card.period}</span></div>
-                                <p className="card-desc">{card.description}</p>
-                                <ul className="card-features">
-                                    {card.features.map((feat, idx) => (
-                                        <li key={idx}><Check size={14} /> {feat}</li>
-                                    ))}
-                                </ul>
-                                <button className="card-cta" onClick={() => navigate('/register')}>
-                                    Get Started
+                        {availablePricingTabs.map(tab => (
+                            (pricingPackages[tab.key] && pricingPackages[tab.key].length > 0) && (
+                                <button
+                                    key={tab.key}
+                                    className={`pricing-tab ${activePricingTab === tab.key ? 'active' : ''}`}
+                                    onClick={() => setActivePricingTab(tab.key)}
+                                >
+                                    {tab.icon} {tab.label}
                                 </button>
-                            </div>
+                            )
                         ))}
                     </div>
+
+                    {/* Credit Package Cards from Backend */}
+                    {pricingLoading ? (
+                        <div className="pricing-cards-slider">
+                            {[1, 2, 3].map(i => (
+                                <div key={i} className="pricing-slide-card" style={{ opacity: 0.5, minHeight: 280 }}>
+                                    <div className="card-icon"><Headphones size={24} /></div>
+                                    <h4 style={{ background: '#e2e8f0', borderRadius: 8, height: 20, width: '60%' }}></h4>
+                                    <div className="card-price" style={{ background: '#e2e8f0', borderRadius: 8, height: 32, width: '40%', margin: '16px 0' }}></div>
+                                    <p className="card-desc" style={{ background: '#f1f5f9', borderRadius: 6, height: 14, width: '90%' }}></p>
+                                </div>
+                            ))}
+                        </div>
+                    ) : currentPricingCards.length > 0 ? (
+                        <div className="pricing-cards-slider">
+                            {currentPricingCards.map((pkg, index) => (
+                                <div key={index} className={`pricing-slide-card ${pkg.isFeatured ? 'popular-card' : ''}`}>
+                                    <div className="card-icon">
+                                        {activePricingTab === 'support' ? <Headphones size={24} /> :
+                                            activePricingTab === 'marketing' ? <Megaphone size={24} /> :
+                                                <Send size={24} />}
+                                    </div>
+                                    <h4>{pkg.name}</h4>
+                                    <div className="card-price">${pkg.price}<span> / package</span></div>
+                                    <p className="card-desc">{pkg.description || `${pkg.credits.toLocaleString()} message credits`}</p>
+                                    <ul className="card-features">
+                                        <li><Check size={14} /> {pkg.credits.toLocaleString()} Message Credits</li>
+                                        {pkg.bonusCredits > 0 && (
+                                            <li><Check size={14} /> +{pkg.bonusCredits.toLocaleString()} Bonus Credits</li>
+                                        )}
+                                        {pkg.discountPct > 0 && (
+                                            <li><Check size={14} /> {pkg.discountPct}% Discount</li>
+                                        )}
+                                        {pkg.valuePerDollar && (
+                                            <li><Check size={14} /> {pkg.valuePerDollar} credits/$</li>
+                                        )}
+                                    </ul>
+                                    <button className="card-cta" onClick={() => navigate('/register')}>
+                                        Get Started
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
+                    ) : (
+                        <div style={{ textAlign: 'center', padding: '48px 24px', color: '#64748b' }}>
+                            <p>No packages available for this category yet.</p>
+                            <p style={{ fontSize: '0.875rem', marginTop: 8 }}>Contact us for custom pricing.</p>
+                        </div>
+                    )}
                 </div>
             </section>
 

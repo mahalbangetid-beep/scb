@@ -230,6 +230,8 @@ app.use('/api/action-logs', require('./routes/actionLogs'));
 app.use('/api/panel-tools', require('./routes/panelTools'));
 app.use('/api/panel-backup-user', require('./routes/panelBackupUser'));
 
+// ===== PUBLIC ROUTES (No Authentication) =====
+app.use('/api/public', require('./routes/publicCreditPackages'));
 
 // Socket.IO authentication middleware
 const jwt = require('jsonwebtoken');
