@@ -1,4 +1,34 @@
 /**
+ * ============================================================
+ * ⚠️  DISABLED / DEAD CODE — DO NOT USE
+ * ============================================================
+ * 
+ * File:    unregisteredUserService.js
+ * Status:  DISABLED (renamed to _unregisteredUserService.js.disabled)
+ * Date:    2026-03-01
+ * 
+ * REASON:
+ * This file was part of the initial design for WhatsApp self-registration
+ * but was NEVER integrated into the active codebase. No file in the project
+ * imports or requires this module.
+ * 
+ * The registration flow is now fully handled by:
+ *   - botMessageHandler.js    → detects unregistered users, triggers flow
+ *   - conversationStateService.js → startRegistration() & processRegistration()
+ * 
+ * ISSUES WITH THIS FILE:
+ * 1. Calls methods that do NOT exist in conversationStateService:
+ *    - createState()  → should be createConversation()
+ *    - updateState()  → should be updateConversation()
+ *    - clearState()   → should be completeConversation()
+ * 2. Uses state type 'USERNAME_REGISTRATION' instead of 'REGISTRATION'
+ * 3. Has no Admin API validation (conversationStateService does)
+ * 4. Missing panelId/multi-panel support
+ * 
+ * KEPT FOR REFERENCE ONLY. Safe to delete entirely if no longer needed.
+ * ============================================================
+ * 
+ * Original description:
  * Unregistered User Service
  * 
  * Service for handling new users who are not yet registered in the mapping system

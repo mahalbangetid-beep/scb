@@ -1246,6 +1246,11 @@ model BotFeatureToggles {
   allowSpeedUpCommand Boolean @default(true)
   allowStatusCommand  Boolean @default(true)
 
+  // DM Command Restriction
+  // When false, SMM commands (refill, cancel, status, speedup) are only allowed in groups
+  // Registration, utility commands, auto-reply, and keyword responses still work in DM
+  allowDmCommands     Boolean @default(true)
+
   // ==================== PROCESSING STATUS RULES ====================
   // Special handling for orders with "Processing" status
 

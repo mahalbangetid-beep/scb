@@ -502,6 +502,31 @@ class BotMessageHandler {
             }
         }
 
+        // ==================== DM COMMAND RESTRICTION ====================
+        // If DM and allowDmCommands is disabled, block SMM commands but allow other features
+        // Registration, utility commands, auto-reply, keyword responses still work in DM
+        if (!isGroup && commandParser.isCommandMessage(message)) {
+            try {
+                const botFeatureService = require('./botFeatureService');
+                const scope = {};
+                if (deviceId) scope.deviceId = deviceId;
+                if (panelId) scope.panelId = panelId;
+                const toggles = await botFeatureService.getToggles(userId, scope);
+
+                if (toggles?.allowDmCommands === false) {
+                    console.log(`[BotHandler] DM commands disabled for user ${userId}, blocking command from ${senderNumber}`);
+                    return {
+                        handled: true,
+                        type: 'dm_commands_disabled',
+                        response: '❌ Commands can only be used in groups.\n\nPlease send your command in the group chat.'
+                    };
+                }
+            } catch (dmCheckErr) {
+                console.error('[BotHandler] DM command check error:', dmCheckErr.message);
+                // Fall through to normal processing on error (fail open)
+            }
+        }
+
         // Priority 1: Check if it's an SMM command
         if (commandParser.isCommandMessage(message)) {
             const smmResult = await this.handleSmmCommand({

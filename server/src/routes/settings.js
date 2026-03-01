@@ -480,7 +480,7 @@ router.put('/bot-toggles', async (req, res, next) => {
             'autoHandleFailedOrders', 'allowForceCompleted',
             'allowLinkUpdateViaBot', 'allowPaymentVerification', 'allowAccountDetailsViaBot',
             'allowTicketAutoReply', 'allowRefillCommand', 'allowCancelCommand',
-            'allowSpeedUpCommand', 'allowStatusCommand', 'processingSpeedUpEnabled',
+            'allowSpeedUpCommand', 'allowStatusCommand', 'allowDmCommands', 'processingSpeedUpEnabled',
             'processingCancelEnabled', 'autoForwardProcessingCancel', 'showProviderInResponse', 'showDetailedStatus',
             'callAutoReplyEnabled', 'spamProtectionEnabled'
         ];

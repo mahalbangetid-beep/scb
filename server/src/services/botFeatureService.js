@@ -35,6 +35,9 @@ class BotFeatureService {
             allowSpeedUpCommand: true,
             allowStatusCommand: true,
 
+            // DM command restriction (default: allowed)
+            allowDmCommands: true,
+
             // Processing status rules
             processingSpeedUpEnabled: true,
             processingCancelEnabled: false,
