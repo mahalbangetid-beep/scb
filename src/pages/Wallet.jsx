@@ -80,7 +80,8 @@ export default function WalletPage() {
             setBillingMode(modeRes.data?.mode || 'CREDITS')
 
             // Parse available gateways for top-up modal
-            const gateways = gatewaysRes.data?.gateways || []
+            // API interceptor unwraps response.data, so gatewaysRes = { success, gateways }
+            const gateways = gatewaysRes.gateways || gatewaysRes.data?.gateways || []
             const activeGateways = gateways.filter(g => g.isAvailable || g.enabled)
             setAvailableGateways(activeGateways)
 
