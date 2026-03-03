@@ -63,8 +63,10 @@ const LandingPage = () => {
         const fetchPricingPackages = async () => {
             try {
                 setPricingLoading(true);
-                const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
-                const res = await fetch(`${API_URL}/api/public/credit-packages`);
+                const rawUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
+                // Strip trailing /api if present to get base URL, then append public endpoint
+                const baseUrl = rawUrl.replace(/\/api\/?$/, '');
+                const res = await fetch(`${baseUrl}/api/public/credit-packages`);
                 if (!res.ok) throw new Error('Failed to fetch packages');
                 const json = await res.json();
                 const packages = json.data || [];
