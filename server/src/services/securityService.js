@@ -587,6 +587,8 @@ class SecurityService {
      * @returns {Object} { allowed, message, case, needsRegistration }
      */
     async checkUserMappingOwnership(order, senderNumber, userId, isGroup, groupJid = null, panelId = null) {
+        // mapping declared in outer scope so catch block can check registration status
+        let mapping = null;
         try {
             const userMappingService = require('./userMappingService');
 
@@ -600,7 +602,6 @@ class SecurityService {
             const allMappings = await userMappingService.findAllByPhone(userId, normalizedSender);
 
             // If panelId is specified (multi-panel routing), prefer mapping for that panel
-            let mapping = null;
             if (panelId && allMappings.length > 0) {
                 mapping = allMappings.find(m => m.panelId === panelId) || allMappings[0];
                 if (mapping.panelId === panelId) {
@@ -808,7 +809,20 @@ class SecurityService {
 
         } catch (error) {
             console.error(`[Security] User mapping check error:`, error.message);
-            // STRICT MODE: On error, DENY access (fail close)
+
+            // If mapping was already found (user IS registered), don't block due to API error
+            // This prevents registered users from being denied when panel API is slow/rate-limited
+            if (mapping && mapping.panelUsername) {
+                console.log(`[Security] ERROR_FALLBACK: User "${mapping.panelUsername}" is registered, allowing despite API error: ${error.message}`);
+                return {
+                    allowed: true,
+                    mapping,
+                    case: 'ERROR_FALLBACK',
+                    warning: `API error during verification: ${error.message}. Allowing registered user.`
+                };
+            }
+
+            // Mapping NOT found → identity unknown → deny (fail close)
             return {
                 allowed: false,
                 message: '⚠️ Unable to verify your account. Please try again later.',

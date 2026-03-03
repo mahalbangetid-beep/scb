@@ -100,6 +100,120 @@ class CommandHandlerService {
             }
         }
 
+        // ==================== BULK PRE-FETCH: Reduce API calls for bulk orders ====================
+        // Instead of fetching each order individually (N API calls), fetch all at once (1 API call)
+        // This prevents rate limiting and dramatically speeds up bulk processing.
+        // If pre-fetch fails, the existing per-order auto-fetch in processOrderCommand handles it.
+        if (orderIds.length > 1) {
+            try {
+                const targetPanelIds = (panelIds && panelIds.length > 0) ? panelIds : (panelId ? [panelId] : []);
+
+                // Step 1: Bulk DB lookup — which orders already exist?
+                const existingOrders = await prisma.order.findMany({
+                    where: {
+                        externalOrderId: { in: orderIds },
+                        userId,
+                        ...(targetPanelIds.length > 0 ? { panelId: { in: targetPanelIds } } : {})
+                    },
+                    select: { externalOrderId: true }
+                });
+                const existingIds = new Set(existingOrders.map(o => o.externalOrderId));
+                const missingIds = orderIds.filter(id => !existingIds.has(id));
+
+                console.log(`[CommandHandler] Bulk pre-fetch: ${existingIds.size}/${orderIds.length} in DB, ${missingIds.length} need API fetch`);
+
+                // Step 2: Bulk API fetch for missing orders (1 call instead of N)
+                if (missingIds.length > 0) {
+                    const panelsToSearch = targetPanelIds.length > 0
+                        ? await prisma.smmPanel.findMany({ where: { id: { in: targetPanelIds } } })
+                        : await prisma.smmPanel.findMany({ where: { userId, isActive: true } });
+
+                    for (const panel of panelsToSearch) {
+                        if (!panel) continue;
+
+                        // Only use bulk fetch if panel has Admin API configured
+                        if (!panel.adminApiKey) {
+                            console.log(`[CommandHandler] Panel ${panel.alias || panel.name} has no Admin API, skipping bulk fetch`);
+                            continue;
+                        }
+
+                        try {
+                            console.log(`[CommandHandler] Bulk fetching ${missingIds.length} orders from panel ${panel.alias || panel.name}...`);
+                            const bulkResult = await adminApiService.getOrdersWithProvider(panel, missingIds);
+
+                            if (bulkResult.success && bulkResult.data && bulkResult.data.length > 0) {
+                                console.log(`[CommandHandler] Bulk API returned ${bulkResult.data.length} orders`);
+
+                                // Step 3: Create each fetched order in DB
+                                let created = 0;
+                                for (const orderData of bulkResult.data) {
+                                    try {
+                                        const extId = String(orderData.externalOrderId);
+
+                                        // Safety: skip if somehow already exists (race condition guard)
+                                        const alreadyExists = await prisma.order.findFirst({
+                                            where: { externalOrderId: extId, userId, panelId: panel.id }
+                                        });
+                                        if (alreadyExists) continue;
+
+                                        // Normalize status using the same method as processOrderCommand
+                                        const smmPanelService = require('./smmPanel');
+                                        const normalizedStatus = smmPanelService.mapStatus(orderData.status) || orderData.status;
+
+                                        const createData = {
+                                            externalOrderId: extId,
+                                            panelId: panel.id,
+                                            userId,
+                                            status: normalizedStatus,
+                                            charge: orderData.charge != null ? parseFloat(orderData.charge) : null,
+                                            startCount: orderData.startCount != null ? parseInt(orderData.startCount) : null,
+                                            remains: orderData.remains != null ? parseInt(orderData.remains) : null,
+                                            serviceName: orderData.serviceName || null,
+                                            link: orderData.link || null,
+                                            customerUsername: orderData.customerUsername || null,
+                                            providerName: orderData.providerName || null,
+                                            providerOrderId: orderData.providerOrderId || null,
+                                            providerStatus: orderData.providerStatus || null,
+                                            providerCharge: orderData.providerCharge != null ? parseFloat(orderData.providerCharge) : null,
+                                            providerSyncedAt: orderData.providerName ? new Date() : null,
+                                            canRefill: orderData.canRefill ?? null,
+                                            canCancel: orderData.canCancel ?? null,
+                                            actionsUpdatedAt: new Date(),
+                                            serviceId: orderData.serviceId ? String(orderData.serviceId) : null
+                                        };
+
+                                        // Set completedAt for completed/partial orders
+                                        if (normalizedStatus === 'COMPLETED' || normalizedStatus === 'PARTIAL') {
+                                            createData.completedAt = new Date();
+                                        }
+
+                                        await prisma.order.create({ data: createData });
+                                        created++;
+                                    } catch (createErr) {
+                                        // Non-critical: if individual create fails, processOrderCommand will handle it
+                                        console.log(`[CommandHandler] Pre-create skip ${orderData.externalOrderId}: ${createErr.message}`);
+                                    }
+                                }
+
+                                console.log(`[CommandHandler] Bulk pre-fetch: ${created} orders created in DB from panel ${panel.alias || panel.name}`);
+
+                                // Check if we still have missing orders for other panels
+                                const fetchedIds = new Set(bulkResult.data.map(o => String(o.externalOrderId)));
+                                const stillMissing = missingIds.filter(id => !fetchedIds.has(id));
+                                if (stillMissing.length === 0) break; // All found, stop searching
+                            }
+                        } catch (bulkErr) {
+                            console.log(`[CommandHandler] Bulk API fetch failed for panel ${panel.alias || panel.name}: ${bulkErr.message}`);
+                            // Continue to next panel, or let processOrderCommand handle individually
+                        }
+                    }
+                }
+            } catch (prefetchErr) {
+                // NON-CRITICAL: If entire pre-fetch fails, the existing per-order loop handles everything
+                console.log(`[CommandHandler] Bulk pre-fetch error (falling back to individual): ${prefetchErr.message}`);
+            }
+        }
+
         // ==================== COLLECT FOR BATCH FORWARDING ====================
         // Track successful orders with their provider order IDs for batch forwarding
         const successfulOrders = [];
@@ -1441,7 +1555,8 @@ class CommandHandlerService {
         const guaranteeExpired = [];    // Guarantee period expired
         const noGuarantee = [];         // No refill / no guarantee service
         const cooldown = [];            // Cooldown / already in progress
-        const notFound = [];            // not_found or security_check_failed
+        const notFound = [];            // not_found only
+        const verifyFailed = [];        // security_check_failed (API error, temporary)
         const otherFailed = [];         // other errors
 
         for (const r of responses) {
@@ -1452,8 +1567,10 @@ class CommandHandlerService {
                 const status = r.details?.status || '';
                 const gReason = r.details?.guaranteeReason || '';
 
-                if (reason === 'not_found' || reason === 'security_check_failed' || reason === 'needs_registration') {
+                if (reason === 'not_found' || reason === 'needs_registration') {
                     notFound.push(r);
+                } else if (reason === 'security_check_failed') {
+                    verifyFailed.push(r);
                 } else if (reason === 'status' && status === 'CANCELLED') {
                     alreadyCancelled.push(r);
                 } else if (reason === 'status' && status === 'COMPLETED') {
@@ -1538,6 +1655,13 @@ class CommandHandlerService {
             message += `\n${label}\n${orderList}\n`;
         }
 
+        // ⚠️ Verification temporarily failed (API error — user should retry)
+        if (verifyFailed.length > 0) {
+            const orderList = verifyFailed.map(r => r.orderId).join(', ');
+            const label = await getLabel('BULK_VERIFY_FAILED') || `⚠️ *Verification temporarily failed (please retry):*`;
+            message += `\n${label}\n${orderList}\n`;
+        }
+
         // ⚠️ Other errors
         if (otherFailed.length > 0) {
             const orderList = otherFailed.map(r => `${r.orderId}: ${r.details?.error || 'Error'}`).join('\n');
@@ -1545,7 +1669,7 @@ class CommandHandlerService {
             message += `\n${label}\n${orderList}\n`;
         }
 
-        const totalFailed = guaranteeExpired.length + noGuarantee.length + alreadyCancelled.length + alreadyCompleted.length + partialRefund.length + cooldown.length + notFound.length + otherFailed.length;
+        const totalFailed = guaranteeExpired.length + noGuarantee.length + alreadyCancelled.length + alreadyCompleted.length + partialRefund.length + cooldown.length + notFound.length + verifyFailed.length + otherFailed.length;
         const summary = await getLabel('BULK_SUMMARY', { total: responses.length.toString(), success_count: queued.length.toString(), failed_count: totalFailed.toString() })
             || `━━━━━━━━━━━━━━━━\nTotal: ${responses.length} | ✅ ${queued.length} | ❌ ${totalFailed}`;
         message += `\n${summary}`;
