@@ -73,6 +73,12 @@ class CommandParserService {
             result = this.parseCommandWithOrder(message);
         }
 
+        // Last resort: Fuzzy parse — extract order IDs and command from anywhere in the message
+        // Handles: "ID: 7645607. Refill", "please refund the order 7463677", etc.
+        if (!result.isValid) {
+            result = this.parseFuzzy(message);
+        }
+
         // Validate result
         if (result.isValid) {
             // Remove duplicates
@@ -280,6 +286,73 @@ class CommandParserService {
             orderIds,
             rawCommand: potentialCommand,
             originalMessage: message
+        };
+    }
+
+    /**
+     * Fuzzy parse: scan entire message for order IDs (3+ digit numbers) and command keywords
+     * This is the last-resort parser — only called when all strict parsers fail.
+     * Handles messy formats like:
+     *   "ID: 7645607. Refill"
+     *   "please refund the order 7463677"
+     *   "7645607 refund the order"
+     *   "order 7645607, please refill it"
+     */
+    parseFuzzy(message) {
+        const normalized = message.toLowerCase();
+
+        // 1. Find ALL numbers with 3+ digits (potential order IDs)
+        const numberMatches = message.match(/\d{3,}/g);
+        if (!numberMatches || numberMatches.length === 0) {
+            return { isValid: false };
+        }
+
+        // 2. Find a command keyword anywhere in the message
+        let foundCommand = null;
+        let foundAlias = null;
+
+        // Check each word in the message against command aliases
+        // Split by non-alphanumeric to handle punctuation
+        const words = normalized.split(/[^a-z0-9-]+/).filter(w => w.length > 0);
+
+        for (const word of words) {
+            if (this.commandLookup[word]) {
+                foundCommand = this.commandLookup[word];
+                foundAlias = word;
+                break;
+            }
+        }
+
+        // Also check two-word commands like "speed up"
+        if (!foundCommand) {
+            for (let i = 0; i < words.length - 1; i++) {
+                const twoWord = words[i] + ' ' + words[i + 1];
+                if (this.commandLookup[twoWord]) {
+                    foundCommand = this.commandLookup[twoWord];
+                    foundAlias = twoWord;
+                    break;
+                }
+            }
+        }
+
+        if (!foundCommand) {
+            return { isValid: false };
+        }
+
+        // 3. Use the numbers as order IDs (deduplicated)
+        const orderIds = [...new Set(numberMatches)];
+
+        if (orderIds.length === 0) {
+            return { isValid: false };
+        }
+
+        return {
+            isValid: true,
+            command: foundCommand,
+            orderIds,
+            rawCommand: foundAlias,
+            originalMessage: message,
+            fuzzyMatch: true  // Flag so caller knows this was a fuzzy match
         };
     }
 
