@@ -7,6 +7,7 @@
 
 const prisma = require('../utils/prisma');
 const { safeParseObject } = require('../utils/safeJson');
+const { decrypt } = require('../utils/encryption');
 const logger = require('../utils/logger').service('GroupForward');
 
 class GroupForwardingService {
@@ -648,7 +649,10 @@ Remains: {remains}
      * when no ProviderGroup is configured for the provider.
      */
     async _forwardViaProviderConfig(config, command, order, providerOrderId, userId, deviceId) {
-        if (!this.whatsappService) {
+        // Only block if WhatsApp destinations configured but service unavailable
+        // Telegram-only forwarding can proceed without WhatsApp service
+        const hasWhatsAppDest = config.whatsappGroupJid || config.whatsappNumber;
+        if (!this.whatsappService && hasWhatsAppDest && !config.telegramChatId) {
             return {
                 success: false,
                 reason: 'service_unavailable',
@@ -774,9 +778,63 @@ Remains: {remains}
             }
         }
 
-        // Note: Telegram forwarding would need telegram bot service, skip if not available
-        // ProviderConfig.telegramChatId is stored but forwarding to Telegram
-        // requires a Telegram bot integration which is separate from WhatsApp service
+        // Forward to Telegram Chat/Group
+        if (targetTelegram) {
+            try {
+                const telegramService = require('./telegram');
+
+                // Determine which bot to use:
+                // 1. ProviderConfig.telegramBotToken → find bot by token (dedicated bot)
+                // 2. Fallback → first active Telegram bot for this user
+                let telegramBotId = null;
+
+                if (config.telegramBotToken) {
+                    // Find bot by its encrypted token
+                    const allBots = await prisma.telegramBot.findMany({
+                        where: { userId },
+                        select: { id: true, botToken: true, status: true }
+                    });
+                    for (const bot of allBots) {
+                        try {
+                            const decryptedToken = decrypt(bot.botToken);
+                            if (decryptedToken === config.telegramBotToken) {
+                                telegramBotId = bot.id;
+                                break;
+                            }
+                        } catch (e) { /* skip if decrypt fails */ }
+                    }
+                    if (telegramBotId) {
+                        logger.info(`📱 Using dedicated Telegram bot for provider "${config.providerName}"`);
+                    }
+                }
+
+                // Fallback: use first active bot
+                if (!telegramBotId) {
+                    const firstBot = await prisma.telegramBot.findFirst({
+                        where: { userId, status: 'connected' },
+                        select: { id: true },
+                        orderBy: { createdAt: 'asc' }
+                    });
+                    if (firstBot) {
+                        telegramBotId = firstBot.id;
+                        logger.info(`📱 Using first active Telegram bot for forwarding`);
+                    }
+                }
+
+                if (telegramBotId) {
+                    await telegramService.sendMessage(telegramBotId, targetTelegram, message, { parseMode: undefined });
+                    forwardedTo.push(`Telegram: ${targetTelegram}`);
+                    success = true;
+                    logger.info(`✅ ProviderConfig: Forwarded ${command} to Telegram chat ${targetTelegram} for "${config.providerName}"`);
+                } else {
+                    errors.push('No active Telegram bot found for forwarding');
+                    logger.warn(`⚠️ ProviderConfig: Telegram chat ID set but no active bot found for user ${userId}`);
+                }
+            } catch (tgErr) {
+                errors.push(`Telegram failed: ${tgErr.message}`);
+                logger.error(`❌ ProviderConfig: Telegram forward failed:`, tgErr.message);
+            }
+        }
 
         // Log the forwarding
         try {
