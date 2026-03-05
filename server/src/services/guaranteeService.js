@@ -591,15 +591,22 @@ class GuaranteeService {
         if (!serviceName) return { hasGuarantee: null, days: null };
 
         // Get active rules for this user + panel
+        // When panelId is null: fetch ALL rules (global + all panels) for broadest matching
+        // When panelId is set: fetch global + that panel's specific rules
+        const where = {
+            userId,
+            isActive: true
+        };
+        if (panelId) {
+            where.OR = [
+                { panelId: null },   // Global
+                { panelId }          // Panel-specific
+            ];
+        }
+        // When panelId is null, no panelId filter = fetch ALL rules
+
         const rules = await prisma.guaranteeRule.findMany({
-            where: {
-                userId,
-                isActive: true,
-                OR: [
-                    { panelId: null },   // Global
-                    ...(panelId ? [{ panelId }] : [])
-                ]
-            },
+            where,
             orderBy: [{ priority: 'asc' }]
         });
 
