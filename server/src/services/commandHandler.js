@@ -1384,8 +1384,12 @@ class CommandHandlerService {
                 where: { id: order.id },
                 data: {
                     status: newStatus,
-                    startCount: status.startCount ? parseInt(status.startCount) : order.startCount,
-                    remains: status.remains ? parseInt(status.remains) : order.remains,
+                    startCount: status.startCount != null ? parseInt(status.startCount) : order.startCount,
+                    remains: status.remains != null ? parseInt(status.remains) : order.remains,
+                    quantity: status.quantity ? parseInt(status.quantity) : order.quantity,
+                    charge: status.charge ? parseFloat(status.charge) : order.charge,
+                    serviceName: status.serviceName || order.serviceName,
+                    link: status.link || order.link,
                     lastCheckedAt: new Date(),
                     // Update action availability from panel
                     canRefill: status.canRefill ?? order.canRefill,
@@ -1406,8 +1410,8 @@ class CommandHandlerService {
                 link: order.link || '-',
                 quantity: order.quantity?.toString() || '-',
                 startCount: status.startCount?.toString() || order.startCount?.toString() || '-',
-                delivered: order.quantity && order.remains
-                    ? (order.quantity - parseInt(status.remains || order.remains)).toString()
+                delivered: order.quantity != null && order.remains != null
+                    ? Math.max(0, order.quantity - parseInt(order.remains)).toString()
                     : '-',
                 remains: status.remains?.toString() || order.remains?.toString() || '0',
                 charge: order.charge ? `$${order.charge.toFixed(2)}` : '-',
