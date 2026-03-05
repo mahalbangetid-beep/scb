@@ -1323,6 +1323,11 @@ model BotFeatureToggles {
   registrationNotFoundMsg    String? @db.Text  // "Username {username} not found..."
   registrationAlreadyLinkedMsg String? @db.Text // "Username already linked. Contact {support_number}."
 
+  // ==================== MEDIA AUTO-REPLY (Screenshot/Image) ====================
+  // Auto-reply when user sends image/video/document without text caption
+  mediaAutoReplyEnabled  Boolean @default(false)
+  mediaAutoReplyMessage  String? @db.Text // e.g. "Screenshots are not allowed. Please type your command."
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

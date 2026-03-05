@@ -463,6 +463,41 @@ class WhatsAppService {
                     }
                 }
 
+                // ==================== MEDIA WITHOUT CAPTION — Auto-Reply ====================
+                // Handle images/videos/documents sent without text (e.g. screenshots)
+                // This is a SEPARATE block — existing text handler above is untouched
+                if (!messageData.fromMe && !content && ['image', 'video', 'document'].includes(msgType)) {
+                    try {
+                        const mediaDevice = await prisma.device.findUnique({
+                            where: { id: deviceId },
+                            select: { userId: true, isActive: true }
+                        });
+
+                        if (mediaDevice?.userId && mediaDevice.isActive) {
+                            const botFeatureService = require('./botFeatureService');
+                            const toggles = await botFeatureService.getToggles(mediaDevice.userId, { deviceId });
+
+                            if (toggles?.mediaAutoReplyEnabled) {
+                                const replyMsg = toggles.mediaAutoReplyMessage || '📸 Screenshots are not allowed. Please type your command as text.';
+                                const replyJid = msg.key.remoteJid;
+
+                                if (isGroup) {
+                                    await socket.sendMessage(replyJid,
+                                        { text: replyMsg },
+                                        { quoted: msg }
+                                    );
+                                } else {
+                                    await socket.sendMessage(replyJid, { text: replyMsg });
+                                }
+
+                                console.log(`[WA:${deviceId}] Media auto-reply sent (${msgType}) to ${messageData.from}`);
+                            }
+                        }
+                    } catch (mediaErr) {
+                        console.error(`[WA:${deviceId}] Media auto-reply error:`, mediaErr.message);
+                    }
+                }
+
                 if (this.io) {
                     this.io.to(`device:${deviceId}`).emit('message', { ...messageData, id: messageData.messageId });
                 }
