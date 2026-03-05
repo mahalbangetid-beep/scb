@@ -288,9 +288,9 @@ john123
             return false;
         }
 
-        // Must look like a valid username: 2-50 chars, alphanumeric/underscore/dot, no spaces
-        // This prevents random text like "hello", "ok", "hi bro" from being treated as usernames
-        if (/^[a-zA-Z0-9_.]{2,50}$/.test(text)) {
+        // Must look like a valid username: 2-100 chars, alphanumeric/underscore/dot/at/dash, no spaces
+        // Supports: john123, user_name, user.name, user@email.com, Avi@06, user-name
+        if (/^[a-zA-Z0-9_.@-]{2,100}$/.test(text)) {
             return true;
         }
 
