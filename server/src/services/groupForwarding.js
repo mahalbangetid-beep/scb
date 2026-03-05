@@ -410,6 +410,19 @@ class GroupForwardingService {
 
         const template = templates[command.toUpperCase()] || templates.REFILL;
 
+        // Set temporary properties for template variable resolution
+        const commandDisplayMap = {
+            'NEW_ORDER': 'new order',
+            'REFILL': 'refill',
+            'CANCEL': 'cancel',
+            'SPEED_UP': 'speed up'
+        };
+        order._commandType = commandDisplayMap[command.toUpperCase()] || command.toLowerCase();
+        // providerAlias: use providerGroup.providerName if order doesn't have it
+        if (!order.providerAlias) {
+            order.providerAlias = providerGroup.providerName || order.providerName || 'N/A';
+        }
+
         return this.processProviderTemplate(template, order, providerGroup, providerOrderId);
     }
 
