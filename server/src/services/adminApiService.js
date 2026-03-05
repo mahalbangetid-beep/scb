@@ -1857,6 +1857,8 @@ class AdminApiService {
         const statusMap = {
             'pending': 'PENDING',
             'in_progress': 'IN_PROGRESS',
+            'in progress': 'IN_PROGRESS',
+            'inprogress': 'IN_PROGRESS',
             'processing': 'IN_PROGRESS',
             'completed': 'COMPLETED',
             'partial': 'PARTIAL',
@@ -1864,6 +1866,7 @@ class AdminApiService {
             'cancelled': 'CANCELLED',
             'error': 'CANCELLED',
             'fail': 'CANCELLED',
+            'failed': 'CANCELLED',
             'refunded': 'REFUNDED'
         };
 

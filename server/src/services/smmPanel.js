@@ -588,17 +588,23 @@ class SmmPanelService {
      * Map SMM Panel status to our status enum
      */
     mapStatus(panelStatus) {
+        if (!panelStatus) return 'PENDING';
         const statusMap = {
-            'Pending': 'PENDING',
-            'In progress': 'IN_PROGRESS',
-            'Processing': 'IN_PROGRESS',
-            'Completed': 'COMPLETED',
-            'Partial': 'PARTIAL',
-            'Canceled': 'CANCELLED',
-            'Cancelled': 'CANCELLED',
-            'Refunded': 'REFUNDED'
+            'pending': 'PENDING',
+            'in progress': 'IN_PROGRESS',
+            'in_progress': 'IN_PROGRESS',
+            'inprogress': 'IN_PROGRESS',
+            'processing': 'IN_PROGRESS',
+            'completed': 'COMPLETED',
+            'partial': 'PARTIAL',
+            'canceled': 'CANCELLED',
+            'cancelled': 'CANCELLED',
+            'error': 'CANCELLED',
+            'fail': 'CANCELLED',
+            'failed': 'CANCELLED',
+            'refunded': 'REFUNDED'
         };
-        return statusMap[panelStatus] || 'PENDING';
+        return statusMap[panelStatus.toLowerCase()] || 'PENDING';
     }
     /**
      * Import orders from external source
