@@ -363,12 +363,13 @@ model MessageCreditTransaction {
 model ProviderGroup {
   id           String  @id @default(cuid())
   userId       String? // TEMP: Optional to allow migration, will be required after fix
-  panelId      String? // Optional - can work without linked panel for manual services
-  deviceId     String? // WhatsApp device ID for sending messages
-  providerName String? // Provider name to match with Order.providerName (null = default group)
-  type         String // WHATSAPP, TELEGRAM
-  groupId      String // WhatsApp group JID or Telegram chat ID
-  groupName    String
+  panelId        String? // Optional - can work without linked panel for manual services
+  deviceId       String? // WhatsApp device ID for sending messages
+  telegramBotId  String? // Telegram bot ID for sending messages (type=TELEGRAM)
+  providerName   String? // Provider name to match with Order.providerName (null = default group)
+  type           String // WHATSAPP, TELEGRAM
+  groupId        String // WhatsApp group JID or Telegram chat ID
+  groupName      String
 
   // Message template for forwarding commands
   // Variables: {orderid1},{orderid2},...,{orderid100} for batch processing
@@ -391,9 +392,10 @@ model ProviderGroup {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  user   User?     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  panel  SmmPanel? @relation(fields: [panelId], references: [id], onDelete: Cascade)
-  device Device?   @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+  user        User?         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  panel       SmmPanel?     @relation(fields: [panelId], references: [id], onDelete: Cascade)
+  device      Device?       @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+  telegramBot TelegramBot?  @relation(fields: [telegramBotId], references: [id], onDelete: SetNull)
 
   @@unique([panelId, providerName, type]) // One group per panel+provider+type
   @@index([userId])
@@ -617,10 +619,11 @@ model TelegramBot {
   createdAt  DateTime  @default(now())
   updatedAt  DateTime  @updatedAt
 
-  user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
-  panel      SmmPanel?   @relation(fields: [panelId], references: [id], onDelete: SetNull)
-  messages   Message[]
-  broadcasts Broadcast[]
+  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  panel          SmmPanel?       @relation(fields: [panelId], references: [id], onDelete: SetNull)
+  messages       Message[]
+  broadcasts     Broadcast[]
+  providerGroups ProviderGroup[]
 }
 
 // ==================== MESSAGES ====================

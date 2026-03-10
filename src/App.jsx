@@ -170,6 +170,33 @@ function AppContent() {
   const isLandingPage = location.pathname === '/';
   const showSidebar = token && !isAuthPage;
 
+  // Inject admin-configured verification meta tags (e.g. Cryptomus) into <head>
+  useEffect(() => {
+    let injectedContainer = null;
+    const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
+    fetch(`${API_URL}/public/head-tags`)
+      .then(r => r.json())
+      .then(res => {
+        const code = res?.data?.headCode;
+        if (code && code.trim()) {
+          injectedContainer = document.createElement('div');
+          injectedContainer.id = 'dynamic-head-tags';
+          injectedContainer.innerHTML = code;
+          // Move all child nodes into <head>
+          while (injectedContainer.firstChild) {
+            document.head.appendChild(injectedContainer.firstChild);
+          }
+        }
+      })
+      .catch(() => { /* silent fail — don't break the app */ });
+
+    return () => {
+      // Cleanup on unmount
+      const el = document.getElementById('dynamic-head-tags');
+      if (el) el.remove();
+    };
+  }, []);
+
   const toggleSidebar = () => {
     setSidebarCollapsed(!sidebarCollapsed)
   }

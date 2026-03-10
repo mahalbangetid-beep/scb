@@ -46,6 +46,70 @@ const TEMPLATE_CATEGORIES = {
         label: 'General Responses',
         icon: '💬',
         templates: ['COOLDOWN', 'DISABLED', 'ACCESS_DENIED']
+    },
+    utility: {
+        label: 'Utility Commands',
+        icon: '🛠️',
+        templates: ['UTIL_GROUPID_NOT_GROUP', 'UTIL_GROUPID_SUCCESS', 'UTIL_PING', 'UTIL_DEVICEID', 'UTIL_HELP']
+    },
+    system: {
+        label: 'System Messages',
+        icon: '⚙️',
+        templates: ['FALLBACK_MESSAGE', 'MULTI_PANEL_WARNING', 'DM_COMMANDS_DISABLED', 'INSUFFICIENT_CREDITS', 'INSUFFICIENT_BALANCE', 'ASYNC_BULK_ACK', 'LOW_CREDITS_KEYWORD', 'LOW_CREDITS_AUTOREPLY', 'USAGE_LIMIT_REACHED', 'SPAM_WARNING', 'SPAM_DISABLED']
+    },
+    commands: {
+        label: 'Command Access',
+        icon: '🚫',
+        templates: ['COMMAND_DISABLED', 'USER_COMMAND_DISABLED']
+    },
+    payment: {
+        label: 'Payment Verification',
+        icon: '💳',
+        templates: ['VERIFY_PAYMENT_PROMPT', 'VERIFY_PAYMENT_NOT_FOUND', 'VERIFY_PAYMENT_ERROR', 'ACCOUNT_NOT_FOUND', 'ACCOUNT_DETAILS_ERROR']
+    },
+    ticket: {
+        label: 'Ticket System',
+        icon: '🎫',
+        templates: ['TICKET_EMPTY', 'TICKET_NOT_FOUND', 'TICKET_ERROR']
+    },
+    verification: {
+        label: 'Username Verification',
+        icon: '🔐',
+        templates: ['VERIFY_USERNAME_PROMPT', 'VERIFY_USERNAME_SUCCESS', 'VERIFY_USERNAME_MAX_ATTEMPTS', 'VERIFY_USERNAME_MISMATCH']
+    },
+    registration: {
+        label: 'User Registration',
+        icon: '📝',
+        templates: ['REGISTRATION_PROMPT', 'REGISTRATION_INVALID_USERNAME', 'REGISTRATION_ALREADY_LINKED', 'REGISTRATION_USERNAME_TAKEN', 'REGISTRATION_NOT_FOUND', 'REGISTRATION_NOT_FOUND_MAX', 'REGISTRATION_SUCCESS', 'REGISTRATION_FAILED']
+    },
+    security: {
+        label: 'Security & Access Control',
+        icon: '🔒',
+        templates: [
+            'SECURITY_RATE_LIMITED', 'SECURITY_COOLDOWN', 'SECURITY_GROUP_DISABLED', 'SECURITY_GROUP_NOT_VERIFIED',
+            'SECURITY_GROUP_VERIFY_REQUIRED', 'SECURITY_NOT_REGISTERED_GROUP', 'SECURITY_NOT_REGISTERED_DM',
+            'SECURITY_BOT_DISABLED', 'SECURITY_ALREADY_CLAIMED', 'SECURITY_CLAIM_GROUP', 'SECURITY_CLAIM_EMAIL',
+            'SECURITY_EMAIL_UNAVAILABLE', 'SECURITY_EMAIL_MISMATCH', 'SECURITY_EMAIL_VERIFIED',
+            'SECURITY_USERNAME_UNAVAILABLE', 'SECURITY_USERNAME_VERIFIED', 'SECURITY_USERNAME_MISMATCH',
+            'SECURITY_SUSPENDED', 'SECURITY_NOT_YOUR_ORDER', 'SECURITY_VERIFY_ERROR'
+        ]
+    },
+    fonepay: {
+        label: 'FonePay Verification',
+        icon: '💰',
+        templates: [
+            'FONEPAY_FORMAT_INVALID', 'FONEPAY_GLOBAL_DISABLED', 'FONEPAY_NO_MAPPING', 'FONEPAY_MAPPING_DISABLED',
+            'FONEPAY_MAPPING_SUSPENDED', 'FONEPAY_PANEL_NOT_RENTAL', 'FONEPAY_DISABLED',
+            'FONEPAY_TXN_NOT_FOUND', 'FONEPAY_TXN_STATUS_INVALID', 'FONEPAY_AMOUNT_MISMATCH',
+            'FONEPAY_ALREADY_PROCESSED', 'FONEPAY_API_TIMEOUT', 'FONEPAY_RATE_LIMITED',
+            'FONEPAY_ACKNOWLEDGED', 'FONEPAY_SUCCESS', 'FONEPAY_CREDIT_FAILED',
+            'FONEPAY_TXN_EXPIRED', 'FONEPAY_SYSTEM_ERROR'
+        ]
+    },
+    telegram: {
+        label: 'Telegram Bot',
+        icon: '✈️',
+        templates: ['TELEGRAM_WELCOME', 'TELEGRAM_HELP', 'TELEGRAM_ERROR_GENERIC', 'TELEGRAM_INSUFFICIENT_BALANCE', 'TELEGRAM_PROCESSING', 'TELEGRAM_COMMAND_ERROR']
     }
 }
 

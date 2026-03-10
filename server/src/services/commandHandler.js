@@ -94,7 +94,7 @@ class CommandHandlerService {
             if (!isCommandAllowed) {
                 return {
                     success: false,
-                    error: `❌ The "${command}" command is currently disabled. Please enable it in Bot Settings.`,
+                    error: await responseTemplateService.getResponse(userId, 'COMMAND_DISABLED', { command }) || `❌ The "${command}" command is currently disabled. Please enable it in Bot Settings.`,
                     responses: []
                 };
             }
@@ -1723,7 +1723,7 @@ class CommandHandlerService {
             const commandName = command === 'verify' ? 'Payment Verification' : 'Account Details';
             return {
                 success: false,
-                error: `❌ ${commandName} is currently disabled. Please enable it in Bot Settings.`,
+                error: await responseTemplateService.getResponse(userId, 'USER_COMMAND_DISABLED', { command_name: commandName }) || `❌ ${commandName} is currently disabled. Please enable it in Bot Settings.`,
                 responses: []
             };
         }
@@ -1756,7 +1756,7 @@ class CommandHandlerService {
         if (needsArgument || !transactionId) {
             return {
                 success: true,
-                formattedResponse: `💳 *Payment Verification*\n\nPlease provide your Transaction ID:\n\`verify YOUR_TRANSACTION_ID\`\n\nExample: \`verify TXN123456789\`\n\nFor FonePay: \`verify TXN123456789 5000\``,
+                formattedResponse: await responseTemplateService.getResponse(userId, 'VERIFY_PAYMENT_PROMPT') || `💳 *Payment Verification*\n\nPlease provide your Transaction ID:\n\`verify YOUR_TRANSACTION_ID\`\n\nExample: \`verify TXN123456789\`\n\nFor FonePay: \`verify TXN123456789 5000\``,
                 responses: []
             };
         }
@@ -1833,7 +1833,7 @@ class CommandHandlerService {
                 if (recentPayments.length === 0) {
                     return {
                         success: false,
-                        formattedResponse: `❌ *Payment Not Found*\n\nNo payment found with ID: \`${transactionId}\`\n\nYou don't have any recent payments on record.`,
+                        formattedResponse: await responseTemplateService.getResponse(userId, 'VERIFY_PAYMENT_NOT_FOUND', { transaction_id: transactionId }) || `❌ *Payment Not Found*\n\nNo payment found with ID: \`${transactionId}\`\n\nYou don't have any recent payments on record.`,
                         responses: []
                     };
                 }
@@ -1895,7 +1895,7 @@ class CommandHandlerService {
             console.error('[CommandHandler] handleVerifyPayment error:', error);
             return {
                 success: false,
-                formattedResponse: `❌ Error checking payment: ${error.message}`,
+                formattedResponse: await responseTemplateService.getResponse(userId, 'VERIFY_PAYMENT_ERROR', { error: error.message }) || `❌ Error checking payment: ${error.message}`,
                 responses: []
             };
         }
@@ -1930,7 +1930,7 @@ class CommandHandlerService {
             if (!user) {
                 return {
                     success: false,
-                    formattedResponse: `❌ User not found`,
+                    formattedResponse: await responseTemplateService.getResponse(userId, 'ACCOUNT_NOT_FOUND') || `❌ User not found`,
                     responses: []
                 };
             }
@@ -1993,7 +1993,7 @@ class CommandHandlerService {
             console.error('[CommandHandler] handleAccountDetails error:', error);
             return {
                 success: false,
-                formattedResponse: `❌ Error fetching account details: ${error.message}`,
+                formattedResponse: await responseTemplateService.getResponse(userId, 'ACCOUNT_DETAILS_ERROR', { error: error.message }) || `❌ Error fetching account details: ${error.message}`,
                 responses: []
             };
         }
@@ -2014,7 +2014,7 @@ class CommandHandlerService {
                 if (!tickets || tickets.length === 0) {
                     return {
                         success: true,
-                        formattedResponse: `📋 *Your Tickets*\n\nNo tickets found for your number.\n\nTo create a ticket, contact support or use a command that requires support (e.g., refill for unsupported orders).`,
+                        formattedResponse: await responseTemplateService.getResponse(userId, 'TICKET_EMPTY') || `📋 *Your Tickets*\n\nNo tickets found for your number.\n\nTo create a ticket, contact support or use a command that requires support (e.g., refill for unsupported orders).`,
                         responses: []
                     };
                 }
@@ -2056,7 +2056,7 @@ class CommandHandlerService {
             if (!ticket) {
                 return {
                     success: false,
-                    formattedResponse: `❌ Ticket *#${ticketNumber}* not found.\n\nMake sure you entered the correct ticket number.\nTo see your tickets list, send: *TICKET*`,
+                    formattedResponse: await responseTemplateService.getResponse(userId, 'TICKET_NOT_FOUND', { ticket_number: ticketNumber }) || `❌ Ticket *#${ticketNumber}* not found.\n\nMake sure you entered the correct ticket number.\nTo see your tickets list, send: *TICKET*`,
                     responses: []
                 };
             }
@@ -2127,7 +2127,7 @@ class CommandHandlerService {
             console.error('[CommandHandler] handleTicketStatus error:', error);
             return {
                 success: false,
-                formattedResponse: `❌ Error fetching ticket status: ${error.message}`,
+                formattedResponse: await responseTemplateService.getResponse(userId, 'TICKET_ERROR', { error: error.message }) || `❌ Error fetching ticket status: ${error.message}`,
                 responses: []
             };
         }

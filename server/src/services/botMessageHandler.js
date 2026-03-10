@@ -177,10 +177,14 @@ class BotMessageHandler {
                 const effectiveLimit = activeSubscription.usageLimit || device.usageLimit;
                 if (effectiveLimit && activeSubscription.usageCount >= effectiveLimit) {
                     console.log(`[BotHandler] System bot ${deviceId} - usage limit reached for subscription ${activeSubscription.id}`);
+                    const responseTemplateService = require('./responseTemplateService');
                     return {
                         handled: true,
                         type: 'system_bot_restriction',
-                        response: `⚠️ Usage limit reached (${activeSubscription.usageCount}/${effectiveLimit} messages this period). Please wait for the next billing cycle or upgrade your plan.`
+                        response: await responseTemplateService.getResponse(userId, 'USAGE_LIMIT_REACHED', {
+                            usage_count: String(activeSubscription.usageCount),
+                            usage_limit: String(effectiveLimit)
+                        }) || `⚠️ Usage limit reached (${activeSubscription.usageCount}/${effectiveLimit} messages this period). Please wait for the next billing cycle or upgrade your plan.`
                     };
                 }
 
@@ -210,10 +214,14 @@ class BotMessageHandler {
                 const effectiveLimit = activeSubscription.usageLimit || device.usageLimit;
                 if (effectiveLimit && activeSubscription.usageCount >= effectiveLimit) {
                     console.log(`[BotHandler] System bot ${deviceId} - usage limit reached`);
+                    const responseTemplateService = require('./responseTemplateService');
                     return {
                         handled: true,
                         type: 'system_bot_restriction',
-                        response: `⚠️ Usage limit reached (${activeSubscription.usageCount}/${effectiveLimit} messages this period).`
+                        response: await responseTemplateService.getResponse(userId, 'USAGE_LIMIT_REACHED', {
+                            usage_count: String(activeSubscription.usageCount),
+                            usage_limit: String(effectiveLimit)
+                        }) || `⚠️ Usage limit reached (${activeSubscription.usageCount}/${effectiveLimit} messages this period).`
                     };
                 }
 
@@ -404,7 +412,8 @@ class BotMessageHandler {
             senderNumber,
             deviceId,
             isGroup,
-            groupJid: params.groupJid  // Pass group JID if available
+            groupJid: params.groupJid,  // Pass group JID if available
+            userId
         });
         if (utilityResult.handled) {
             // Increment system bot usage for utility commands too
@@ -459,10 +468,11 @@ class BotMessageHandler {
         // warn the user that a default panel must be configured by admin
         if (!isGroup && panelIds && panelIds.length > 1 && !panelId) {
             console.log(`[BotHandler] Multi-panel DM warning: device has ${panelIds.length} panels but no default panelId set`);
+            const responseTemplateService = require('./responseTemplateService');
             return {
                 handled: true,
                 type: 'multi_panel_warning',
-                response: '⚠️ This bot is connected to multiple panels but no default panel is set for DM support.\n\nPlease ask the admin to set a *Default Panel for DM* in Device Settings, or use group commands instead.'
+                response: await responseTemplateService.getResponse(userId, 'MULTI_PANEL_WARNING') || '⚠️ This bot is connected to multiple panels but no default panel is set for DM support.\n\nPlease ask the admin to set a *Default Panel for DM* in Device Settings, or use group commands instead.'
             };
         }
 
@@ -515,10 +525,11 @@ class BotMessageHandler {
 
                 if (toggles?.allowDmCommands === false) {
                     console.log(`[BotHandler] DM commands disabled for user ${userId}, blocking command from ${senderNumber}`);
+                    const responseTemplateService = require('./responseTemplateService');
                     return {
                         handled: true,
                         type: 'dm_commands_disabled',
-                        response: '❌ Commands can only be used in groups.\n\nPlease send your command in the group chat.'
+                        response: await responseTemplateService.getResponse(userId, 'DM_COMMANDS_DISABLED') || '❌ Commands can only be used in groups.\n\nPlease send your command in the group chat.'
                     };
                 }
             } catch (dmCheckErr) {
@@ -610,10 +621,11 @@ class BotMessageHandler {
                             kwCreditResult = await creditService.chargeMessage(userId, platform, isGroup, kwUser);
                         }
                         if (!kwCreditResult.charged && kwCreditResult.reason === 'insufficient_credits') {
+                            const responseTemplateService = require('./responseTemplateService');
                             return {
                                 handled: true,
                                 type: 'keyword_response',
-                                response: `⚠️ Low message credits. Please top up to enable keyword responses.`,
+                                response: await responseTemplateService.getResponse(userId, 'LOW_CREDITS_KEYWORD') || `⚠️ Low message credits. Please top up to enable keyword responses.`,
                                 creditCharged: false,
                                 reason: 'insufficient_credits'
                             };
@@ -674,15 +686,11 @@ class BotMessageHandler {
                 const botToggles = await botFeatureService.getToggles(userId, scope);
 
                 if (botToggles?.replyToAllMessages) {
+                    const responseTemplateService = require('./responseTemplateService');
+                    const templateFallback = await responseTemplateService.getResponse(userId, 'FALLBACK_MESSAGE');
                     const fallbackMessage = botToggles.fallbackMessage ||
-                        `I didn't understand your message.\n\n` +
-                        `📋 *Available Commands:*\n` +
-                        `• \`[Order ID] status\` - Check order status\n` +
-                        `• \`[Order ID] refill\` - Request refill\n` +
-                        `• \`[Order ID] cancel\` - Cancel order\n` +
-                        `• \`ticket\` - View your tickets\n` +
-                        `• \`.help\` - Show all commands\n\n` +
-                        `Example: \`12345 status\``;
+                        templateFallback ||
+                        `I didn't understand your message.\n\n📋 *Available Commands:*\n• \`[Order ID] status\` - Check order status\n• \`[Order ID] refill\` - Request refill\n• \`[Order ID] cancel\` - Cancel order\n• \`ticket\` - View your tickets\n• \`.help\` - Show all commands\n\nExample: \`12345 status\``;
 
                     console.log(`[BotHandler] No handler matched, sending fallback response (DM only)`);
                     // Increment system bot usage for fallback
@@ -722,7 +730,8 @@ class BotMessageHandler {
      * Handle utility commands (.groupid, .ping, .deviceid, .help)
      */
     async handleUtilityCommand(params) {
-        const { message, senderNumber, deviceId, isGroup, groupJid } = params;
+        const { message, senderNumber, deviceId, isGroup, groupJid, userId } = params;
+        const responseTemplateService = require('./responseTemplateService');
 
         const cmd = message.toLowerCase().trim();
 
@@ -732,7 +741,7 @@ class BotMessageHandler {
                 return {
                     handled: true,
                     type: 'utility',
-                    response: '❌ This command only works in groups.'
+                    response: await responseTemplateService.getResponse(userId, 'UTIL_GROUPID_NOT_GROUP') || '❌ This command only works in groups.'
                 };
             }
 
@@ -744,10 +753,11 @@ class BotMessageHandler {
             return {
                 handled: true,
                 type: 'utility',
-                response: `📱 *Group Information*\n\n` +
-                    `🆔 Group JID: \`${groupJid || 'Not available'}\`\n` +
-                    `📍 Device: ${device?.name || deviceId}\n` +
-                    `👤 Your Number: ${senderNumber}`
+                response: await responseTemplateService.getResponse(userId, 'UTIL_GROUPID_SUCCESS', {
+                    group_jid: groupJid || 'Not available',
+                    device_name: device?.name || deviceId,
+                    sender_number: senderNumber
+                }) || `📱 *Group Information*\n\n🆔 Group JID: \`${groupJid || 'Not available'}\`\n📍 Device: ${device?.name || deviceId}\n👤 Your Number: ${senderNumber}`
             };
         }
 
@@ -761,9 +771,10 @@ class BotMessageHandler {
             return {
                 handled: true,
                 type: 'utility',
-                response: `🏓 *Pong!*\n\n` +
-                    `⏱️ Uptime: ${hours}h ${minutes}m ${seconds}s\n` +
-                    `📱 Device: ${deviceId.substring(0, 8)}...`
+                response: await responseTemplateService.getResponse(userId, 'UTIL_PING', {
+                    uptime: `${hours}h ${minutes}m ${seconds}s`,
+                    device_id: deviceId.substring(0, 8) + '...'
+                }) || `🏓 *Pong!*\n\n⏱️ Uptime: ${hours}h ${minutes}m ${seconds}s\n📱 Device: ${deviceId.substring(0, 8)}...`
             };
         }
 
@@ -777,10 +788,11 @@ class BotMessageHandler {
             return {
                 handled: true,
                 type: 'utility',
-                response: `📱 *Device Information*\n\n` +
-                    `🆔 Device ID: \`${deviceId}\`\n` +
-                    `📛 Name: ${device?.name || 'Unknown'}\n` +
-                    `📞 Phone: ${device?.phone || 'Not set'}`
+                response: await responseTemplateService.getResponse(userId, 'UTIL_DEVICEID', {
+                    device_id: deviceId,
+                    device_name: device?.name || 'Unknown',
+                    device_phone: device?.phone || 'Not set'
+                }) || `📱 *Device Information*\n\n🆔 Device ID: \`${deviceId}\`\n📛 Name: ${device?.name || 'Unknown'}\n📞 Phone: ${device?.phone || 'Not set'}`
             };
         }
 
@@ -789,20 +801,7 @@ class BotMessageHandler {
             return {
                 handled: true,
                 type: 'utility',
-                response: `📚 *Available Commands*\n\n` +
-                    `*Utility:*\n` +
-                    `• \`.ping\` - Check bot status\n` +
-                    `• \`.groupid\` - Get group ID (groups only)\n` +
-                    `• \`.deviceid\` - Get device info\n` +
-                    `• \`.help\` - Show this help\n\n` +
-                    `*SMM Commands:*\n` +
-                    `• \`[order_id] status\` - Check order status\n` +
-                    `• \`[order_id] refill\` - Request refill\n` +
-                    `• \`[order_id] cancel\` - Request cancel\n` +
-                    `• \`status [order_id]\` - Alternative format\n\n` +
-                    `*Support:*\n` +
-                    `• \`ticket\` - View your tickets\n` +
-                    `• \`ticket [TICKET_NUMBER]\` - Check ticket status`
+                response: await responseTemplateService.getResponse(userId, 'UTIL_HELP') || `📚 *Available Commands*\n\n*Utility:*\n• \`.ping\` - Check bot status\n• \`.groupid\` - Get group ID (groups only)\n• \`.deviceid\` - Get device info\n• \`.help\` - Show this help\n\n*SMM Commands:*\n• \`[order_id] status\` - Check order status\n• \`[order_id] refill\` - Request refill\n• \`[order_id] cancel\` - Request cancel\n• \`status [order_id]\` - Alternative format\n\n*Support:*\n• \`ticket\` - View your tickets\n• \`ticket [TICKET_NUMBER]\` - Check ticket status`
             };
         }
 
@@ -828,10 +827,11 @@ class BotMessageHandler {
 
                 if (userCredits < creditsPerMessage) {
                     console.log(`[BotHandler] Insufficient message credits for ${userId} (has: ${userCredits}, needs: ${creditsPerMessage})`);
+                    const responseTemplateService = require('./responseTemplateService');
                     return {
                         handled: true,
                         type: 'smm_command',
-                        response: `⚠️ Your message credits are low (${userCredits} credits remaining). Please buy more credits to continue using the bot.\n\nVisit your dashboard to top up.`,
+                        response: await responseTemplateService.getResponse(userId, 'INSUFFICIENT_CREDITS', { credits: String(userCredits) }) || `⚠️ Your message credits are low (${userCredits} credits remaining). Please buy more credits to continue using the bot.\n\nVisit your dashboard to top up.`,
                         creditCharged: false,
                         reason: 'insufficient_credits'
                     };
@@ -841,10 +841,11 @@ class BotMessageHandler {
                 const rate = await creditService.getMessageRate(platform, isGroup, user);
                 if ((user.creditBalance || 0) < rate) {
                     console.log(`[BotHandler] Insufficient balance for ${userId}`);
+                    const responseTemplateService = require('./responseTemplateService');
                     return {
                         handled: true,
                         type: 'smm_command',
-                        response: `⚠️ Your credit balance is low ($${(user.creditBalance || 0).toFixed(2)}). Please top up to continue using the bot.`,
+                        response: await responseTemplateService.getResponse(userId, 'INSUFFICIENT_BALANCE', { balance: '$' + (user.creditBalance || 0).toFixed(2) }) || `⚠️ Your credit balance is low ($${(user.creditBalance || 0).toFixed(2)}). Please top up to continue using the bot.`,
                         creditCharged: false,
                         reason: 'insufficient_balance'
                     };
@@ -925,10 +926,14 @@ class BotMessageHandler {
             });
 
             // Return instant acknowledgment
+            const responseTemplateService = require('./responseTemplateService');
             return {
                 handled: true,
                 type: 'smm_command',
-                response: `⏳ Processing ${orderCount} orders for *${commandDisplay}*...\n\n_Results will be sent shortly. Please wait._`,
+                response: await responseTemplateService.getResponse(userId, 'ASYNC_BULK_ACK', {
+                    order_count: String(orderCount),
+                    command: commandDisplay
+                }) || `⏳ Processing ${orderCount} orders for *${commandDisplay}*...\n\n_Results will be sent shortly. Please wait._`,
                 creditCharged: creditResult.charged,
                 creditAmount: creditResult.amount
             };
@@ -1063,10 +1068,11 @@ class BotMessageHandler {
                         }
 
                         if (!creditResult.charged && creditResult.reason === 'insufficient_credits') {
+                            const responseTemplateService = require('./responseTemplateService');
                             return {
                                 handled: true,
                                 type: 'auto_reply',
-                                response: `⚠️ Low message credits. Please top up to enable auto-replies.`,
+                                response: await responseTemplateService.getResponse(userId, 'LOW_CREDITS_AUTOREPLY') || `⚠️ Low message credits. Please top up to enable auto-replies.`,
                                 creditCharged: false,
                                 reason: 'insufficient_credits'
                             };
@@ -1339,7 +1345,13 @@ class BotMessageHandler {
             if (!tracker.warned) {
                 // First time hitting threshold → send warning
                 tracker.warned = true;
+                const responseTemplateService = require('./responseTemplateService');
+                const templateWarning = await responseTemplateService.getResponse(userId, 'SPAM_WARNING', {
+                    count: String(sameTextCount),
+                    disable_duration: String(toggles.spamDisableDurationMin || 60)
+                });
                 const warningMsg = toggles.spamWarningMessage ||
+                    templateWarning ||
                     `⚠️ *Spam Detected*\n\nYou have sent the same message ${sameTextCount} times.\nIf you continue, the bot will stop responding to you for ${toggles.spamDisableDurationMin || 60} minutes.`;
                 return {
                     blocked: true,
@@ -1352,7 +1364,10 @@ class BotMessageHandler {
                 this._spamTracker.delete(key); // Reset tracker
 
                 const disableMin = toggles.spamDisableDurationMin || 60;
-                const disableMsg = `🚫 *Bot Disabled*\n\nDue to repeated spam, the bot will not respond to your messages for ${disableMin} minutes.`;
+                const responseTemplateService = require('./responseTemplateService');
+                const disableMsg = await responseTemplateService.getResponse(userId, 'SPAM_DISABLED', {
+                    disable_duration: String(disableMin)
+                }) || `🚫 *Bot Disabled*\n\nDue to repeated spam, the bot will not respond to your messages for ${disableMin} minutes.`;
                 console.log(`[BotHandler] Spam: user ${senderNumber} disabled for ${disableMin}min (owner: ${userId})`);
                 return {
                     blocked: true,

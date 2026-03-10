@@ -188,9 +188,11 @@ class ConversationStateService {
         });
 
         // Return the prompt message
+        const responseTemplateService = require('./responseTemplateService');
+        const promptMessage = await responseTemplateService.getResponse(userId, 'VERIFY_USERNAME_PROMPT', { order_id: String(orderId) }) || this.getUsernamePromptMessage(orderId);
         return {
             conversation,
-            message: this.getUsernamePromptMessage(orderId)
+            message: promptMessage
         };
     }
 
@@ -200,6 +202,7 @@ class ConversationStateService {
     async processUsernameVerification(conversation, providedUsername) {
         const context = conversation.context;
         const expectedUsername = context.orderUsername;
+        const responseTemplateService = require('./responseTemplateService');
 
         // Normalize usernames for comparison (case-insensitive, trim whitespace)
         const normalizedProvided = (providedUsername || '').trim().toLowerCase();
@@ -223,7 +226,7 @@ class ConversationStateService {
             return {
                 success: true,
                 verified: true,
-                message: '✅ Username verified! Processing your request...',
+                message: await responseTemplateService.getResponse(conversation.userId, 'VERIFY_USERNAME_SUCCESS') || '✅ Username verified! Processing your request...',
                 canProceed: true,
                 context
             };
@@ -237,7 +240,10 @@ class ConversationStateService {
             return {
                 success: false,
                 verified: false,
-                message: `❌ Verification failed. Maximum attempts (${context.maxAttempts}) reached.\n\nThe username you provided does not match our records for Order #${context.orderId}.\n\nPlease contact support if you believe this is an error.`,
+                message: await responseTemplateService.getResponse(conversation.userId, 'VERIFY_USERNAME_MAX_ATTEMPTS', {
+                    max_attempts: String(context.maxAttempts),
+                    order_id: String(context.orderId)
+                }) || `❌ Verification failed. Maximum attempts (${context.maxAttempts}) reached.\n\nThe username you provided does not match our records for Order #${context.orderId}.\n\nPlease contact support if you believe this is an error.`,
                 canProceed: false,
                 context
             };
@@ -253,7 +259,9 @@ class ConversationStateService {
         return {
             success: false,
             verified: false,
-            message: `❌ Username does not match.\n\nPlease enter your panel username exactly as registered.\n\n⚠️ Attempts remaining: ${remainingAttempts}`,
+            message: await responseTemplateService.getResponse(conversation.userId, 'VERIFY_USERNAME_MISMATCH', {
+                remaining_attempts: String(remainingAttempts)
+            }) || `❌ Username does not match.\n\nPlease enter your panel username exactly as registered.\n\n⚠️ Attempts remaining: ${remainingAttempts}`,
             canProceed: false,
             context
         };
@@ -355,9 +363,12 @@ john123
 
         // Load custom prompt message
         const msgs = await this._getRegistrationMessages(userId);
-        const promptMsg = msgs.prompt
-            ? this._replaceVars(msgs.prompt, {})
-            : this.getRegistrationPromptMessage();
+        const responseTemplateService = require('./responseTemplateService');
+        const templatePrompt = await responseTemplateService.getResponse(userId, 'REGISTRATION_PROMPT');
+        // Priority: template > custom toggle > hardcoded fallback
+        const promptMsg = templatePrompt
+            || (msgs.prompt ? this._replaceVars(msgs.prompt, {}) : null)
+            || this.getRegistrationPromptMessage();
 
         return {
             conversation,
@@ -375,9 +386,10 @@ john123
 
         const normalizedUsername = (providedUsername || '').trim();
         if (!normalizedUsername) {
+            const responseTemplateService = require('./responseTemplateService');
             return {
                 success: false,
-                message: '❌ Please send a valid username.'
+                message: await responseTemplateService.getResponse(userId, 'REGISTRATION_INVALID_USERNAME') || '❌ Please send a valid username.'
             };
         }
 
@@ -395,9 +407,10 @@ john123
             // If already linked to THIS number, just complete
             if (existingNumbers.includes(normalizedSender)) {
                 await this.completeConversation(conversation.id);
+                const responseTemplateService = require('./responseTemplateService');
                 return {
                     success: true,
-                    message: '✅ Your number is already registered with this username. You can now use commands.'
+                    message: await responseTemplateService.getResponse(userId, 'REGISTRATION_ALREADY_LINKED') || '✅ Your number is already registered with this username. You can now use commands.'
                 };
             }
 
@@ -415,9 +428,12 @@ john123
                     ? `Please contact WhatsApp support team at ${msgs.supportNumber}.`
                     : 'Please contact the support team.';
 
-                const alreadyLinkedMsg = msgs.alreadyLinked
-                    ? this._replaceVars(msgs.alreadyLinked, { username: normalizedUsername, support_number: msgs.supportNumber })
-                    : `❌ This username is already linked with another WhatsApp number.\n\n${supportMsg}`;
+                const responseTemplateService = require('./responseTemplateService');
+                const templateMsg = await responseTemplateService.getResponse(userId, 'REGISTRATION_USERNAME_TAKEN', { username: normalizedUsername });
+                // Priority: template > custom toggle > hardcoded fallback
+                const alreadyLinkedMsg = templateMsg
+                    || (msgs.alreadyLinked ? this._replaceVars(msgs.alreadyLinked, { username: normalizedUsername, support_number: msgs.supportNumber }) : null)
+                    || `❌ This username is already linked with another WhatsApp number.\n\n${supportMsg}`;
 
                 return {
                     success: false,
@@ -485,9 +501,12 @@ john123
 
             if (context.attempts >= context.maxAttempts) {
                 await this.completeConversation(conversation.id);
+                const responseTemplateService = require('./responseTemplateService');
                 return {
                     success: false,
-                    message: `❌ Username not found. Maximum attempts (${context.maxAttempts}) reached.\n\nPlease contact support if you need help.`
+                    message: await responseTemplateService.getResponse(userId, 'REGISTRATION_NOT_FOUND_MAX', {
+                        max_attempts: String(context.maxAttempts)
+                    }) || `❌ Username not found. Maximum attempts (${context.maxAttempts}) reached.\n\nPlease contact support if you need help.`
                 };
             }
 
@@ -497,9 +516,15 @@ john123
             });
 
             const remaining = context.maxAttempts - context.attempts;
-            const notFoundMsg = msgs.notFound
-                ? this._replaceVars(msgs.notFound, { username: normalizedUsername, remaining: String(remaining), max_attempts: String(context.maxAttempts) })
-                : `❌ Username "${normalizedUsername}" not found in the panel.\n\nPlease check and send your correct username.\n\n⚠️ Attempts remaining: ${remaining}`;
+            const responseTemplateService = require('./responseTemplateService');
+            const templateNotFound = await responseTemplateService.getResponse(userId, 'REGISTRATION_NOT_FOUND', {
+                username: normalizedUsername,
+                remaining_attempts: String(remaining)
+            });
+            // Priority: template > custom toggle > hardcoded fallback
+            const notFoundMsg = templateNotFound
+                || (msgs.notFound ? this._replaceVars(msgs.notFound, { username: normalizedUsername, remaining: String(remaining), max_attempts: String(context.maxAttempts) }) : null)
+                || `❌ Username "${normalizedUsername}" not found in the panel.\n\nPlease check and send your correct username.\n\n⚠️ Attempts remaining: ${remaining}`;
             return {
                 success: false,
                 message: notFoundMsg
@@ -528,9 +553,12 @@ john123
 
             // Load custom success message
             const msgs2 = await this._getRegistrationMessages(userId);
-            const successMsg = msgs2.success
-                ? this._replaceVars(msgs2.success, { username: normalizedUsername })
-                : `✅ Registration successful!\n\nYour username *${normalizedUsername}* is now linked with your WhatsApp number.\n\nYou can now use bot commands.`;
+            const responseTemplateService = require('./responseTemplateService');
+            const templateSuccess = await responseTemplateService.getResponse(userId, 'REGISTRATION_SUCCESS', { username: normalizedUsername });
+            // Priority: template > custom toggle > hardcoded fallback
+            const successMsg = templateSuccess
+                || (msgs2.success ? this._replaceVars(msgs2.success, { username: normalizedUsername }) : null)
+                || `✅ Registration successful!\n\nYour username *${normalizedUsername}* is now linked with your WhatsApp number.\n\nYou can now use bot commands.`;
 
             return {
                 success: true,
@@ -540,9 +568,10 @@ john123
         } catch (createErr) {
             console.error(`[Registration] Failed to create mapping:`, createErr.message);
             await this.completeConversation(conversation.id);
+            const responseTemplateService = require('./responseTemplateService');
             return {
                 success: false,
-                message: '❌ Registration failed. Please try again later or contact support.'
+                message: await responseTemplateService.getResponse(userId, 'REGISTRATION_FAILED') || '❌ Registration failed. Please try again later or contact support.'
             };
         }
     }

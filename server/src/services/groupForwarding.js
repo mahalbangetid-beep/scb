@@ -254,6 +254,14 @@ class GroupForwardingService {
         // Format the message with PROVIDER Order ID (if available)
         const message = this.formatProviderMessage(command, order, providerGroup, providerOrderId);
 
+        // ==================== TELEGRAM PATH (NEW) ====================
+        // If provider group type is TELEGRAM, forward via Telegram bot and return early.
+        // This keeps the entire existing WhatsApp flow below completely untouched.
+        if (providerGroup.type === 'TELEGRAM') {
+            return this._forwardViaTelegramGroup(providerGroup, message, order, command, providerName, providerOrderId, userId, targetJidOverride);
+        }
+
+        // ==================== WHATSAPP PATH (existing, untouched) ====================
         // Send via WhatsApp
         if (!this.whatsappService) {
             logger.error('WhatsApp service not available');
@@ -654,6 +662,108 @@ Remains: {remains}
         await this.whatsappService.sendMessage(deviceId, jid, message);
 
         return { success: true, targetNumber };
+    }
+
+    /**
+     * Forward via Telegram Bot (ProviderGroup with type=TELEGRAM)
+     * Called when providerGroup.type === 'TELEGRAM' — early return path in forwardToProvider()
+     * This method is completely separate from the WhatsApp forwarding flow.
+     */
+    async _forwardViaTelegramGroup(providerGroup, message, order, command, providerName, providerOrderId, userId, targetJidOverride) {
+        try {
+            const telegramService = require('./telegram');
+
+            // Resolve Telegram bot: providerGroup.telegramBotId > first connected bot for user
+            let telegramBotId = providerGroup.telegramBotId;
+
+            if (!telegramBotId) {
+                // Fallback: find first connected Telegram bot for this user
+                const firstBot = await prisma.telegramBot.findFirst({
+                    where: { userId: userId, status: 'connected' },
+                    select: { id: true },
+                    orderBy: { createdAt: 'asc' }
+                });
+                if (firstBot) {
+                    telegramBotId = firstBot.id;
+                    logger.info(`📱 Telegram: Auto-resolved bot for forwarding: ${telegramBotId}`);
+                }
+            }
+
+            if (!telegramBotId) {
+                return {
+                    success: false,
+                    reason: 'no_telegram_bot',
+                    message: 'No active Telegram bot found. Please connect a Telegram bot first.'
+                };
+            }
+
+            // Target: use service ID override if matched, otherwise use group's default groupId (Telegram chat ID)
+            const targetChatId = targetJidOverride || providerGroup.groupId;
+
+            if (!targetChatId) {
+                return {
+                    success: false,
+                    reason: 'no_target',
+                    message: 'No Telegram chat ID configured for this provider group'
+                };
+            }
+
+            // Send via Telegram
+            await telegramService.sendMessage(telegramBotId, targetChatId, message, { parseMode: undefined });
+
+            // Log the forwarding
+            try {
+                await prisma.orderCommand.updateMany({
+                    where: {
+                        orderId: order.id,
+                        command: command.toUpperCase(),
+                        status: 'SUCCESS'
+                    },
+                    data: {
+                        forwardedTo: providerGroup.groupName,
+                        response: JSON.stringify({
+                            forwarded: true,
+                            platform: 'TELEGRAM',
+                            groupId: providerGroup.id,
+                            groupName: providerGroup.groupName,
+                            providerName: providerName,
+                            providerOrderId: providerOrderId,
+                            telegramBotId: telegramBotId,
+                            targetChatId: targetChatId,
+                            usedServiceIdRouting: !!targetJidOverride,
+                            serviceId: order.serviceId || null,
+                            timestamp: new Date().toISOString()
+                        })
+                    }
+                });
+            } catch (logErr) {
+                logger.warn(`Failed to log Telegram forwarding:`, logErr.message);
+            }
+
+            const displayOrderId = providerOrderId || order.externalOrderId;
+            const routingInfo = targetJidOverride
+                ? ` (via Service ID ${order.serviceId} routing)`
+                : '';
+            logger.info(`✅ [Telegram] Forwarded ${command} for order ${displayOrderId} to ${providerGroup.groupName}${routingInfo}`);
+
+            return {
+                success: true,
+                message: `Forwarded to ${providerGroup.groupName} (Telegram)`,
+                groupId: providerGroup.id,
+                groupName: providerGroup.groupName,
+                platform: 'TELEGRAM',
+                usedProviderOrderId: !!providerOrderId,
+                usedServiceIdRouting: !!targetJidOverride,
+                serviceId: order.serviceId || null
+            };
+        } catch (error) {
+            logger.error(`[Telegram] Failed to forward:`, error);
+            return {
+                success: false,
+                reason: 'telegram_send_failed',
+                message: error.message
+            };
+        }
     }
 
     /**

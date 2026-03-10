@@ -40,11 +40,14 @@ export default function ContactBackups() {
     const [backupLoading, setBackupLoading] = useState({})
     const [viewBackup, setViewBackup] = useState(null)
     const [viewLoading, setViewLoading] = useState(false)
-    const [activeTab, setActiveTab] = useState('my-devices') // 'my-devices' | 'all-users'
+    const [activeTab, setActiveTab] = useState('all-contacts') // 'all-contacts' | 'my-devices' | 'all-users'
     const [allBackups, setAllBackups] = useState([])
     const [backupAllLoading, setBackupAllLoading] = useState(false)
     const [exportLoading, setExportLoading] = useState(false)
     const [copySuccess, setCopySuccess] = useState(false)
+    const [allContacts, setAllContacts] = useState(null)
+    const [allContactsLoading, setAllContactsLoading] = useState(false)
+    const [contactSearch, setContactSearch] = useState('')
 
     const fetchDevices = async () => {
         try {
@@ -96,10 +99,22 @@ export default function ContactBackups() {
         }
     }
 
+    const fetchAllContacts = async () => {
+        setAllContactsLoading(true)
+        try {
+            const res = await api.get('/contact-backup/all-contacts')
+            setAllContacts(res.data || res)
+        } catch (error) {
+            console.error('Failed to fetch all contacts:', error)
+        } finally {
+            setAllContactsLoading(false)
+        }
+    }
+
     useEffect(() => {
         const init = async () => {
             setLoading(true)
-            await Promise.all([fetchDevices(), fetchStats()])
+            await Promise.all([fetchDevices(), fetchStats(), fetchAllContacts()])
             if (isMasterAdmin) {
                 await Promise.all([fetchMasterStats(), fetchAllBackups()])
             }
@@ -342,16 +357,23 @@ export default function ContactBackups() {
                 </div>
             </div>
 
-            {/* Master Admin Tabs */}
-            {isMasterAdmin && (
-                <div className="tabs" style={{ maxWidth: '400px', marginBottom: 'var(--spacing-xl)' }}>
-                    <button
-                        className={`tab ${activeTab === 'my-devices' ? 'active' : ''}`}
-                        onClick={() => setActiveTab('my-devices')}
-                    >
-                        <Smartphone size={16} />
-                        My Devices
-                    </button>
+            {/* Tabs */}
+            <div className="tabs" style={{ maxWidth: isMasterAdmin ? '550px' : '400px', marginBottom: 'var(--spacing-xl)' }}>
+                <button
+                    className={`tab ${activeTab === 'all-contacts' ? 'active' : ''}`}
+                    onClick={() => setActiveTab('all-contacts')}
+                >
+                    <Users size={16} />
+                    All Contacts
+                </button>
+                <button
+                    className={`tab ${activeTab === 'my-devices' ? 'active' : ''}`}
+                    onClick={() => setActiveTab('my-devices')}
+                >
+                    <Smartphone size={16} />
+                    My Devices
+                </button>
+                {isMasterAdmin && (
                     <button
                         className={`tab ${activeTab === 'all-users' ? 'active' : ''}`}
                         onClick={() => setActiveTab('all-users')}
@@ -359,6 +381,125 @@ export default function ContactBackups() {
                         <Globe size={16} />
                         All Users
                     </button>
+                )}
+            </div>
+
+            {/* All Contacts Section (deduplicated, single page) */}
+            {activeTab === 'all-contacts' && (
+                <div className="card">
+                    <div style={{ padding: 'var(--spacing-lg)', borderBottom: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 'var(--spacing-sm)' }}>
+                        <div>
+                            <h3 style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+                                All Contacts (Deduplicated)
+                            </h3>
+                            <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginTop: '4px' }}>
+                                {allContacts ? `${allContacts.uniqueContacts || 0} unique contacts from ${allContacts.totalDevices || 0} device(s)` : 'Loading...'}
+                            </p>
+                        </div>
+                        <div style={{ display: 'flex', gap: 'var(--spacing-sm)' }}>
+                            <button
+                                className="btn btn-secondary btn-sm"
+                                onClick={fetchAllContacts}
+                                disabled={allContactsLoading}
+                            >
+                                {allContactsLoading ? <Loader2 className="animate-spin" size={14} /> : <RefreshCw size={14} />}
+                                Refresh
+                            </button>
+                            {allContacts?.contacts?.length > 0 && (
+                                <button
+                                    className="btn btn-sm"
+                                    style={{
+                                        display: 'flex', alignItems: 'center', gap: '4px',
+                                        background: copySuccess ? 'rgba(34, 197, 94, 0.15)' : 'rgba(99, 102, 241, 0.1)',
+                                        color: copySuccess ? '#22c55e' : 'var(--primary-500)',
+                                        border: 'none', padding: '6px 12px', borderRadius: '8px',
+                                        cursor: 'pointer', fontSize: '0.8rem', fontWeight: 600
+                                    }}
+                                    onClick={() => {
+                                        const filtered = (allContacts.contacts || []).filter(c => {
+                                            if (!contactSearch) return true
+                                            const q = contactSearch.toLowerCase()
+                                            return (c.phone || '').includes(q) || (c.name || '').toLowerCase().includes(q)
+                                        })
+                                        const numbers = filtered.map(c => c.phone).filter(Boolean).join('\n')
+                                        navigator.clipboard.writeText(numbers).then(() => {
+                                            setCopySuccess(true)
+                                            setTimeout(() => setCopySuccess(false), 2000)
+                                        })
+                                    }}
+                                >
+                                    {copySuccess ? <ClipboardCheck size={14} /> : <Copy size={14} />}
+                                    {copySuccess ? 'Copied!' : `Copy All Numbers`}
+                                </button>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* Search */}
+                    <div style={{ padding: 'var(--spacing-md) var(--spacing-lg)', borderBottom: '1px solid var(--border-color)' }}>
+                        <input
+                            type="text"
+                            className="form-input"
+                            placeholder="Search by phone number or name..."
+                            value={contactSearch}
+                            onChange={(e) => setContactSearch(e.target.value)}
+                            style={{ width: '100%', maxWidth: '400px' }}
+                        />
+                    </div>
+
+                    {allContactsLoading ? (
+                        <div style={{ padding: 'var(--spacing-xl)', textAlign: 'center' }}>
+                            <Loader2 className="animate-spin" size={32} style={{ margin: '0 auto', color: 'var(--primary-500)' }} />
+                            <p style={{ color: 'var(--text-muted)', marginTop: 'var(--spacing-sm)' }}>Loading contacts from all devices...</p>
+                        </div>
+                    ) : !allContacts || (allContacts.contacts || []).length === 0 ? (
+                        <div style={{ padding: 'var(--spacing-xl)', textAlign: 'center', color: 'var(--text-muted)' }}>
+                            <Users size={48} style={{ margin: '0 auto var(--spacing-md)', opacity: 0.3 }} />
+                            <p>No contacts found</p>
+                            <p style={{ fontSize: '0.85rem', marginTop: '4px' }}>Connect a device and trigger a backup first</p>
+                        </div>
+                    ) : (
+                        <div style={{ maxHeight: '600px', overflow: 'auto' }}>
+                            <table className="table">
+                                <thead>
+                                    <tr>
+                                        <th style={{ width: '50px' }}>#</th>
+                                        <th>Phone Number</th>
+                                        <th>Name</th>
+                                        <th>Device</th>
+                                        <th style={{ width: '60px' }}>Copy</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {(allContacts.contacts || []).filter(c => {
+                                        if (!contactSearch) return true
+                                        const q = contactSearch.toLowerCase()
+                                        return (c.phone || '').includes(q) || (c.name || '').toLowerCase().includes(q)
+                                    }).map((contact, i) => (
+                                        <tr key={contact.phone || i}>
+                                            <td style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>{i + 1}</td>
+                                            <td style={{ fontFamily: 'monospace', fontSize: '0.9rem' }}>{contact.phone}</td>
+                                            <td>{contact.name || <span style={{ color: 'var(--text-muted)' }}>—</span>}</td>
+                                            <td style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>{contact.device || '—'}</td>
+                                            <td>
+                                                <button
+                                                    className="btn btn-ghost btn-sm"
+                                                    onClick={() => {
+                                                        navigator.clipboard.writeText(contact.phone)
+                                                        setCopySuccess(true)
+                                                        setTimeout(() => setCopySuccess(false), 1000)
+                                                    }}
+                                                    title="Copy number"
+                                                >
+                                                    <Copy size={12} />
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    )}
                 </div>
             )}
 
@@ -875,7 +1016,7 @@ export default function ContactBackups() {
                             <div style={{ marginBottom: 'var(--spacing-lg)' }}>
                                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 'var(--spacing-sm)' }}>
                                     <h4 style={{ fontSize: '0.9rem', fontWeight: 600 }}>
-                                        Contacts Preview (first 20)
+                                        All Contacts ({(viewBackup.contacts || []).length})
                                     </h4>
                                     {(viewBackup.contacts || []).length > 0 && (
                                         <button
@@ -904,13 +1045,13 @@ export default function ContactBackups() {
                                     )}
                                 </div>
                                 <div style={{
-                                    maxHeight: '200px',
+                                    maxHeight: '400px',
                                     overflow: 'auto',
                                     background: 'var(--bg-tertiary)',
                                     borderRadius: 'var(--radius-md)',
                                     padding: 'var(--spacing-sm)'
                                 }}>
-                                    {(viewBackup.contacts || []).slice(0, 20).map((c, i) => (
+                                    {(viewBackup.contacts || []).map((c, i) => (
                                         <div key={i} style={{
                                             display: 'flex',
                                             justifyContent: 'space-between',

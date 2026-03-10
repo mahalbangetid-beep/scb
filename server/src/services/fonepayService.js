@@ -554,12 +554,18 @@ class FonepayService {
      * @returns {Promise<{ success: boolean, message: string }>}
      */
     async processVerification(whatsappNumber, rawTxnId, rawAmount, deviceId, panelOwnerId) {
+        // Helper: get template message with MESSAGES fallback
+        const responseTemplateService = require('./responseTemplateService');
+        const getMsg = async (templateKey, fallback, vars = {}) => {
+            return await responseTemplateService.getResponse(panelOwnerId, templateKey, vars) || fallback;
+        };
+
         // Sanitize inputs
         const txnId = this.sanitizeTxnId(rawTxnId);
         const amount = this.sanitizeAmount(rawAmount);
 
         if (!txnId || !amount) {
-            return { success: false, message: MESSAGES.FORMAT_INVALID };
+            return { success: false, message: await getMsg('FONEPAY_FORMAT_INVALID', MESSAGES.FORMAT_INVALID) };
         }
 
         // Wrap entire flow in top-level try/catch for fail-safety
@@ -569,7 +575,7 @@ class FonepayService {
             // Step 0: Check global FonePay enable setting
             const fonepaySettings = await this.getFonepaySettings(panelOwnerId);
             if (!fonepaySettings.globalEnabled) {
-                return { success: false, message: '❌ FonePay verification is currently disabled. Please contact admin.' };
+                return { success: false, message: await getMsg('FONEPAY_GLOBAL_DISABLED', '❌ FonePay verification is currently disabled. Please contact admin.') };
             }
 
             // Step 1: Resolve user mapping
@@ -599,12 +605,12 @@ class FonepayService {
                 }
 
                 switch (mappingError) {
-                    case 'NO_MAPPING': return { success: false, message: MESSAGES.NO_MAPPING };
-                    case 'MAPPING_DISABLED': return { success: false, message: '❌ Akun Anda sedang dinonaktifkan. Hubungi admin untuk mengaktifkan kembali.' };
-                    case 'MAPPING_SUSPENDED': return { success: false, message: MESSAGES.MAPPING_SUSPENDED };
-                    case 'PANEL_NOT_RENTAL': return { success: false, message: MESSAGES.PANEL_NOT_RENTAL };
-                    case 'PANEL_FONEPAY_DISABLED': return { success: false, message: MESSAGES.PANEL_FONEPAY_DISABLED };
-                    default: return { success: false, message: MESSAGES.SYSTEM_ERROR };
+                    case 'NO_MAPPING': return { success: false, message: await getMsg('FONEPAY_NO_MAPPING', MESSAGES.NO_MAPPING) };
+                    case 'MAPPING_DISABLED': return { success: false, message: await getMsg('FONEPAY_MAPPING_DISABLED', '❌ Your account has been disabled. Contact admin to re-enable.') };
+                    case 'MAPPING_SUSPENDED': return { success: false, message: await getMsg('FONEPAY_MAPPING_SUSPENDED', MESSAGES.MAPPING_SUSPENDED) };
+                    case 'PANEL_NOT_RENTAL': return { success: false, message: await getMsg('FONEPAY_PANEL_NOT_RENTAL', MESSAGES.PANEL_NOT_RENTAL) };
+                    case 'PANEL_FONEPAY_DISABLED': return { success: false, message: await getMsg('FONEPAY_DISABLED', MESSAGES.PANEL_FONEPAY_DISABLED) };
+                    default: return { success: false, message: await getMsg('FONEPAY_SYSTEM_ERROR', MESSAGES.SYSTEM_ERROR) };
                 }
             }
 
@@ -619,7 +625,7 @@ class FonepayService {
                     amountEntered: amount, verificationResult: 'already_used',
                     failureReason: 'Transaction ID already processed', deviceId
                 });
-                return { success: false, message: MESSAGES.ALREADY_PROCESSED };
+                return { success: false, message: await getMsg('FONEPAY_ALREADY_PROCESSED', MESSAGES.ALREADY_PROCESSED) };
             }
 
             // Step 3: Check rate limit
@@ -630,7 +636,7 @@ class FonepayService {
                     amountEntered: amount, verificationResult: 'rate_limited',
                     failureReason: `Exceeded ${fonepaySettings.maxAttemptsPerHour} attempts per hour`, deviceId
                 });
-                return { success: false, message: MESSAGES.RATE_LIMITED };
+                return { success: false, message: await getMsg('FONEPAY_RATE_LIMITED', MESSAGES.RATE_LIMITED) };
             }
 
             // Step 4: Check suspicious activity
@@ -642,7 +648,7 @@ class FonepayService {
                     amountEntered: amount, verificationResult: 'suspicious_activity',
                     failureReason: suspiciousReason, deviceId
                 });
-                return { success: false, message: MESSAGES.MAPPING_SUSPENDED };
+                return { success: false, message: await getMsg('FONEPAY_MAPPING_SUSPENDED', MESSAGES.MAPPING_SUSPENDED) };
             }
 
             // Step 5: Create transaction record (status: verifying)
@@ -667,7 +673,7 @@ class FonepayService {
                         amountEntered: amount, verificationResult: 'already_used',
                         failureReason: 'Duplicate TXN ID (race condition)', deviceId
                     });
-                    return { success: false, message: MESSAGES.ALREADY_PROCESSED };
+                    return { success: false, message: await getMsg('FONEPAY_ALREADY_PROCESSED', MESSAGES.ALREADY_PROCESSED) };
                 }
                 throw error;
             }
@@ -696,13 +702,13 @@ class FonepayService {
                 });
 
                 switch (verifyResult.reason) {
-                    case 'txn_not_found': return { success: false, message: MESSAGES.TXN_NOT_FOUND };
-                    case 'txn_status_invalid': return { success: false, message: MESSAGES.TXN_STATUS_INVALID };
-                    case 'amount_mismatch': return { success: false, message: MESSAGES.AMOUNT_MISMATCH };
-                    case 'api_timeout': return { success: false, message: MESSAGES.API_TIMEOUT };
-                    case 'txn_expired': return { success: false, message: MESSAGES.TXN_EXPIRED };
-                    case 'cross_panel': return { success: false, message: MESSAGES.TXN_NOT_FOUND };
-                    default: return { success: false, message: MESSAGES.SYSTEM_ERROR };
+                    case 'txn_not_found': return { success: false, message: await getMsg('FONEPAY_TXN_NOT_FOUND', MESSAGES.TXN_NOT_FOUND) };
+                    case 'txn_status_invalid': return { success: false, message: await getMsg('FONEPAY_TXN_STATUS_INVALID', MESSAGES.TXN_STATUS_INVALID) };
+                    case 'amount_mismatch': return { success: false, message: await getMsg('FONEPAY_AMOUNT_MISMATCH', MESSAGES.AMOUNT_MISMATCH) };
+                    case 'api_timeout': return { success: false, message: await getMsg('FONEPAY_API_TIMEOUT', MESSAGES.API_TIMEOUT) };
+                    case 'txn_expired': return { success: false, message: await getMsg('FONEPAY_TXN_EXPIRED', MESSAGES.TXN_EXPIRED) };
+                    case 'cross_panel': return { success: false, message: await getMsg('FONEPAY_TXN_NOT_FOUND', MESSAGES.TXN_NOT_FOUND) };
+                    default: return { success: false, message: await getMsg('FONEPAY_SYSTEM_ERROR', MESSAGES.SYSTEM_ERROR) };
                 }
             }
 
@@ -742,7 +748,7 @@ class FonepayService {
                     deviceId, transactionId: transaction.id
                 });
 
-                return { success: false, message: MESSAGES.CREDIT_FAILED };
+                return { success: false, message: await getMsg('FONEPAY_CREDIT_FAILED', MESSAGES.CREDIT_FAILED) };
             }
 
             // Step 9: Mark as credited in DB (credit already happened via API)
@@ -789,7 +795,7 @@ class FonepayService {
                     transactionId: transaction.id
                 });
 
-                return { success: true, message: MESSAGES.SUCCESS(amount, panel.currency || 'NPR') };
+                return { success: true, message: await getMsg('FONEPAY_SUCCESS', MESSAGES.SUCCESS(amount, panel.currency || 'NPR'), { amount: amount.toLocaleString(), currency: panel.currency || 'NPR' }) };
 
             } catch (dbError) {
                 // CRITICAL: Money was credited via API but DB update failed
@@ -819,7 +825,7 @@ class FonepayService {
                 });
 
                 // Still tell user it succeeded (because their money WAS credited)
-                return { success: true, message: MESSAGES.SUCCESS(amount, panel.currency || 'NPR') };
+                return { success: true, message: await getMsg('FONEPAY_SUCCESS', MESSAGES.SUCCESS(amount, panel.currency || 'NPR'), { amount: amount.toLocaleString(), currency: panel.currency || 'NPR' }) };
             }
 
         } catch (unexpectedError) {
@@ -839,7 +845,7 @@ class FonepayService {
                 } catch (e) { /* best effort */ }
             }
 
-            return { success: false, message: MESSAGES.SYSTEM_ERROR };
+            return { success: false, message: await getMsg('FONEPAY_SYSTEM_ERROR', MESSAGES.SYSTEM_ERROR) };
         }
     }
 

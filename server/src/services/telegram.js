@@ -234,23 +234,23 @@ class TelegramService {
 
         // Handle /start command
         bot.start(async (ctx) => {
+            const responseTemplateService = require('./responseTemplateService');
             const firstName = ctx.from?.first_name || 'there';
-            await ctx.reply(
-                `👋 *Welcome, ${firstName}!*\n\n` +
+            const defaultWelcome = `👋 *Welcome, ${firstName}!*\n\n` +
                 `I'm *${botRecord.botName || 'DICREWA Bot'}* - your SMM order assistant.\n\n` +
                 `📌 *Quick Start:*\n` +
                 `Send your order IDs followed by a command:\n` +
                 `• \`123456 status\` - Check order status\n` +
                 `• \`123,456 refill\` - Request refill\n\n` +
-                `Type /help for all commands.`,
-                { parse_mode: 'Markdown' }
-            );
+                `Type /help for all commands.`;
+            const msg = await responseTemplateService.getResponse(userId, 'TELEGRAM_WELCOME', { first_name: firstName, bot_name: botRecord.botName || 'DICREWA Bot' }) || defaultWelcome;
+            await ctx.reply(msg, { parse_mode: 'Markdown' });
         });
 
         // Handle /help command
         bot.help(async (ctx) => {
-            await ctx.reply(
-                `📚 *${botRecord.botName || 'DICREWA'} - Command Reference*\n\n` +
+            const responseTemplateService = require('./responseTemplateService');
+            const defaultHelp = `📚 *${botRecord.botName || 'DICREWA'} - Command Reference*\n\n` +
                 `*Order Commands:*\n` +
                 `Send order IDs followed by a command:\n\n` +
                 `🔄 *Refill* - Request order refill\n` +
@@ -268,9 +268,9 @@ class TelegramService {
                 `*Tips:*\n` +
                 `• Commands are case-insensitive\n` +
                 `• You can use short aliases (rf, cn, st, sp)\n` +
-                `• Results will show status for each order`,
-                { parse_mode: 'Markdown' }
-            );
+                `• Results will show status for each order`;
+            const msg = await responseTemplateService.getResponse(userId, 'TELEGRAM_HELP', { bot_name: botRecord.botName || 'DICREWA' }) || defaultHelp;
+            await ctx.reply(msg, { parse_mode: 'Markdown' });
         });
 
         // Handle text messages
@@ -279,7 +279,9 @@ class TelegramService {
                 await this.handleIncomingMessage(botRecord, ctx);
             } catch (error) {
                 console.error('[Telegram] Message handler error:', error.message);
-                await ctx.reply('Sorry, an error occurred processing your message.');
+                const responseTemplateService = require('./responseTemplateService');
+                const errMsg = await responseTemplateService.getResponse(userId, 'TELEGRAM_ERROR_GENERIC') || 'Sorry, an error occurred processing your message.';
+                await ctx.reply(errMsg);
             }
         });
 
@@ -411,18 +413,20 @@ class TelegramService {
             // Check if user has sufficient balance
             const rate = await creditService.getMessageRate('TELEGRAM', isGroup, user);
             if (user && user.creditBalance < rate && user.role !== 'MASTER_ADMIN' && user.role !== 'ADMIN') {
-                await ctx.reply(
+                const responseTemplateService = require('./responseTemplateService');
+                const balMsg = await responseTemplateService.getResponse(botRecord.userId, 'TELEGRAM_INSUFFICIENT_BALANCE', { balance: user.creditBalance.toFixed(2) }) ||
                     `⚠️ *Insufficient Balance*\n\n` +
                     `Your credit balance is low (${user.creditBalance.toFixed(2)}).\n` +
-                    `Please top up to continue using the bot.`,
-                    { parse_mode: 'Markdown' }
-                );
+                    `Please top up to continue using the bot.`;
+                await ctx.reply(balMsg, { parse_mode: 'Markdown' });
                 return;
             }
 
             // Send processing message
+            const responseTemplateService2 = require('./responseTemplateService');
+            const procMsg = await responseTemplateService2.getResponse(botRecord.userId, 'TELEGRAM_PROCESSING') || '⏳ Processing your command...';
             const processingMsg = await ctx.reply(
-                '⏳ Processing your command...',
+                procMsg,
                 { parse_mode: 'Markdown' }
             );
 
@@ -507,12 +511,12 @@ class TelegramService {
 
         } catch (error) {
             console.error('[Telegram] Command processing error:', error);
-            await ctx.reply(
+            const responseTemplateService3 = require('./responseTemplateService');
+            const cmdErr = await responseTemplateService3.getResponse(botRecord.userId, 'TELEGRAM_COMMAND_ERROR', { error: error.message }) ||
                 `❌ *Error processing command*\n\n` +
                 `${error.message}\n\n` +
-                `Please try again or contact support.`,
-                { parse_mode: 'Markdown' }
-            );
+                `Please try again or contact support.`;
+            await ctx.reply(cmdErr, { parse_mode: 'Markdown' });
         }
     }
 

@@ -187,6 +187,476 @@ class ResponseTemplateService {
                 template: `⚠️ *Other errors:*`,
                 description: 'Label for other errors in bulk response',
                 variables: []
+            },
+
+            // ==================== BULK STATUS GROUP LABELS (EXTENDED) ====================
+            'BULK_GUARANTEE_EXPIRED': {
+                template: `🔴 *Order Not Eligible for Refill ( Refill Time Period Expired ):*`,
+                description: 'Label for orders with expired guarantee period in bulk response',
+                variables: []
+            },
+            'BULK_NO_GUARANTEE': {
+                template: `🔴 *Order Not Eligible for Refill ( No Refill/ No Guarantee ):*`,
+                description: 'Label for no-guarantee/no-refill orders in bulk response',
+                variables: []
+            },
+            'BULK_VERIFY_FAILED': {
+                template: `⚠️ *Verification temporarily failed (please retry):*`,
+                description: 'Label for orders where verification temporarily failed in bulk response',
+                variables: []
+            },
+
+            // ==================== UTILITY COMMAND RESPONSES ====================
+            'UTIL_GROUPID_NOT_GROUP': {
+                template: `❌ This command only works in groups.`,
+                description: 'Error when .groupid is used outside of a group chat',
+                variables: []
+            },
+            'UTIL_GROUPID_SUCCESS': {
+                template: `📱 *Group Information*\n\n🆔 Group JID: \`{group_jid}\`\n📍 Device: {device_name}\n👤 Your Number: {sender_number}`,
+                description: 'Response for .groupid command showing group info',
+                variables: ['group_jid', 'device_name', 'sender_number']
+            },
+            'UTIL_PING': {
+                template: `🏓 *Pong!*\n\n⏱️ Uptime: {uptime}\n📱 Device: {device_id}`,
+                description: 'Response for .ping command showing bot is alive',
+                variables: ['uptime', 'device_id']
+            },
+            'UTIL_DEVICEID': {
+                template: `📱 *Device Information*\n\n🆔 Device ID: \`{device_id}\`\n📛 Name: {device_name}\n📞 Phone: {device_phone}`,
+                description: 'Response for .deviceid command showing device info',
+                variables: ['device_id', 'device_name', 'device_phone']
+            },
+            'UTIL_HELP': {
+                template: `📚 *Available Commands*\n\n*Utility:*\n• \`.ping\` - Check bot status\n• \`.groupid\` - Get group ID (groups only)\n• \`.deviceid\` - Get device info\n• \`.help\` - Show this help\n\n*SMM Commands:*\n• \`[order_id] status\` - Check order status\n• \`[order_id] refill\` - Request refill\n• \`[order_id] cancel\` - Request cancel\n• \`status [order_id]\` - Alternative format\n\n*Support:*\n• \`ticket\` - View your tickets\n• \`ticket [TICKET_NUMBER]\` - Check ticket status`,
+                description: 'Response for .help command showing all available commands',
+                variables: []
+            },
+
+            // ==================== SYSTEM MESSAGES ====================
+            'FALLBACK_MESSAGE': {
+                template: `I didn't understand your message.\n\n📋 *Available Commands:*\n• \`[Order ID] status\` - Check order status\n• \`[Order ID] refill\` - Request refill\n• \`[Order ID] cancel\` - Cancel order\n• \`ticket\` - View your tickets\n• \`.help\` - Show all commands\n\nExample: \`12345 status\``,
+                description: 'Default reply when bot does not understand the message (DM only)',
+                variables: []
+            },
+            'MULTI_PANEL_WARNING': {
+                template: `⚠️ This bot is connected to multiple panels but no default panel is set for DM support.\n\nPlease ask the admin to set a *Default Panel for DM* in Device Settings, or use group commands instead.`,
+                description: 'Warning when bot has multiple panels but no default panel for DM',
+                variables: []
+            },
+            'DM_COMMANDS_DISABLED': {
+                template: `❌ Commands can only be used in groups.\n\nPlease send your command in the group chat.`,
+                description: 'Response when DM commands are disabled and user must use group chat',
+                variables: []
+            },
+            'INSUFFICIENT_CREDITS': {
+                template: `⚠️ Your message credits are low ({credits} credits remaining). Please buy more credits to continue using the bot.\n\nVisit your dashboard to top up.`,
+                description: 'Warning when user has insufficient message credits',
+                variables: ['credits']
+            },
+            'INSUFFICIENT_BALANCE': {
+                template: `⚠️ Your credit balance is low (${'{balance}'}). Please top up to continue using the bot.`,
+                description: 'Warning when user has insufficient dollar balance',
+                variables: ['balance']
+            },
+            'ASYNC_BULK_ACK': {
+                template: `⏳ Processing {order_count} orders for *{command}*...\n\n_Results will be sent shortly. Please wait._`,
+                description: 'Instant acknowledgment when processing bulk orders asynchronously',
+                variables: ['order_count', 'command']
+            },
+            'LOW_CREDITS_KEYWORD': {
+                template: `⚠️ Low message credits. Please top up to enable keyword responses.`,
+                description: 'Warning when credits are too low for keyword auto-reply responses',
+                variables: []
+            },
+            'LOW_CREDITS_AUTOREPLY': {
+                template: `⚠️ Low message credits. Please top up to enable auto-replies.`,
+                description: 'Warning when credits are too low for auto-reply responses',
+                variables: []
+            },
+            'USAGE_LIMIT_REACHED': {
+                template: `⚠️ Usage limit reached ({usage_count}/{usage_limit} messages this period). Please wait for the next billing cycle or upgrade your plan.`,
+                description: 'Warning when system bot usage limit is reached',
+                variables: ['usage_count', 'usage_limit']
+            },
+
+            // ==================== SPAM PROTECTION ====================
+            'SPAM_WARNING': {
+                template: `⚠️ *Spam Detected*\n\nYou have sent the same message {spam_count} times.\nIf you continue, the bot will stop responding to you for {disable_duration} minutes.`,
+                description: 'First warning when spam is detected',
+                variables: ['spam_count', 'disable_duration']
+            },
+            'SPAM_DISABLED': {
+                template: `🚫 *Bot Disabled*\n\nDue to repeated spam, the bot will not respond to your messages for {disable_duration} minutes.`,
+                description: 'Message when bot is disabled for a user due to repeated spam',
+                variables: ['disable_duration']
+            },
+
+            // ==================== VERIFICATION & REGISTRATION ====================
+            'VERIFY_USERNAME_SUCCESS': {
+                template: `✅ Username verified! Processing your request...`,
+                description: 'Success message after username verification',
+                variables: []
+            },
+            'VERIFY_USERNAME_MAX_ATTEMPTS': {
+                template: `❌ Verification failed. Maximum attempts ({max_attempts}) reached.\n\nThe username you provided does not match our records for Order #{order_id}.\n\nPlease contact support if you believe this is an error.`,
+                description: 'Error when username verification fails after max attempts',
+                variables: ['max_attempts', 'order_id']
+            },
+            'VERIFY_USERNAME_MISMATCH': {
+                template: `❌ Username does not match.\n\nPlease enter your panel username exactly as registered.\n\n⚠️ Attempts remaining: {remaining_attempts}`,
+                description: 'Error when username does not match with remaining attempts',
+                variables: ['remaining_attempts']
+            },
+            'VERIFY_USERNAME_PROMPT': {
+                template: `🔐 *Username Verification Required*\n\nTo process Order #{order_id}, please verify your identity.\n\n📝 *Reply with your panel username:*\n\nExample: If your username is "john123", just reply:\njohn123\n\n⏱️ This verification expires in 5 minutes.`,
+                description: 'Prompt asking user to verify their panel username',
+                variables: ['order_id']
+            },
+            'REGISTRATION_PROMPT': {
+                template: `📝 *Registration Required*\n\nYour WhatsApp number is not registered yet.\n\nPlease send your *panel username* to register:\n\nExample: If your username is "john123", just reply:\njohn123\n\n⏱️ This registration expires in 5 minutes.`,
+                description: 'Prompt asking unregistered users to send their panel username',
+                variables: []
+            },
+            'REGISTRATION_INVALID_USERNAME': {
+                template: `❌ Please send a valid username.`,
+                description: 'Error when user sends empty or invalid username during registration',
+                variables: []
+            },
+            'REGISTRATION_ALREADY_LINKED': {
+                template: `✅ Your number is already registered with this username. You can now use commands.`,
+                description: 'Message when user number is already registered with the username',
+                variables: []
+            },
+            'REGISTRATION_USERNAME_TAKEN': {
+                template: `❌ This username is already linked with another WhatsApp number.\n\nPlease contact the support team.`,
+                description: 'Error when username is already linked to a different WhatsApp number',
+                variables: ['username']
+            },
+            'REGISTRATION_NOT_FOUND': {
+                template: `❌ Username "{username}" not found in the panel.\n\nPlease check and send your correct username.\n\n⚠️ Attempts remaining: {remaining_attempts}`,
+                description: 'Error when username is not found in the panel during registration',
+                variables: ['username', 'remaining_attempts']
+            },
+            'REGISTRATION_NOT_FOUND_MAX': {
+                template: `❌ Username not found. Maximum attempts ({max_attempts}) reached.\n\nPlease contact support if you need help.`,
+                description: 'Error when username not found and max registration attempts reached',
+                variables: ['max_attempts']
+            },
+            'REGISTRATION_SUCCESS': {
+                template: `✅ Registration successful!\n\nYour username *{username}* is now linked with your WhatsApp number.\n\nYou can now use bot commands.`,
+                description: 'Success message after completing registration',
+                variables: ['username']
+            },
+            'REGISTRATION_FAILED': {
+                template: `❌ Registration failed. Please try again later or contact support.`,
+                description: 'Error when registration fails due to a technical issue',
+                variables: []
+            },
+
+            // ==================== COMMAND HANDLER MESSAGES ====================
+            'COMMAND_DISABLED': {
+                template: `❌ The "{command}" command is currently disabled. Please enable it in Bot Settings.`,
+                description: 'Error when a specific command type is disabled',
+                variables: ['command']
+            },
+            'USER_COMMAND_DISABLED': {
+                template: `❌ {command_name} is currently disabled. Please enable it in Bot Settings.`,
+                description: 'Error when user commands (verify/account/ticket) are disabled',
+                variables: ['command_name']
+            },
+            'VERIFY_PAYMENT_PROMPT': {
+                template: `💳 *Payment Verification*\n\nPlease provide your Transaction ID:\n\`verify YOUR_TRANSACTION_ID\`\n\nExample: \`verify TXN123456789\`\n\nFor FonePay: \`verify TXN123456789 5000\``,
+                description: 'Prompt when user runs verify command without a transaction ID',
+                variables: []
+            },
+            'VERIFY_PAYMENT_NOT_FOUND': {
+                template: `❌ *Payment Not Found*\n\nNo payment found with ID: \`{transaction_id}\`\n\nYou don't have any recent payments on record.`,
+                description: 'Error when no payment found and user has no recent payments',
+                variables: ['transaction_id']
+            },
+            'VERIFY_PAYMENT_ERROR': {
+                template: `❌ Error checking payment: {error}`,
+                description: 'Error when payment verification encounters a technical issue',
+                variables: ['error']
+            },
+            'ACCOUNT_NOT_FOUND': {
+                template: `❌ User not found`,
+                description: 'Error when user account is not found',
+                variables: []
+            },
+            'ACCOUNT_DETAILS_ERROR': {
+                template: `❌ Error fetching account details: {error}`,
+                description: 'Error when fetching account details fails',
+                variables: ['error']
+            },
+            'TICKET_EMPTY': {
+                template: `📋 *Your Tickets*\n\nNo tickets found for your number.\n\nTo create a ticket, contact support or use a command that requires support (e.g., refill for unsupported orders).`,
+                description: 'Message when user has no tickets',
+                variables: []
+            },
+            'TICKET_NOT_FOUND': {
+                template: `❌ Ticket *#{ticket_number}* not found.\n\nMake sure you entered the correct ticket number.\nTo see your tickets list, send: *TICKET*`,
+                description: 'Error when a specific ticket number is not found',
+                variables: ['ticket_number']
+            },
+            'TICKET_ERROR': {
+                template: `❌ Error fetching ticket status: {error}`,
+                description: 'Error when fetching ticket status fails',
+                variables: ['error']
+            },
+
+            // ==================== TELEGRAM MESSAGES ====================
+            'TELEGRAM_WELCOME': {
+                template: `👋 *Welcome, {first_name}!*\n\nI'm *{bot_name}* - your SMM order assistant.\n\n📌 *Quick Start:*\nSend your order IDs followed by a command:\n• \`123456 status\` - Check order status\n• \`123,456 refill\` - Request refill\n\nType /help for all commands.`,
+                description: 'Telegram /start welcome message',
+                variables: ['first_name', 'bot_name']
+            },
+            'TELEGRAM_HELP': {
+                template: `📚 *{bot_name} - Command Reference*\n\n*Order Commands:*\nSend order IDs followed by a command:\n\n🔄 *Refill* - Request order refill\n   \`123456 refill\` or \`123456 rf\`\n\n❌ *Cancel* - Request order cancellation\n   \`123456 cancel\` or \`123456 cn\`\n\n📊 *Status* - Check order status\n   \`123456 status\` or \`123456 st\`\n\n⚡ *Speed Up* - Speed up order processing\n   \`123456 speed\` or \`123456 sp\`\n\n*Multiple Orders:*\nUse commas or spaces to separate:\n   \`123, 456, 789 refill\`\n   \`123 456 789 status\`\n\n*Tips:*\n• Commands are case-insensitive\n• You can use short aliases (rf, cn, st, sp)\n• Results will show status for each order`,
+                description: 'Telegram /help command reference',
+                variables: ['bot_name']
+            },
+            'TELEGRAM_INSUFFICIENT_BALANCE': {
+                template: `⚠️ *Insufficient Balance*\n\nYour credit balance is low ({balance}).\nPlease top up to continue using the bot.`,
+                description: 'Warning when Telegram user has insufficient credit balance',
+                variables: ['balance']
+            },
+            'TELEGRAM_PROCESSING': {
+                template: `⏳ Processing your command...`,
+                description: 'Processing indicator while Telegram command is being handled',
+                variables: []
+            },
+            'TELEGRAM_ERROR': {
+                template: `❌ *Error processing command*\n\n{error}\n\nPlease try again or contact support.`,
+                description: 'Generic error message when Telegram command processing fails',
+                variables: ['error']
+            },
+
+            // ==================== SECURITY MESSAGES ====================
+            'SECURITY_RATE_LIMITED': {
+                template: `⏳ Too many commands. Please wait {remaining_seconds} seconds.`,
+                description: 'Warning when user sends too many commands (rate limited)',
+                variables: ['remaining_seconds']
+            },
+            'SECURITY_COOLDOWN': {
+                template: `⏳ {command} command for this order has already been processed.\n\nPlease wait {remaining_minutes} minutes before trying again.`,
+                description: 'Warning when command for a specific order is on cooldown',
+                variables: ['command', 'remaining_minutes']
+            },
+            'SECURITY_GROUP_DISABLED': {
+                template: `🔒 Group commands are disabled.\n\nPlease DM me to use commands.`,
+                description: 'Error when group commands are disabled',
+                variables: []
+            },
+            'SECURITY_GROUP_NOT_VERIFIED': {
+                template: `⚠️ This order is not yet verified.\n\nPlease DM me to verify your order first before using commands in groups.`,
+                description: 'Warning when order is not verified for group command usage',
+                variables: []
+            },
+            'SECURITY_GROUP_VERIFY_REQUIRED': {
+                template: `🔐 *Username Verification Required*\n\nPlease DM me first to verify your username before using commands in groups.`,
+                description: 'Prompt to DM for username verification before group commands',
+                variables: []
+            },
+            'SECURITY_NOT_REGISTERED_GROUP': {
+                template: `❌ Your number is not registered. Please DM the bot to register first.`,
+                description: 'Error when unregistered user tries to use commands in group',
+                variables: []
+            },
+            'SECURITY_NOT_REGISTERED_DM': {
+                template: `📝 Your number is not registered.\n\nPlease send your *panel username* to register.`,
+                description: 'Prompt for unregistered user in DM to start registration',
+                variables: []
+            },
+            'SECURITY_BOT_DISABLED': {
+                template: `🔒 Bot is disabled for your account. Please contact admin.`,
+                description: 'Error when bot is disabled for user mapping',
+                variables: []
+            },
+            'SECURITY_ALREADY_CLAIMED': {
+                template: `❌ This order has already been claimed by another number.`,
+                description: 'Error when order is claimed by a different phone number',
+                variables: []
+            },
+            'SECURITY_CLAIM_GROUP': {
+                template: `⚠️ This order is not yet verified.\n\nPlease DM me with the same command to verify your order first.`,
+                description: 'Prompt to verify order via DM when attempting from group',
+                variables: []
+            },
+            'SECURITY_CLAIM_EMAIL': {
+                template: `📧 Please send the email you used when ordering for verification.\n\nFormat: \`verify [ORDER_ID] [EMAIL]\``,
+                description: 'Prompt for email verification to claim order',
+                variables: []
+            },
+            'SECURITY_EMAIL_UNAVAILABLE': {
+                template: `❌ Cannot verify. Email information is not available for this order.`,
+                description: 'Error when order has no customer email for verification',
+                variables: []
+            },
+            'SECURITY_EMAIL_MISMATCH': {
+                template: `❌ Email does not match order data. Please try again.`,
+                description: 'Error when provided email does not match order',
+                variables: []
+            },
+            'SECURITY_EMAIL_VERIFIED': {
+                template: `✅ Verification successful! This order is now linked to your number.`,
+                description: 'Success message after email verification',
+                variables: []
+            },
+            'SECURITY_USERNAME_UNAVAILABLE': {
+                template: `❌ Cannot verify. Username information not available for this order.`,
+                description: 'Error when order has no customer username for verification',
+                variables: []
+            },
+            'SECURITY_USERNAME_VERIFIED': {
+                template: `✅ Username verified successfully!`,
+                description: 'Success message after username verification',
+                variables: []
+            },
+            'SECURITY_USERNAME_MISMATCH': {
+                template: `❌ Username does not match our records.`,
+                description: 'Error when provided username does not match order',
+                variables: []
+            },
+            'SECURITY_SUSPENDED': {
+                template: `⛔ Your account has been suspended due to too many violations.`,
+                description: 'Error when user mapping is auto-suspended',
+                variables: []
+            },
+            'SECURITY_NOT_YOUR_ORDER': {
+                template: `❌ This order does not belong to you.`,
+                description: 'Error when order ownership verification fails',
+                variables: []
+            },
+            'SECURITY_VERIFY_ERROR': {
+                template: `⚠️ Unable to verify your account. Please try again later.`,
+                description: 'Generic error during account verification',
+                variables: []
+            },
+
+            // ==================== FONEPAY MESSAGES ====================
+            'FONEPAY_FORMAT_INVALID': {
+                template: `❌ Invalid format. Please send in the following format:\n\nTXNID: [Transaction ID]\nAmount: [Amount]\n\nExample:\nTXNID: 123456789\nAmount: 5000`,
+                description: 'Error when FonePay message format is invalid',
+                variables: []
+            },
+            'FONEPAY_NO_MAPPING': {
+                template: `❌ Your number is not linked to a panel account. Please contact support to link your WhatsApp number.`,
+                description: 'Error when WA number has no panel mapping for FonePay',
+                variables: []
+            },
+            'FONEPAY_MAPPING_SUSPENDED': {
+                template: `⚠️ Your account has been suspended. Please contact support for more information.`,
+                description: 'Error when FonePay mapping is suspended',
+                variables: []
+            },
+            'FONEPAY_PANEL_NOT_RENTAL': {
+                template: `❌ Payment verification is not available for this panel.`,
+                description: 'Error when panel is not a rental panel for FonePay',
+                variables: []
+            },
+            'FONEPAY_DISABLED': {
+                template: `❌ FonePay has not been enabled for this panel. Please contact admin.`,
+                description: 'Error when FonePay is not enabled for the panel',
+                variables: []
+            },
+            'FONEPAY_TXN_NOT_FOUND': {
+                template: `❌ Transaction not found. Please check your transaction ID.`,
+                description: 'Error when FonePay transaction ID is not found',
+                variables: []
+            },
+            'FONEPAY_AMOUNT_MISMATCH': {
+                template: `❌ The amount entered does not match the payment record.`,
+                description: 'Error when FonePay amount does not match',
+                variables: []
+            },
+            'FONEPAY_ALREADY_PROCESSED': {
+                template: `❌ This transaction has already been used.`,
+                description: 'Error when FonePay transaction was already used',
+                variables: []
+            },
+            'FONEPAY_API_TIMEOUT': {
+                template: `⏳ Verification pending. Please try again in a few minutes.`,
+                description: 'Error when FonePay API request times out',
+                variables: []
+            },
+            'FONEPAY_RATE_LIMITED': {
+                template: `⚠️ Too many verification attempts. Please wait 1 hour before trying again.`,
+                description: 'Error when FonePay verification is rate limited',
+                variables: []
+            },
+            'FONEPAY_ACKNOWLEDGED': {
+                template: `🔄 Payment request received. Verification in progress...`,
+                description: 'Acknowledgment while FonePay verification is in progress',
+                variables: []
+            },
+            'FONEPAY_SUCCESS': {
+                template: `✅ Payment verified! {currency} {amount} has been credited to your account.`,
+                description: 'Success message after FonePay payment is verified and credited',
+                variables: ['currency', 'amount']
+            },
+            'FONEPAY_CREDIT_FAILED': {
+                template: `❌ Verification passed but failed to credit funds. Admin has been notified. Please contact support.`,
+                description: 'Error when FonePay verification passed but crediting failed',
+                variables: []
+            },
+            'FONEPAY_TXN_EXPIRED': {
+                template: `❌ This transaction has expired. Please contact support.`,
+                description: 'Error when FonePay transaction has expired',
+                variables: []
+            },
+            'FONEPAY_TXN_STATUS_INVALID': {
+                template: `❌ Transaction found but status is not completed. Please try again later or contact support.`,
+                description: 'Error when FonePay transaction exists but status is not completed',
+                variables: []
+            },
+            'FONEPAY_SYSTEM_ERROR': {
+                template: `❌ A system error occurred. Please try again later.`,
+                description: 'Generic FonePay system error',
+                variables: []
+            },
+            'FONEPAY_GLOBAL_DISABLED': {
+                template: `❌ FonePay verification is currently disabled. Please contact admin.`,
+                description: 'Error when FonePay is globally disabled',
+                variables: []
+            },
+            'FONEPAY_MAPPING_DISABLED': {
+                template: `❌ Your account is currently disabled. Please contact admin to reactivate.`,
+                description: 'Error when FonePay mapping is disabled',
+                variables: []
+            },
+
+            // ==================== TELEGRAM MESSAGES ====================
+            'TELEGRAM_WELCOME': {
+                template: `👋 *Welcome, {first_name}!*\n\nI'm *{bot_name}* - your SMM order assistant.\n\n📌 *Quick Start:*\nSend your order IDs followed by a command:\n• \`123456 status\` - Check order status\n• \`123,456 refill\` - Request refill\n\nType /help for all commands.`,
+                description: 'Welcome message for /start command in Telegram',
+                variables: ['first_name', 'bot_name']
+            },
+            'TELEGRAM_HELP': {
+                template: `📚 *{bot_name} - Command Reference*\n\n*Order Commands:*\nSend order IDs followed by a command:\n\n🔄 *Refill* - Request order refill\n   \`123456 refill\` or \`123456 rf\`\n\n❌ *Cancel* - Request order cancellation\n   \`123456 cancel\` or \`123456 cn\`\n\n📊 *Status* - Check order status\n   \`123456 status\` or \`123456 st\`\n\n⚡ *Speed Up* - Speed up order processing\n   \`123456 speed\` or \`123456 sp\`\n\n*Multiple Orders:*\nUse commas or spaces to separate:\n   \`123, 456, 789 refill\`\n   \`123 456 789 status\`\n\n*Tips:*\n• Commands are case-insensitive\n• You can use short aliases (rf, cn, st, sp)\n• Results will show status for each order`,
+                description: 'Help/command reference message for /help in Telegram',
+                variables: ['bot_name']
+            },
+            'TELEGRAM_ERROR_GENERIC': {
+                template: `Sorry, an error occurred processing your message.`,
+                description: 'Generic error message when Telegram message handler fails',
+                variables: []
+            },
+            'TELEGRAM_INSUFFICIENT_BALANCE': {
+                template: `⚠️ *Insufficient Balance*\n\nYour credit balance is low ({balance}).\nPlease top up to continue using the bot.`,
+                description: 'Error when user has insufficient credit balance for Telegram',
+                variables: ['balance']
+            },
+            'TELEGRAM_PROCESSING': {
+                template: `⏳ Processing your command...`,
+                description: 'Processing indicator message shown while command is being executed',
+                variables: []
+            },
+            'TELEGRAM_COMMAND_ERROR': {
+                template: `❌ *Error processing command*\n\n{error}\n\nPlease try again or contact support.`,
+                description: 'Error message when command processing fails in Telegram',
+                variables: ['error']
             }
         };
     }

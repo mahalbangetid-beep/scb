@@ -79,7 +79,7 @@ const UserMappings = () => {
         try {
             setLoading(true);
             const params = {};
-            if (selectedPanel && selectedPanel !== 'all') {
+            if (selectedPanel && selectedPanel !== 'all' && selectedPanel !== 'orphan') {
                 params.panelId = selectedPanel;
             }
             const [mappingsRes, statsRes] = await Promise.all([
@@ -252,7 +252,14 @@ const UserMappings = () => {
         });
     };
 
+    const panelIdSet = new Set(panels.map(p => p.id));
+    const orphanMappingCount = mappings.filter(m => m.panelId && !panelIdSet.has(m.panelId)).length;
+
     const filteredMappings = mappings.filter(m => {
+        // Filter for orphan mappings (panel was deleted)
+        if (selectedPanel === 'orphan') {
+            if (!m.panelId || panelIdSet.has(m.panelId)) return false;
+        }
         if (!searchQuery) return true;
         const query = searchQuery.toLowerCase();
         return m.panelUsername?.toLowerCase().includes(query) ||
@@ -387,6 +394,20 @@ const UserMappings = () => {
                                 </div>
                             );
                         })}
+                        {orphanMappingCount > 0 && (
+                            <div
+                                className={`um-panel-item orphan-panel-item ${selectedPanel === 'orphan' ? 'selected' : ''}`}
+                                onClick={() => setSelectedPanel('orphan')}
+                            >
+                                <div className="um-panel-icon orphan-icon">
+                                    <AlertTriangle size={16} />
+                                </div>
+                                <div className="um-panel-info">
+                                    <span className="um-panel-name">Deleted Panels</span>
+                                    <span className="um-panel-count-text">{orphanMappingCount} users</span>
+                                </div>
+                            </div>
+                        )}
                     </div>
                 </div>
 
@@ -493,7 +514,9 @@ const UserMappings = () => {
                                                             <div className="email-text">{user.panelEmail}</div>
                                                         )}
                                                         {user.panelId && (
-                                                            <div className="panel-badge-sm">{getPanelName(user.panelId) || 'Panel'}</div>
+                                                            getPanelName(user.panelId)
+                                                                ? <div className="panel-badge-sm">{getPanelName(user.panelId)}</div>
+                                                                : <div className="panel-badge-sm orphan-badge">⚠️ Deleted Panel</div>
                                                         )}
                                                     </div>
                                                 </div>
@@ -1299,6 +1322,19 @@ const UserMappings = () => {
                     .form-row {
                         grid-template-columns: 1fr;
                     }
+                }
+
+                /* Orphan panel (deleted panel) styles */
+                .orphan-panel-item {
+                    border-left: 3px solid #f59e0b;
+                }
+                .orphan-icon {
+                    color: #f59e0b !important;
+                }
+                .orphan-badge {
+                    background: rgba(245, 158, 11, 0.15) !important;
+                    color: #f59e0b !important;
+                    border: 1px solid rgba(245, 158, 11, 0.3);
                 }
             `}</style>
         </div>

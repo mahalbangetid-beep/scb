@@ -53,4 +53,26 @@ router.get('/credit-packages', async (req, res, next) => {
     }
 });
 
+/**
+ * GET /api/public/head-tags
+ * Returns verification meta tags configured by admin (e.g. Cryptomus domain verification).
+ * No authentication required — these are meant to be public.
+ */
+router.get('/head-tags', async (req, res, next) => {
+    try {
+        const prisma = require('../utils/prisma');
+        const config = await prisma.systemConfig.findFirst({
+            where: { key: 'cryptomus_head_code' },
+            select: { value: true }
+        });
+
+        successResponse(res, {
+            headCode: config?.value || ''
+        });
+    } catch (error) {
+        // Fail silently — don't break page rendering
+        res.json({ success: true, data: { headCode: '' } });
+    }
+});
+
 module.exports = router;

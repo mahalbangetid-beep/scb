@@ -204,8 +204,11 @@ class BinancePayService {
             return { success: false, error: 'Binance API credentials not configured' };
         }
 
+        const cleanTxnId = transactionId.trim();
+        console.log(`[BinancePay] Verifying transaction: "${cleanTxnId}" for expected amount: ${expectedAmount}`);
+
+        // Attempt 1: Binance Pay transaction history
         try {
-            // Query Binance Pay transaction history
             const timestamp = Date.now();
             const queryParams = `timestamp=${timestamp}&recvWindow=60000`;
             const signature = this.generateSignature(queryParams, config.binanceSecret);
@@ -213,80 +216,149 @@ class BinancePayService {
             const response = await axios.get(
                 `${this.baseUrl}/sapi/v1/pay/transactions?${queryParams}&signature=${signature}`,
                 {
-                    headers: {
-                        'X-MBX-APIKEY': config.binanceApiKey
-                    },
-                    timeout: 10000
+                    headers: { 'X-MBX-APIKEY': config.binanceApiKey },
+                    timeout: 15000
                 }
             );
 
             if (response.data.code && response.data.code !== 0) {
-                console.error('[BinancePay] API Error:', response.data);
-                return {
-                    success: false,
-                    error: response.data.msg || 'Binance API error'
-                };
+                console.error('[BinancePay] Pay API Error:', response.data);
+                // Don't return immediately — try C2C fallback below
+            } else {
+                const transactions = response.data.data || [];
+                console.log(`[BinancePay] Pay API returned ${transactions.length} transactions`);
+
+                // Match with flexible comparison: trim, case-insensitive, partial match
+                const matchedTx = transactions.find(tx => {
+                    const fields = [
+                        tx.transactionId, tx.orderId, tx.orderNo,
+                        tx.tranId, tx.orderNumber
+                    ].filter(Boolean).map(f => String(f).trim().toLowerCase());
+                    return fields.includes(cleanTxnId.toLowerCase());
+                });
+
+                if (matchedTx) {
+                    console.log('[BinancePay] Matched via Pay API:', JSON.stringify(matchedTx).substring(0, 200));
+                    return this._validateMatchedTransaction(matchedTx, cleanTxnId, expectedAmount, config);
+                }
+
+                // Log first few transactions for debugging
+                if (transactions.length > 0) {
+                    console.log('[BinancePay] Sample transaction IDs:', transactions.slice(0, 3).map(tx => ({
+                        transactionId: tx.transactionId, orderId: tx.orderId, orderNo: tx.orderNo, amount: tx.amount
+                    })));
+                }
             }
-
-            // Search for matching transaction
-            const transactions = response.data.data || [];
-            const matchedTx = transactions.find(tx =>
-                tx.transactionId === transactionId ||
-                tx.orderId === transactionId ||
-                tx.orderNo === transactionId
-            );
-
-            if (!matchedTx) {
-                return {
-                    success: false,
-                    error: 'Transaction not found. Please check the Transaction ID and try again.',
-                    notFound: true
-                };
-            }
-
-            // Check if transaction status is completed
-            if (matchedTx.status !== 'SUCCESS' && matchedTx.status !== 'COMPLETED') {
-                return {
-                    success: false,
-                    error: `Transaction status: ${matchedTx.status}. Payment not completed yet.`,
-                    status: matchedTx.status
-                };
-            }
-
-            // Verify amount if expected
-            const txAmount = parseFloat(matchedTx.amount) || parseFloat(matchedTx.totalPayAmount) || 0;
-
-            if (expectedAmount && txAmount < expectedAmount) {
-                return {
-                    success: false,
-                    error: `Amount mismatch. Expected: ${expectedAmount}, Received: ${txAmount}`,
-                    amount: txAmount
-                };
-            }
-
-            // Transaction verified!
-            return {
-                success: true,
-                verified: true,
-                transactionId: matchedTx.transactionId || transactionId,
-                amount: txAmount,
-                currency: matchedTx.currency || matchedTx.asset || config.binanceCurrency,
-                status: matchedTx.status,
-                timestamp: matchedTx.transactionTime || matchedTx.createTime
-            };
-
-        } catch (error) {
-            console.error('[BinancePay] Verification error:', error.response?.data || error.message);
-
-            if (error.response?.status === 401) {
+        } catch (payError) {
+            console.warn('[BinancePay] Pay API failed:', payError.response?.data?.msg || payError.message);
+            if (payError.response?.status === 401) {
                 return { success: false, error: 'Invalid API credentials. Please check your API Key and Secret.' };
             }
+        }
 
+        // Attempt 2: C2C (P2P) trade history — some users send via P2P, not Pay
+        try {
+            const timestamp2 = Date.now();
+            const c2cParams = `timestamp=${timestamp2}&recvWindow=60000&tradeType=BUY`;
+            const c2cSignature = this.generateSignature(c2cParams, config.binanceSecret);
+
+            const c2cResponse = await axios.get(
+                `${this.baseUrl}/sapi/v1/c2c/orderMatch/listUserOrderHistory?${c2cParams}&signature=${c2cSignature}`,
+                {
+                    headers: { 'X-MBX-APIKEY': config.binanceApiKey },
+                    timeout: 15000
+                }
+            );
+
+            if (c2cResponse.data.data && Array.isArray(c2cResponse.data.data)) {
+                const c2cOrders = c2cResponse.data.data;
+                console.log(`[BinancePay] C2C API returned ${c2cOrders.length} orders`);
+
+                const matchedC2C = c2cOrders.find(order => {
+                    const fields = [
+                        order.orderNumber, order.advNo, order.tradeId
+                    ].filter(Boolean).map(f => String(f).trim().toLowerCase());
+                    return fields.includes(cleanTxnId.toLowerCase());
+                });
+
+                if (matchedC2C) {
+                    console.log('[BinancePay] Matched via C2C API:', JSON.stringify(matchedC2C).substring(0, 200));
+                    const txAmount = parseFloat(matchedC2C.totalPrice) || parseFloat(matchedC2C.amount) || 0;
+
+                    if (matchedC2C.orderStatus !== 'COMPLETED' && matchedC2C.orderStatus !== '4') {
+                        return {
+                            success: false,
+                            error: `C2C order status: ${matchedC2C.orderStatus}. Not completed yet.`,
+                            status: matchedC2C.orderStatus
+                        };
+                    }
+
+                    if (expectedAmount && txAmount < expectedAmount) {
+                        return {
+                            success: false,
+                            error: `Amount mismatch. Expected: ${expectedAmount}, Received: ${txAmount}`,
+                            amount: txAmount
+                        };
+                    }
+
+                    return {
+                        success: true, verified: true,
+                        transactionId: matchedC2C.orderNumber || cleanTxnId,
+                        amount: txAmount,
+                        currency: matchedC2C.asset || config.binanceCurrency,
+                        status: 'COMPLETED',
+                        timestamp: matchedC2C.createTime
+                    };
+                }
+            }
+        } catch (c2cError) {
+            console.warn('[BinancePay] C2C API failed (may not have permission):', c2cError.response?.data?.msg || c2cError.message);
+        }
+
+        // Both attempts failed — provide helpful error
+        console.log(`[BinancePay] Transaction "${cleanTxnId}" not found in Pay or C2C history`);
+        return {
+            success: false,
+            error: 'Transaction not found. Please ensure:\n1. The Transaction ID is correct\n2. The payment was completed\n3. Your API Key has "Binance Pay" permission enabled\n\nIf using P2P transfer, paste the Order Number from P2P history.',
+            notFound: true
+        };
+    }
+
+    /**
+     * Validate a matched Pay transaction (extracted to avoid code duplication)
+     * This is a NEW private helper — does NOT modify any existing method.
+     */
+    _validateMatchedTransaction(matchedTx, transactionId, expectedAmount, config) {
+        // Check if transaction status is completed
+        if (matchedTx.status !== 'SUCCESS' && matchedTx.status !== 'COMPLETED') {
             return {
                 success: false,
-                error: error.response?.data?.msg || error.message || 'Failed to verify transaction'
+                error: `Transaction status: ${matchedTx.status}. Payment not completed yet.`,
+                status: matchedTx.status
             };
         }
+
+        // Verify amount if expected
+        const txAmount = parseFloat(matchedTx.amount) || parseFloat(matchedTx.totalPayAmount) || 0;
+
+        if (expectedAmount && txAmount < expectedAmount) {
+            return {
+                success: false,
+                error: `Amount mismatch. Expected: ${expectedAmount}, Received: ${txAmount}`,
+                amount: txAmount
+            };
+        }
+
+        // Transaction verified!
+        return {
+            success: true,
+            verified: true,
+            transactionId: matchedTx.transactionId || transactionId,
+            amount: txAmount,
+            currency: matchedTx.currency || matchedTx.asset || config.binanceCurrency,
+            status: matchedTx.status,
+            timestamp: matchedTx.transactionTime || matchedTx.createTime
+        };
     }
 
     /**

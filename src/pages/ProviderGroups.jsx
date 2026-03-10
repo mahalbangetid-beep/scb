@@ -17,7 +17,9 @@ export default function ProviderGroups() {
         name: '',
         panelId: '',
         providerName: '', // Provider name from Admin API
+        type: 'WHATSAPP', // NEW: WHATSAPP or TELEGRAM
         deviceId: '',
+        telegramBotId: '', // NEW: Telegram bot for sending
         groupType: 'GROUP',
         groupJid: '',
         targetNumber: '',
@@ -41,6 +43,9 @@ export default function ProviderGroups() {
     const [searchTerm, setSearchTerm] = useState('')
     const [syncingProviders, setSyncingProviders] = useState(false)
 
+    // Telegram Bots state (NEW)
+    const [telegramBots, setTelegramBots] = useState([])
+
     // Service ID Rules state
     const [showRulesModal, setShowRulesModal] = useState(false)
     const [rulesGroup, setRulesGroup] = useState(null)
@@ -54,6 +59,7 @@ export default function ProviderGroups() {
         fetchGroups()
         fetchPanels()
         fetchDevices()
+        fetchTelegramBots()
     }, [])
 
     const fetchGroups = async () => {
@@ -120,6 +126,16 @@ export default function ProviderGroups() {
         }
     }
 
+    // NEW: Fetch Telegram Bots
+    const fetchTelegramBots = async () => {
+        try {
+            const res = await api.get('/telegram/bots')
+            setTelegramBots(res.data || [])
+        } catch (err) {
+            console.error('Failed to fetch Telegram bots:', err)
+        }
+    }
+
     const handleSubmit = async (e) => {
         e.preventDefault()
         setFormLoading(true)
@@ -148,7 +164,9 @@ export default function ProviderGroups() {
             name: group.groupName || group.name || '',
             panelId: group.panelId,
             providerName: group.providerName || '',
+            type: group.type || 'WHATSAPP',
             deviceId: group.deviceId || '',
+            telegramBotId: group.telegramBotId || '',
             groupType: group.groupType || 'GROUP',
             groupJid: group.groupId || group.groupJid || '',
             targetNumber: group.targetNumber || '',
@@ -206,7 +224,9 @@ export default function ProviderGroups() {
             name: '',
             panelId: '',
             providerName: '',
+            type: 'WHATSAPP',
             deviceId: '',
+            telegramBotId: '',
             groupType: 'GROUP',
             groupJid: '',
             targetNumber: '',
@@ -400,16 +420,19 @@ export default function ProviderGroups() {
                                 <div className="group-card-body">
                                     <div className="group-details">
                                         <div className="detail-item">
-                                            <span className="detail-label">Type</span>
-                                            <span className={`badge badge-${group.groupType === 'GROUP' ? 'primary' : 'secondary'}`}>
-                                                {group.groupType === 'GROUP' ? 'WhatsApp Group' : 'Direct Message'}
+                                            <span className="detail-label">Platform</span>
+                                            <span className={`badge badge-${group.type === 'TELEGRAM' ? 'info' : 'primary'}`}>
+                                                {group.type === 'TELEGRAM' ? '📨 Telegram' : '📩 WhatsApp'}
                                             </span>
                                         </div>
                                         <div className="detail-item">
-                                            <span className="detail-label">Device</span>
-                                            <span>{group.device?.name || 'Not linked'}</span>
+                                            <span className="detail-label">{group.type === 'TELEGRAM' ? 'Bot' : 'Device'}</span>
+                                            <span>{group.type === 'TELEGRAM'
+                                                ? (group.telegramBot ? `@${group.telegramBot.botUsername}` : 'Not linked')
+                                                : (group.device?.name || 'Not linked')
+                                            }</span>
                                         </div>
-                                        {group.groupType === 'DIRECT' && group.targetNumber && (
+                                        {group.type !== 'TELEGRAM' && group.groupType === 'DIRECT' && group.targetNumber && (
                                             <div className="detail-item">
                                                 <span className="detail-label">Target</span>
                                                 <span>{group.targetNumber}</span>
@@ -452,7 +475,11 @@ export default function ProviderGroups() {
                                         <button
                                             className="btn btn-secondary btn-sm"
                                             onClick={() => handleTest(group.id)}
-                                            disabled={testLoading === group.id || group.device?.status !== 'connected'}
+                                            disabled={testLoading === group.id || (
+                                                group.type === 'TELEGRAM'
+                                                    ? group.telegramBot?.status !== 'connected'
+                                                    : group.device?.status !== 'connected'
+                                            )}
                                         >
                                             {testLoading === group.id ? (
                                                 <Loader2 className="animate-spin" size={14} />
@@ -609,61 +636,142 @@ export default function ProviderGroups() {
                                         </div>
                                     </label>
                                 </div>
-                                <div className="form-row">
-                                    <div className="form-group">
-                                        <label className="form-label">WhatsApp Device</label>
-                                        <select
-                                            className="form-select"
-                                            value={formData.deviceId}
-                                            onChange={(e) => setFormData({ ...formData, deviceId: e.target.value })}
+                                {/* Platform Type Selector (NEW) */}
+                                <div className="form-group" style={{ marginBottom: 'var(--spacing-lg)' }}>
+                                    <label className="form-label">Platform *</label>
+                                    <div style={{ display: 'flex', gap: 'var(--spacing-sm)' }}>
+                                        <button
+                                            type="button"
+                                            className={`btn ${formData.type === 'WHATSAPP' ? 'btn-primary' : 'btn-secondary'}`}
+                                            onClick={() => setFormData({ ...formData, type: 'WHATSAPP', telegramBotId: '' })}
+                                            style={{ flex: 1 }}
                                         >
-                                            <option value="">Select Device</option>
-                                            {devices.map(d => (
-                                                <option key={d.id} value={d.id}>
-                                                    {d.name} ({d.status})
-                                                </option>
-                                            ))}
-                                        </select>
-                                    </div>
-                                    <div className="form-group">
-                                        <label className="form-label">Message Type *</label>
-                                        <select
-                                            className="form-select"
-                                            value={formData.groupType}
-                                            onChange={(e) => setFormData({ ...formData, groupType: e.target.value })}
+                                            📩 WhatsApp
+                                        </button>
+                                        <button
+                                            type="button"
+                                            className={`btn ${formData.type === 'TELEGRAM' ? 'btn-primary' : 'btn-secondary'}`}
+                                            onClick={() => setFormData({ ...formData, type: 'TELEGRAM', deviceId: '', groupType: 'GROUP' })}
+                                            style={{ flex: 1 }}
                                         >
-                                            <option value="GROUP">WhatsApp Group</option>
-                                            <option value="DIRECT">Direct Message</option>
-                                        </select>
+                                            📨 Telegram
+                                        </button>
                                     </div>
                                 </div>
 
-                                {formData.groupType === 'GROUP' ? (
-                                    <div className="form-group">
-                                        <label className="form-label">Group JID *</label>
-                                        <input
-                                            type="text"
-                                            className="form-input"
-                                            placeholder="e.g., 1234567890@g.us"
-                                            value={formData.groupJid}
-                                            onChange={(e) => setFormData({ ...formData, groupJid: e.target.value })}
-                                            required={formData.groupType === 'GROUP'}
-                                        />
-                                        <p className="form-hint">WhatsApp Group ID (ends with @g.us)</p>
-                                    </div>
-                                ) : (
-                                    <div className="form-group">
-                                        <label className="form-label">Target Phone Number *</label>
-                                        <input
-                                            type="text"
-                                            className="form-input"
-                                            placeholder="e.g., 6281234567890"
-                                            value={formData.targetNumber}
-                                            onChange={(e) => setFormData({ ...formData, targetNumber: e.target.value })}
-                                            required={formData.groupType === 'DIRECT'}
-                                        />
-                                        <p className="form-hint">Provider's WhatsApp number (with country code)</p>
-                                    </div>
+                                {/* ==================== WHATSAPP FIELDS ==================== */}
+                                {formData.type !== 'TELEGRAM' && (
+                                    <>
+                                        <div className="form-row">
+                                            <div className="form-group">
+                                                <label className="form-label">WhatsApp Device</label>
+                                                <select
+                                                    className="form-select"
+                                                    value={formData.deviceId}
+                                                    onChange={(e) => setFormData({ ...formData, deviceId: e.target.value })}
+                                                >
+                                                    <option value="">Select Device</option>
+                                                    {devices.map(d => (
+                                                        <option key={d.id} value={d.id}>
+                                                            {d.name} ({d.status})
+                                                        </option>
+                                                    ))}
+                                                </select>
+                                            </div>
+                                            <div className="form-group">
+                                                <label className="form-label">Message Type *</label>
+                                                <select
+                                                    className="form-select"
+                                                    value={formData.groupType}
+                                                    onChange={(e) => setFormData({ ...formData, groupType: e.target.value })}
+                                                >
+                                                    <option value="GROUP">WhatsApp Group</option>
+                                                    <option value="DIRECT">Direct Message</option>
+                                                </select>
+                                            </div>
+                                        </div>
+
+                                        {formData.groupType === 'GROUP' ? (
+                                            <div className="form-group">
+                                                <label className="form-label">Group JID *</label>
+                                                <input
+                                                    type="text"
+                                                    className="form-input"
+                                                    placeholder="e.g., 1234567890@g.us"
+                                                    value={formData.groupJid}
+                                                    onChange={(e) => setFormData({ ...formData, groupJid: e.target.value })}
+                                                    required={formData.type !== 'TELEGRAM' && formData.groupType === 'GROUP'}
+                                                />
+                                                <p className="form-hint">WhatsApp Group ID (ends with @g.us)</p>
+                                            </div>
+                                        ) : (
+                                            <div className="form-group">
+                                                <label className="form-label">Target Phone Number *</label>
+                                                <input
+                                                    type="text"
+                                                    className="form-input"
+                                                    placeholder="e.g., 6281234567890"
+                                                    value={formData.targetNumber}
+                                                    onChange={(e) => setFormData({ ...formData, targetNumber: e.target.value })}
+                                                    required={formData.type !== 'TELEGRAM' && formData.groupType === 'DIRECT'}
+                                                />
+                                                <p className="form-hint">Provider's WhatsApp number (with country code)</p>
+                                            </div>
+                                        )}
+                                    </>
+                                )}
+
+                                {/* ==================== TELEGRAM FIELDS (NEW) ==================== */}
+                                {formData.type === 'TELEGRAM' && (
+                                    <>
+                                        <div className="form-row">
+                                            <div className="form-group">
+                                                <label className="form-label">Telegram Bot *</label>
+                                                <select
+                                                    className="form-select"
+                                                    value={formData.telegramBotId}
+                                                    onChange={(e) => setFormData({ ...formData, telegramBotId: e.target.value })}
+                                                >
+                                                    <option value="">Select Telegram Bot</option>
+                                                    {telegramBots.map(bot => (
+                                                        <option key={bot.id} value={bot.id}>
+                                                            @{bot.botUsername || bot.botName} ({bot.status})
+                                                        </option>
+                                                    ))}
+                                                </select>
+                                                {telegramBots.length === 0 && (
+                                                    <p className="form-hint" style={{ color: 'var(--warning)' }}>
+                                                        No Telegram bots found. Please add a bot in the Telegram section first.
+                                                    </p>
+                                                )}
+                                            </div>
+                                        </div>
+
+                                        <div className="form-group">
+                                            <label className="form-label">Telegram Chat ID *</label>
+                                            <input
+                                                type="text"
+                                                className="form-input"
+                                                placeholder="e.g., -1001234567890"
+                                                value={formData.groupJid}
+                                                onChange={(e) => setFormData({ ...formData, groupJid: e.target.value })}
+                                                required={formData.type === 'TELEGRAM'}
+                                            />
+                                            <div style={{
+                                                marginTop: 'var(--spacing-sm)',
+                                                padding: 'var(--spacing-sm)',
+                                                background: 'rgba(0, 136, 204, 0.08)',
+                                                borderRadius: 'var(--radius-sm)',
+                                                fontSize: '0.8rem',
+                                                color: 'var(--text-secondary)'
+                                            }}>
+                                                <strong>💡 How to get Chat ID:</strong><br />
+                                                1. Add <code>@getidsbot</code> to your Telegram group<br />
+                                                2. The bot will reply with the Chat ID<br />
+                                                3. Group IDs start with <code>-100</code> (e.g., <code>-1001234567890</code>)
+                                            </div>
+                                        </div>
+                                    </>
                                 )}
 
                                 <hr style={{ margin: 'var(--spacing-lg) 0', borderColor: 'var(--border-color)' }} />

@@ -48,6 +48,7 @@ const PaymentSettings = () => {
         cryptomus_enabled: false,
         cryptomus_merchant_id: '',
         cryptomus_api_key: '',
+        cryptomus_head_code: '',
         cryptomus_countries: '*',
         cryptomus_disallowed_countries: '',
 
@@ -439,6 +440,23 @@ const PaymentSettings = () => {
                                 />
                                 <small className="form-hint">Comma-separated ISO codes. These countries will be BLOCKED even if in allowed list.</small>
                             </div>
+                        </div>
+
+                        {/* Verification Head Code */}
+                        <div className="form-group full-width" style={{ marginTop: 'var(--spacing-lg)' }}>
+                            <label><Shield size={16} /> Verification Head Code</label>
+                            <textarea
+                                rows={4}
+                                value={settings.cryptomus_head_code || ''}
+                                onChange={(e) => handleChange('cryptomus_head_code', e.target.value)}
+                                placeholder='Paste the verification code from Cryptomus here, e.g.:
+<meta name="cryptomus" content="xxxxxxxx" />'
+                                style={{ fontFamily: 'monospace', fontSize: '0.85rem' }}
+                            />
+                            <small className="form-hint">
+                                Cryptomus may require you to add a verification code in your website's {'<head>'} tag.
+                                Paste the full HTML tag here. It will automatically be injected into your site.
+                            </small>
                         </div>
                     </div>
                 )}

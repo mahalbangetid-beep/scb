@@ -26,8 +26,8 @@ export default function PanelBackupUser() {
                 api.get('/panel-backup-user?includeDeleted=true'),
                 api.get('/panel-backup-user/stats')
             ])
-            setBackups(backupsRes.data?.data || backupsRes.data || [])
-            setStats(statsRes.data?.data || null)
+            setBackups(backupsRes.data || [])
+            setStats(statsRes.data || null)
         } catch (e) {
             setError(e.response?.data?.message || e.error?.message || 'Failed to load panel backups')
         }

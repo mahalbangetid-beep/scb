@@ -54,6 +54,14 @@ router.get('/', async (req, res, next) => {
                             name: true,
                             status: true
                         }
+                    },
+                    telegramBot: {
+                        select: {
+                            id: true,
+                            botUsername: true,
+                            botName: true,
+                            status: true
+                        }
                     }
                 },
                 orderBy: { createdAt: 'desc' },
@@ -381,6 +389,7 @@ router.post('/', async (req, res, next) => {
             panelId,
             providerName,
             deviceId,
+            telegramBotId, // NEW: Telegram bot for sending
             groupType,
             type, // WHATSAPP or TELEGRAM
             groupJid,
@@ -457,6 +466,7 @@ router.post('/', async (req, res, next) => {
                 userId: req.effectiveUserId,
                 panelId: panelId || null,
                 deviceId: deviceId || null,
+                telegramBotId: telegramBotId || null,
                 providerName: provName,
                 type: platformType,
                 groupId: groupJid || targetNumber,
@@ -476,6 +486,14 @@ router.post('/', async (req, res, next) => {
                     select: {
                         id: true,
                         name: true,
+                        status: true
+                    }
+                },
+                telegramBot: {
+                    select: {
+                        id: true,
+                        botUsername: true,
+                        botName: true,
                         status: true
                     }
                 }
@@ -517,7 +535,8 @@ router.put('/:id', async (req, res, next) => {
             serviceIdRules,
             isManualServiceGroup,
             useSimpleFormat, // NEW: simple format mode
-            deviceId  // NEW: device for sending messages
+            deviceId,  // NEW: device for sending messages
+            telegramBotId // NEW: Telegram bot for sending
         } = req.body;
 
         // Build update data with correct field names from schema
@@ -527,6 +546,7 @@ router.put('/:id', async (req, res, next) => {
         if (panelId !== undefined) updateData.panelId = panelId || null;
         if (providerName !== undefined) updateData.providerName = providerName || null;
         if (deviceId !== undefined) updateData.deviceId = deviceId || null;
+        if (telegramBotId !== undefined) updateData.telegramBotId = telegramBotId || null;
         if (type) updateData.type = type;
         if (groupJid || targetNumber) updateData.groupId = groupJid || targetNumber;
         if (messageTemplate !== undefined) updateData.messageTemplate = messageTemplate;
@@ -550,6 +570,14 @@ router.put('/:id', async (req, res, next) => {
                     select: {
                         id: true,
                         name: true,
+                        status: true
+                    }
+                },
+                telegramBot: {
+                    select: {
+                        id: true,
+                        botUsername: true,
+                        botName: true,
                         status: true
                     }
                 }
@@ -628,7 +656,8 @@ router.post('/:id/test', async (req, res, next) => {
             },
             include: {
                 panel: true,
-                device: true
+                device: true,
+                telegramBot: true
             }
         });
 
@@ -636,6 +665,30 @@ router.post('/:id/test', async (req, res, next) => {
             throw new AppError('Provider group not found', 404);
         }
 
+        const testMessage = `🧪 *TEST MESSAGE*\n\nThis is a test message from DICREWA Bot.\nProvider Group: ${group.groupName}\nPanel: ${group.panel?.alias || 'N/A'}\n\nTimestamp: ${new Date().toLocaleString()}`;
+
+        // ==================== TELEGRAM TEST ====================
+        if (group.type === 'TELEGRAM') {
+            if (!group.telegramBot) {
+                throw new AppError('No Telegram bot linked to this group. Please edit the group and select a Telegram bot.', 400);
+            }
+
+            if (group.telegramBot.status !== 'connected') {
+                throw new AppError('Telegram bot is not connected. Please start the bot first.', 400);
+            }
+
+            const telegramService = require('../services/telegram');
+            await telegramService.sendMessage(group.telegramBot.id, group.groupId, testMessage, { parseMode: 'Markdown' });
+
+            return successResponse(res, {
+                success: true,
+                message: 'Test message sent via Telegram successfully',
+                target: group.groupId,
+                platform: 'TELEGRAM'
+            });
+        }
+
+        // ==================== WHATSAPP TEST (existing logic, untouched) ====================
         if (!group.device) {
             throw new AppError('No WhatsApp device linked to this group. Please edit the group and select a device.', 400);
         }
@@ -644,26 +697,13 @@ router.post('/:id/test', async (req, res, next) => {
             throw new AppError('WhatsApp device is not connected', 400);
         }
 
-        // Get WhatsApp service
         const whatsappService = req.app.get('whatsapp');
         if (!whatsappService) {
             throw new AppError('WhatsApp service not available', 500);
         }
 
-        // Send test message
-        const testMessage = `🧪 *TEST MESSAGE*
-
-This is a test message from DICREWA Bot.
-Provider Group: ${group.groupName}
-Panel: ${group.panel?.alias || 'N/A'}
-
-Timestamp: ${new Date().toLocaleString()}`;
-
-        // Use correct field names: groupId and type
-        // If groupId already contains @, use as-is. Otherwise format as phone number
         let targetJid = group.groupId;
         if (!targetJid.includes('@')) {
-            // Clean phone number (remove non-digits) and add suffix
             const cleanNumber = targetJid.replace(/\D/g, '');
             targetJid = `${cleanNumber}@s.whatsapp.net`;
         }
@@ -675,7 +715,8 @@ Timestamp: ${new Date().toLocaleString()}`;
         successResponse(res, {
             success: true,
             message: 'Test message sent successfully',
-            target: targetJid
+            target: targetJid,
+            platform: 'WHATSAPP'
         });
     } catch (error) {
         next(error);

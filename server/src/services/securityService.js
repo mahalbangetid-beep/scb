@@ -88,7 +88,7 @@ class SecurityService {
      * @param {Object} settings - User bot settings
      * @returns {Object} { allowed, message, shouldClaim }
      */
-    async checkClaimStatus(order, senderNumber, isGroup, settings) {
+    async checkClaimStatus(order, senderNumber, isGroup, settings, userId) {
         // If claim mode is disabled, allow all
         if (settings.orderClaimMode === 'disabled') {
             return { allowed: true };
@@ -101,9 +101,10 @@ class SecurityService {
                 return { allowed: true };
             } else {
                 // Someone else claimed this order
+                const responseTemplateService = require('./responseTemplateService');
                 return {
                     allowed: false,
-                    message: '❌ This order has already been claimed by another number.'
+                    message: await responseTemplateService.getResponse(userId, 'SECURITY_ALREADY_CLAIMED') || '❌ This order has already been claimed by another number.'
                 };
             }
         }
@@ -111,9 +112,10 @@ class SecurityService {
         // Order not claimed yet
         if (isGroup) {
             // In group: must claim via DM first
+            const responseTemplateService = require('./responseTemplateService');
             return {
                 allowed: false,
-                message: '⚠️ This order is not yet verified.\n\nPlease DM me with the same command to verify your order first.'
+                message: await responseTemplateService.getResponse(userId, 'SECURITY_CLAIM_GROUP') || '⚠️ This order is not yet verified.\n\nPlease DM me with the same command to verify your order first.'
             };
         }
 
@@ -127,9 +129,10 @@ class SecurityService {
 
         // Email verification mode (more complex, can be added later)
         if (settings.orderClaimMode === 'email') {
+            const responseTemplateService = require('./responseTemplateService');
             return {
                 allowed: false,
-                message: '📧 Please send the email you used when ordering for verification.\n\nFormat: `verify [ORDER_ID] [EMAIL]`'
+                message: await responseTemplateService.getResponse(userId, 'SECURITY_CLAIM_EMAIL') || '📧 Please send the email you used when ordering for verification.\n\nFormat: `verify [ORDER_ID] [EMAIL]`'
             };
         }
 
@@ -164,12 +167,13 @@ class SecurityService {
      * @param {string} email - Email to verify
      * @returns {Object} { success, message }
      */
-    async verifyEmailClaim(order, senderNumber, email) {
+    async verifyEmailClaim(order, senderNumber, email, userId = null) {
+        const responseTemplateService = require('./responseTemplateService');
         // Check if order's customer email matches
         if (!order.customerEmail) {
             return {
                 success: false,
-                message: '❌ Cannot verify. Email information is not available for this order.'
+                message: await responseTemplateService.getResponse(userId, 'SECURITY_EMAIL_UNAVAILABLE') || '❌ Cannot verify. Email information is not available for this order.'
             };
         }
 
@@ -177,7 +181,7 @@ class SecurityService {
         if (order.customerEmail.toLowerCase() !== email.toLowerCase()) {
             return {
                 success: false,
-                message: '❌ Email does not match order data. Please try again.'
+                message: await responseTemplateService.getResponse(userId, 'SECURITY_EMAIL_MISMATCH') || '❌ Email does not match order data. Please try again.'
             };
         }
 
@@ -186,7 +190,7 @@ class SecurityService {
 
         return {
             success: true,
-            message: '✅ Verification successful! This order is now linked to your number.'
+            message: await responseTemplateService.getResponse(userId, 'SECURITY_EMAIL_VERIFIED') || '✅ Verification successful! This order is now linked to your number.'
         };
     }
 
@@ -225,9 +229,12 @@ class SecurityService {
             const remainingMs = this.RATE_LIMIT_WINDOW - (now - tracker.windowStart);
             const remainingSecs = Math.ceil(remainingMs / 1000);
 
+            const responseTemplateService = require('./responseTemplateService');
             return {
                 limited: true,
-                message: `⏳ Too many commands. Please wait ${remainingSecs} seconds.`,
+                message: await responseTemplateService.getResponse(userId, 'SECURITY_RATE_LIMITED', {
+                    remaining_seconds: String(remainingSecs)
+                }) || `⏳ Too many commands. Please wait ${remainingSecs} seconds.`,
                 remainingSeconds: remainingSecs
             };
         }
@@ -264,9 +271,13 @@ class SecurityService {
             const remainingSecs = Math.ceil(remainingMs / 1000);
             const remainingMins = Math.ceil(remainingSecs / 60);
 
+            const responseTemplateService = require('./responseTemplateService');
             return {
                 limited: true,
-                message: `⏳ ${command.toUpperCase()} command for this order has already been processed.\n\nPlease wait ${remainingMins} minutes before trying again.`,
+                message: await responseTemplateService.getResponse(userId, 'SECURITY_COOLDOWN', {
+                    command: command.toUpperCase(),
+                    remaining_minutes: String(remainingMins)
+                }) || `⏳ ${command.toUpperCase()} command for this order has already been processed.\n\nPlease wait ${remainingMins} minutes before trying again.`,
                 remainingSeconds: remainingSecs
             };
         }
@@ -323,25 +334,27 @@ class SecurityService {
      * @param {Object} settings - User bot settings
      * @returns {Object} { allowed, message }
      */
-    async checkGroupSecurity(order, isGroup, settings) {
+    async checkGroupSecurity(order, isGroup, settings, userId) {
         // If not in group, always allow
         if (!isGroup) {
             return { allowed: true };
         }
+
+        const responseTemplateService = require('./responseTemplateService');
 
         // Check group security mode
         switch (settings.groupSecurityMode) {
             case 'disabled':
                 return {
                     allowed: false,
-                    message: '🔒 Group commands are disabled.\n\nPlease DM me to use commands.'
+                    message: await responseTemplateService.getResponse(userId, 'SECURITY_GROUP_DISABLED') || '🔒 Group commands are disabled.\n\nPlease DM me to use commands.'
                 };
 
             case 'verified':
                 if (!order.claimedByPhone) {
                     return {
                         allowed: false,
-                        message: '⚠️ This order is not yet verified.\n\nPlease DM me to verify your order first before using commands in groups.'
+                        message: await responseTemplateService.getResponse(userId, 'SECURITY_GROUP_NOT_VERIFIED') || '⚠️ This order is not yet verified.\n\nPlease DM me to verify your order first before using commands in groups.'
                     };
                 }
                 return { allowed: true };
@@ -362,7 +375,7 @@ class SecurityService {
      * @param {Object} settings - User bot settings
      * @returns {Object} { required, verified, message, needsVerification }
      */
-    async checkUsernameValidation(order, senderNumber, isGroup, settings) {
+    async checkUsernameValidation(order, senderNumber, isGroup, settings, userId) {
         const mode = settings.usernameValidationMode || 'disabled';
 
         // If disabled, no validation required
@@ -389,11 +402,12 @@ class SecurityService {
                     return { required: false, verified: true };
                 }
 
+                const responseTemplateService = require('./responseTemplateService');
                 return {
                     required: true,
                     verified: false,
                     needsVerification: false, // Can't verify in group
-                    message: '🔐 *Username Verification Required*\n\nPlease DM me first to verify your username before using commands in groups.'
+                    message: await responseTemplateService.getResponse(userId, 'SECURITY_GROUP_VERIFY_REQUIRED') || '🔐 *Username Verification Required*\n\nPlease DM me first to verify your username before using commands in groups.'
                 };
             }
         }
@@ -437,11 +451,12 @@ class SecurityService {
      * @param {string} providedUsername - Username provided by user
      * @returns {Object} { success, message }
      */
-    verifyUsername(order, providedUsername) {
+    async verifyUsername(order, providedUsername, userId = null) {
+        const responseTemplateService = require('./responseTemplateService');
         if (!order.customerUsername) {
             return {
                 success: false,
-                message: '❌ Cannot verify. Username information not available for this order.'
+                message: await responseTemplateService.getResponse(userId, 'SECURITY_USERNAME_UNAVAILABLE') || '❌ Cannot verify. Username information not available for this order.'
             };
         }
 
@@ -452,13 +467,13 @@ class SecurityService {
         if (expected === provided) {
             return {
                 success: true,
-                message: '✅ Username verified successfully!'
+                message: await responseTemplateService.getResponse(userId, 'SECURITY_USERNAME_VERIFIED') || '✅ Username verified successfully!'
             };
         }
 
         return {
             success: false,
-            message: '❌ Username does not match our records.'
+            message: await responseTemplateService.getResponse(userId, 'SECURITY_USERNAME_MISMATCH') || '❌ Username does not match our records.'
         };
     }
 
@@ -504,7 +519,7 @@ class SecurityService {
         }
 
         // 3. Check group security
-        const groupCheck = await this.checkGroupSecurity(order, isGroup, settings);
+        const groupCheck = await this.checkGroupSecurity(order, isGroup, settings, userId);
         if (!groupCheck.allowed) {
             return { allowed: false, message: groupCheck.message, settings };
         }
@@ -531,7 +546,7 @@ class SecurityService {
         // 5. Check claim status (only if mapping didn't verify)
         let claimCheck = { allowed: true };
         if (!mappingVerified) {
-            claimCheck = await this.checkClaimStatus(order, senderNumber, isGroup, settings);
+            claimCheck = await this.checkClaimStatus(order, senderNumber, isGroup, settings, userId);
             if (!claimCheck.allowed) {
                 return { allowed: false, message: claimCheck.message, settings };
             }
@@ -539,7 +554,7 @@ class SecurityService {
 
         // 6. Check username validation (only if mapping didn't verify)
         if (!mappingVerified) {
-            const usernameCheck = await this.checkUsernameValidation(order, senderNumber, isGroup, settings);
+            const usernameCheck = await this.checkUsernameValidation(order, senderNumber, isGroup, settings, userId);
             if (usernameCheck.required && !usernameCheck.verified) {
                 if (usernameCheck.needsVerification) {
                     // Need to start username verification flow
@@ -629,18 +644,20 @@ class SecurityService {
 
                 if (isGroup) {
                     // In group: don't trigger registration, just block
+                    const responseTemplateService = require('./responseTemplateService');
                     return {
                         allowed: false,
-                        message: '❌ Your number is not registered. Please DM the bot to register first.',
+                        message: await responseTemplateService.getResponse(userId, 'SECURITY_NOT_REGISTERED_GROUP') || '❌ Your number is not registered. Please DM the bot to register first.',
                         case: 'NOT_REGISTERED_GROUP'
                     };
                 }
 
                 // In DM: trigger registration flow
+                const responseTemplateService = require('./responseTemplateService');
                 return {
                     allowed: false,
                     needsRegistration: true,
-                    message: '📝 Your number is not registered.\n\nPlease send your *panel username* to register.',
+                    message: await responseTemplateService.getResponse(userId, 'SECURITY_NOT_REGISTERED_DM') || '📝 Your number is not registered.\n\nPlease send your *panel username* to register.',
                     case: 'NOT_REGISTERED'
                 };
             }
@@ -649,18 +666,20 @@ class SecurityService {
 
             // Check if bot is enabled for this mapping
             if (!mapping.isBotEnabled) {
+                const responseTemplateService = require('./responseTemplateService');
                 return {
                     allowed: false,
-                    message: '🔒 Bot is disabled for your account. Please contact admin.',
+                    message: await responseTemplateService.getResponse(userId, 'SECURITY_BOT_DISABLED') || '🔒 Bot is disabled for your account. Please contact admin.',
                     case: 'BOT_DISABLED'
                 };
             }
 
             // Check if mapping is suspended
             if (mapping.isAutoSuspended) {
+                const responseTemplateService = require('./responseTemplateService');
                 return {
                     allowed: false,
-                    message: '⛔ Your account has been suspended due to too many violations.',
+                    message: await responseTemplateService.getResponse(userId, 'SECURITY_SUSPENDED') || '⛔ Your account has been suspended due to too many violations.',
                     case: 'SUSPENDED'
                 };
             }
@@ -778,9 +797,10 @@ class SecurityService {
                 // ==================== CASE 2: Order doesn't belong to this user ====================
                 // Fresh data from Admin API confirms mismatch, no alternate mapping matches
                 console.log(`[Security] CASE 2: Order ${order.externalOrderId} belongs to "${orderUsername}", not "${mapping.panelUsername}" (confirmed by Admin API)`);
+                const responseTemplateService = require('./responseTemplateService');
                 return {
                     allowed: false,
-                    message: '❌ This order does not belong to you.',
+                    message: await responseTemplateService.getResponse(userId, 'SECURITY_NOT_YOUR_ORDER') || '❌ This order does not belong to you.',
                     case: 'ORDER_NOT_YOURS'
                 };
             }
@@ -823,9 +843,10 @@ class SecurityService {
             }
 
             // Mapping NOT found → identity unknown → deny (fail close)
+            const responseTemplateService = require('./responseTemplateService');
             return {
                 allowed: false,
-                message: '⚠️ Unable to verify your account. Please try again later.',
+                message: await responseTemplateService.getResponse(userId, 'SECURITY_VERIFY_ERROR') || '⚠️ Unable to verify your account. Please try again later.',
                 case: 'ERROR'
             };
         }
