@@ -23,15 +23,16 @@ const DEFAULT_TEMPLATES = {
 
 📈 *Progress*
 ▪️ Start Count: {startCount}
-▪️ Ordered: {quantity}
+▪️ Quantity: {quantity}
 ▪️ Delivered: {delivered}
 ▪️ Remaining: {remains}
+▪️ Final Quantity: {finalQuantity}
 
 💰 Charge: {charge}
 🔄 Refill: {canRefill}
 ━━━━━━━━━━━━━━━━━━`,
         description: 'Response when user checks order status (standard)',
-        variables: ['orderId', 'status', 'statusEmoji', 'serviceName', 'link', 'startCount', 'quantity', 'delivered', 'remains', 'charge', 'canRefill', 'canCancel', 'panelAlias', 'date']
+        variables: ['orderId', 'status', 'statusEmoji', 'serviceName', 'link', 'startCount', 'quantity', 'delivered', 'remains', 'finalQuantity', 'charge', 'canRefill', 'canCancel', 'panelAlias', 'date']
     },
 
     // Status command - Detailed version with provider info
@@ -50,9 +51,10 @@ const DEFAULT_TEMPLATES = {
 
 📈 *Progress*
 ▪️ Start Count: {startCount}
-▪️ Ordered: {quantity}
+▪️ Quantity: {quantity}
 ▪️ Delivered: {delivered}
 ▪️ Remaining: {remains}
+▪️ Final Quantity: {finalQuantity}
 
 💰 *Charges*
 ▪️ Amount: {charge}
@@ -66,7 +68,7 @@ const DEFAULT_TEMPLATES = {
 ▪️ External ID: {providerOrderId}
 ━━━━━━━━━━━━━━━━━━`,
         description: 'Detailed order status with provider information',
-        variables: ['orderId', 'status', 'statusEmoji', 'serviceName', 'link', 'startCount', 'quantity', 'delivered', 'remains', 'charge', 'canRefill', 'canCancel', 'providerName', 'providerOrderId', 'panelAlias', 'date', 'customerUsername']
+        variables: ['orderId', 'status', 'statusEmoji', 'serviceName', 'link', 'startCount', 'quantity', 'delivered', 'remains', 'finalQuantity', 'charge', 'canRefill', 'canCancel', 'providerName', 'providerOrderId', 'panelAlias', 'date', 'customerUsername']
     },
 
 
@@ -235,6 +237,7 @@ const TEMPLATE_VARIABLES = {
     startCount: { description: 'Start Count', example: '1000' },
     delivered: { description: 'Delivered Quantity', example: '5000' },
     remains: { description: 'Remaining Quantity', example: '0' },
+    finalQuantity: { description: 'Final Quantity (Start + Quantity - Remaining)', example: '6000' },
     charge: { description: 'Order Charge', example: '$25.00' },
     panelAlias: { description: 'Panel Alias', example: 'MyPanel' },
     customerUsername: { description: 'Customer Username', example: 'john123' },
@@ -583,6 +586,7 @@ class CommandTemplateService {
             startCount: '1000',
             delivered: '5000',
             remains: '0',
+            finalQuantity: '6000',
             charge: '$25.00',
             panelAlias: 'MyPanel',
             customerUsername: 'john123',

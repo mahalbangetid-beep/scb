@@ -369,10 +369,10 @@ class CommandParserService {
             const cleaned = part.trim();
 
             // Order IDs are typically numeric, but could have prefixes
-            // Accept alphanumeric with minimum 3 characters
-            if (cleaned && /^[a-zA-Z0-9_-]{3,50}$/.test(cleaned)) {
-                // Prefer numeric-only for SMM panels
-                if (/^\d+$/.test(cleaned) || /^[a-zA-Z0-9]+$/.test(cleaned)) {
+            // Accept alphanumeric with minimum 3 characters AND must contain at least 1 digit
+            if (cleaned && /^[a-zA-Z0-9_-]{3,50}$/.test(cleaned) && /\d/.test(cleaned)) {
+                // Prefer numeric-only for SMM panels, also accept alphanumeric with digits
+                if (/^\d+$/.test(cleaned) || /^[a-zA-Z0-9_-]+$/.test(cleaned)) {
                     orderIds.push(cleaned);
                 }
             }

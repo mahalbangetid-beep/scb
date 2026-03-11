@@ -694,7 +694,7 @@ class CommandHandlerService {
             return {
                 success: false,
                 message: securityCheck.message,
-                details: { reason: 'security_check_failed' }
+                details: { reason: 'security_check_failed', error: securityCheck.message }
             };
         }
 
@@ -1028,6 +1028,7 @@ class CommandHandlerService {
                 const responseTemplateService = require('./responseTemplateService');
                 const tpl = await responseTemplateService.getResponse(order.userId, 'REFILL_SUCCESS', {
                     order_id: orderId,
+                    service: order.serviceName || 'Unknown Service',
                     provider: forwardResult?.groupName || order.providerName || ''
                 });
                 if (tpl) message = tpl;
@@ -1163,6 +1164,23 @@ class CommandHandlerService {
 
 
         try {
+            // Check for existing PROCESSING cancel request (duplicate prevention)
+            const existingCancel = await prisma.orderCommand.findFirst({
+                where: {
+                    orderId: order.id,
+                    command: 'CANCEL',
+                    status: 'PROCESSING'
+                }
+            });
+
+            if (existingCancel) {
+                return {
+                    success: false,
+                    message: `⚠️ Order #${orderId}: This order is already in the cancel request queue.`,
+                    details: { reason: 'cooldown', status: 'PROCESSING' }
+                };
+            }
+
             // Create command record
             const commandRecord = await prisma.orderCommand.create({
                 data: {
@@ -1401,6 +1419,23 @@ class CommandHandlerService {
             // Use updated values for display
             order = { ...order, ...updatedOrder };
 
+            // Determine refill availability from Panel API + service name guarantee detection
+            let refillAvailableText = '❌ Not Available';
+            if (order.canRefill) {
+                refillAvailableText = '✅ Available';
+            } else if (order.canRefill === null || order.canRefill === undefined) {
+                // Panel API didn't set canRefill — check service name for guarantee patterns
+                try {
+                    const guaranteeService = require('./guaranteeService');
+                    const guaranteeDays = guaranteeService.extractGuaranteeDays(order.serviceName);
+                    if (guaranteeDays) {
+                        refillAvailableText = guaranteeDays === 99999
+                            ? '✅ Lifetime Guarantee'
+                            : `✅ ${guaranteeDays} Days Guarantee`;
+                    }
+                } catch (e) { /* use fallback */ }
+            }
+
             // Build template variables
             const templateVars = {
                 orderId: orderId,
@@ -1414,6 +1449,15 @@ class CommandHandlerService {
                     ? Math.max(0, order.quantity - parseInt(order.remains)).toString()
                     : '-',
                 remains: status.remains?.toString() || order.remains?.toString() || '0',
+                finalQuantity: (() => {
+                    const sc = parseInt(status.startCount ?? order.startCount);
+                    const qty = parseInt(order.quantity);
+                    const rem = parseInt(status.remains ?? order.remains);
+                    if (!isNaN(sc) && !isNaN(qty) && !isNaN(rem)) {
+                        return (sc + qty - rem).toString();
+                    }
+                    return '-';
+                })(),
                 charge: order.charge ? `$${order.charge.toFixed(2)}` : '-',
                 panelAlias: order.panel?.alias || 'Panel',
                 providerName: order.providerName || '-',
@@ -1421,7 +1465,7 @@ class CommandHandlerService {
                 customerUsername: order.customerUsername || '-',
                 date: order.createdAt ? new Date(order.createdAt).toLocaleDateString() : '-',
                 // Refill/Cancel availability
-                canRefill: order.canRefill ? '✅ Available' : '❌ Not Available',
+                canRefill: refillAvailableText,
                 canCancel: order.canCancel ? '✅ Available' : '❌ Not Available'
             };
 
@@ -1488,6 +1532,60 @@ class CommandHandlerService {
             return responses[0].message;
         }
 
+        // ==================== SPECIAL: Bulk Status — group by order status ====================
+        if (command === 'status') {
+            const successful = responses.filter(r => r.success);
+            const failed = responses.filter(r => !r.success);
+
+            let message = `📋 *Bulk Status Check*\n━━━━━━━━━━━━━━━━\n`;
+
+            // Group successful responses by their actual order status
+            if (successful.length > 0) {
+                const statusGroups = {};
+                for (const r of successful) {
+                    const orderStatus = r.details?.status || 'Unknown';
+                    if (!statusGroups[orderStatus]) {
+                        statusGroups[orderStatus] = [];
+                    }
+                    statusGroups[orderStatus].push(r.orderId);
+                }
+
+                // Display each status group
+                const statusEmojis = {
+                    'Completed': '✅', 'COMPLETED': '✅',
+                    'Cancelled': '❌', 'CANCELLED': '❌',
+                    'Partial': '⚠️', 'PARTIAL': '⚠️',
+                    'In progress': '🔄', 'IN_PROGRESS': '🔄', 'Processing': '🔄', 'PROCESSING': '🔄',
+                    'Pending': '⏳', 'PENDING': '⏳',
+                    'Refunded': '💰', 'REFUNDED': '💰',
+                    'Error': '❌', 'ERROR': '❌',
+                    'Failed': '❌', 'FAILED': '❌'
+                };
+
+                for (const [status, orderIds] of Object.entries(statusGroups)) {
+                    const emoji = statusEmojis[status] || '📦';
+                    message += `\n${emoji} *These orders status are ${status}:*\n${orderIds.join(', ')}\n`;
+                }
+            }
+
+            // Show not found orders
+            if (failed.length > 0) {
+                const notFoundOrders = failed.filter(r => r.details?.reason === 'not_found' || r.details?.reason === 'needs_registration');
+                const otherErrors = failed.filter(r => r.details?.reason !== 'not_found' && r.details?.reason !== 'needs_registration');
+
+                if (notFoundOrders.length > 0) {
+                    message += `\n❌ *These orders are not found or not belong to you:*\n${notFoundOrders.map(r => r.orderId).join(', ')}\n`;
+                }
+                if (otherErrors.length > 0) {
+                    message += `\n⚠️ *Failed to check:*\n${otherErrors.map(r => r.orderId).join(', ')}\n`;
+                }
+            }
+
+            message += `\n━━━━━━━━━━━━━━━━\nTotal: ${responses.length} | ✅ ${successful.length} | ❌ ${failed.length}`;
+            return message;
+        }
+
+        // ==================== Refill / Cancel / Speed-up bulk format (unchanged) ====================
         // Multiple orders - group by success/failure
         const successful = responses.filter(r => r.success);
         const failed = responses.filter(r => !r.success);
@@ -1661,8 +1759,11 @@ class CommandHandlerService {
 
         // ⚠️ Verification temporarily failed (API error — user should retry)
         if (verifyFailed.length > 0) {
-            const orderList = verifyFailed.map(r => r.orderId).join(', ');
-            const label = await getLabel('BULK_VERIFY_FAILED') || `⚠️ *Verification temporarily failed (please retry):*`;
+            const label = await getLabel('BULK_VERIFY_FAILED') || `⚠️ *Verification issues:*`;
+            const orderList = verifyFailed.map(r => {
+                const err = r.details?.error || 'Verification failed';
+                return `${r.orderId}: ${err}`;
+            }).join('\n');
             message += `\n${label}\n${orderList}\n`;
         }
 
