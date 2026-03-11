@@ -31,10 +31,10 @@ export default function Reports() {
                 api.get('/reports/commands'),
                 api.get('/reports/credits')
             ])
-            setDashboard(dashboardRes)
-            setOrderStats(ordersRes)
-            setCommandStats(commandsRes)
-            setCreditStats(creditsRes)
+            setDashboard(dashboardRes.data)
+            setOrderStats(ordersRes.data)
+            setCommandStats(commandsRes.data)
+            setCreditStats(creditsRes.data)
         } catch (err) {
             console.error('Failed to fetch reports:', err)
         } finally {

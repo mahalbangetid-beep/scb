@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import {
     Users, Plus, Edit3, Trash2, X, Shield, CheckCircle2,
-    Loader2, AlertCircle, Key, Settings, Search
+    Loader2, AlertCircle, Key, Settings, Search, ChevronDown
 } from 'lucide-react'
 import api from '../../services/api'
 
@@ -37,6 +37,41 @@ export default function StaffManagement() {
     const [success, setSuccess] = useState(null)
     const [actionLoading, setActionLoading] = useState(false)
     const [searchTerm, setSearchTerm] = useState('')
+    const [expandedUsers, setExpandedUsers] = useState({})
+
+    const toggleUserExpand = (userId) => {
+        setExpandedUsers(prev => ({ ...prev, [userId]: !(prev[userId] ?? true) }))
+    }
+
+    // Group staff by parent user
+    const getGroupedStaff = () => {
+        const filtered = staff.filter(m =>
+            !searchTerm ||
+            (m.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+            (m.username || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+            (m.email || '').toLowerCase().includes(searchTerm.toLowerCase())
+        )
+
+        const groups = {}
+        for (const member of filtered) {
+            // Get parent user from first permission with userId
+            const parentPerm = member.staffPermissions?.find(p => p.userId && p.user)
+            const parentKey = parentPerm ? parentPerm.userId : '__global__'
+            const parentInfo = parentPerm?.user || { id: '__global__', username: 'Global Staff', name: 'Global Staff (All Users)' }
+
+            if (!groups[parentKey]) {
+                groups[parentKey] = { user: parentInfo, staff: [] }
+            }
+            groups[parentKey].staff.push(member)
+        }
+
+        // Sort: named users first, global last
+        return Object.entries(groups).sort(([a], [b]) => {
+            if (a === '__global__') return 1
+            if (b === '__global__') return -1
+            return 0
+        })
+    }
 
     useEffect(() => {
         fetchStaff()
@@ -198,68 +233,89 @@ export default function StaffManagement() {
                             <Search size={18} />
                             <input
                                 type="text"
-                                placeholder="Search staff by name or email..."
+                                placeholder="Search staff by name, email, or parent user..."
                                 value={searchTerm}
                                 onChange={(e) => setSearchTerm(e.target.value)}
                             />
                         </div>
                     </div>
-                    <div className="staff-grid">
-                        {staff
-                            .filter(m => !searchTerm || (m.name || '').toLowerCase().includes(searchTerm.toLowerCase()) || (m.username || '').toLowerCase().includes(searchTerm.toLowerCase()) || (m.email || '').toLowerCase().includes(searchTerm.toLowerCase()))
-                            .map(member => (
-                                <div key={member.id} className="staff-card">
-                                    <div className="staff-header">
-                                        <div className="staff-avatar">
-                                            {member.name?.[0] || member.username?.[0] || 'S'}
+                    <div className="staff-grouped">
+                        {getGroupedStaff().map(([groupKey, group]) => {
+                            const isExpanded = expandedUsers[groupKey] !== false
+                            return (
+                                <div key={groupKey} className="user-group">
+                                    <div className="user-group-header" onClick={() => toggleUserExpand(groupKey)}>
+                                        <div className="user-group-left">
+                                            <div className="user-group-avatar">
+                                                {groupKey === '__global__' ? '🌐' : (group.user.name?.[0] || group.user.username?.[0] || 'U')}
+                                            </div>
+                                            <div>
+                                                <h3 className="user-group-name">{group.user.name || group.user.username}</h3>
+                                                <span className="user-group-count">{group.staff.length} staff member{group.staff.length !== 1 ? 's' : ''}</span>
+                                            </div>
                                         </div>
-                                        <div className="staff-info">
-                                            <h3>{member.name || member.username}</h3>
-                                            <p>{member.email}</p>
-                                        </div>
-                                        <div className="staff-actions">
-                                            <button
-                                                className="btn btn-ghost btn-sm"
-                                                onClick={() => openModal(member)}
-                                            >
-                                                <Edit3 size={16} />
-                                            </button>
-                                            <button
-                                                className="btn btn-ghost btn-sm text-danger"
-                                                onClick={() => handleRemoveStaff(member.id)}
-                                            >
-                                                <Trash2 size={16} />
-                                            </button>
-                                        </div>
+                                        <ChevronDown size={20} className={`user-group-chevron ${isExpanded ? 'expanded' : ''}`} />
                                     </div>
+                                    {isExpanded && (
+                                        <div className="staff-grid">
+                                            {group.staff.map(member => (
+                                                <div key={member.id} className="staff-card">
+                                                    <div className="staff-header">
+                                                        <div className="staff-avatar">
+                                                            {member.name?.[0] || member.username?.[0] || 'S'}
+                                                        </div>
+                                                        <div className="staff-info">
+                                                            <h3>{member.name || member.username}</h3>
+                                                            <p>{member.email}</p>
+                                                        </div>
+                                                        <div className="staff-actions">
+                                                            <button
+                                                                className="btn btn-ghost btn-sm"
+                                                                onClick={() => openModal(member)}
+                                                            >
+                                                                <Edit3 size={16} />
+                                                            </button>
+                                                            <button
+                                                                className="btn btn-ghost btn-sm text-danger"
+                                                                onClick={() => handleRemoveStaff(member.id)}
+                                                            >
+                                                                <Trash2 size={16} />
+                                                            </button>
+                                                        </div>
+                                                    </div>
 
-                                    <div className="staff-permissions">
-                                        <h4>Permissions ({member.staffPermissions?.length || 0})</h4>
-                                        <div className="permission-tags">
-                                            {!member.staffPermissions || member.staffPermissions.length === 0 ? (
-                                                <span className="no-permissions">No permissions assigned</span>
-                                            ) : (
-                                                member.staffPermissions?.slice(0, 4).map(p => (
-                                                    <span key={p.permission} className="permission-tag">
-                                                        {PERMISSIONS.find(perm => perm.key === p.permission)?.label || p.permission}
-                                                    </span>
-                                                ))
-                                            )}
-                                            {(member.staffPermissions?.length || 0) > 4 && (
-                                                <span className="permission-more">
-                                                    +{member.staffPermissions.length - 4} more
-                                                </span>
-                                            )}
-                                        </div>
-                                    </div>
+                                                    <div className="staff-permissions">
+                                                        <h4>Permissions ({member.staffPermissions?.length || 0})</h4>
+                                                        <div className="permission-tags">
+                                                            {!member.staffPermissions || member.staffPermissions.length === 0 ? (
+                                                                <span className="no-permissions">No permissions assigned</span>
+                                                            ) : (
+                                                                member.staffPermissions?.slice(0, 4).map(p => (
+                                                                    <span key={p.permission} className="permission-tag">
+                                                                        {PERMISSIONS.find(perm => perm.key === p.permission)?.label || p.permission}
+                                                                    </span>
+                                                                ))
+                                                            )}
+                                                            {(member.staffPermissions?.length || 0) > 4 && (
+                                                                <span className="permission-more">
+                                                                    +{member.staffPermissions.length - 4} more
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    </div>
 
-                                    <div className="staff-footer">
-                                        <span className="staff-since">
-                                            Staff since {new Date(member.createdAt).toLocaleDateString()}
-                                        </span>
-                                    </div>
+                                                    <div className="staff-footer">
+                                                        <span className="staff-since">
+                                                            Staff since {new Date(member.createdAt).toLocaleDateString()}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
                                 </div>
-                            ))}
+                            )
+                        })}
                     </div>
                 </>
             )}
@@ -373,6 +429,75 @@ export default function StaffManagement() {
             )}
 
             <style>{`
+                .staff-grouped {
+                    display: flex;
+                    flex-direction: column;
+                    gap: var(--spacing-lg);
+                }
+
+                .user-group {
+                    background: var(--bg-secondary);
+                    border: 1px solid var(--border-color);
+                    border-radius: var(--radius-lg);
+                    overflow: hidden;
+                }
+
+                .user-group-header {
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                    padding: var(--spacing-lg);
+                    cursor: pointer;
+                    transition: background 0.2s;
+                }
+
+                .user-group-header:hover {
+                    background: var(--bg-tertiary);
+                }
+
+                .user-group-left {
+                    display: flex;
+                    align-items: center;
+                    gap: var(--spacing-md);
+                }
+
+                .user-group-avatar {
+                    width: 44px;
+                    height: 44px;
+                    border-radius: 50%;
+                    background: linear-gradient(135deg, #3b82f6, #2563eb);
+                    color: white;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    font-weight: 600;
+                    font-size: 1.1rem;
+                }
+
+                .user-group-name {
+                    margin: 0;
+                    font-size: 1rem;
+                    font-weight: 600;
+                }
+
+                .user-group-count {
+                    font-size: 0.8rem;
+                    color: var(--text-secondary);
+                }
+
+                .user-group-chevron {
+                    color: var(--text-secondary);
+                    transition: transform 0.2s;
+                }
+
+                .user-group-chevron.expanded {
+                    transform: rotate(180deg);
+                }
+
+                .user-group > .staff-grid {
+                    padding: 0 var(--spacing-lg) var(--spacing-lg);
+                }
+
                 .staff-grid {
                     display: grid;
                     grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));

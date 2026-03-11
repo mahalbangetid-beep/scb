@@ -585,7 +585,15 @@ router.get('/staff', async (req, res, next) => {
                             permission: true,
                             canView: true,
                             canEdit: true,
-                            canDelete: true
+                            canDelete: true,
+                            userId: true,
+                            user: {
+                                select: {
+                                    id: true,
+                                    username: true,
+                                    name: true
+                                }
+                            }
                         }
                     }
                 },

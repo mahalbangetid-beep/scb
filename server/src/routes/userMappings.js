@@ -8,12 +8,22 @@
 const express = require('express');
 const router = express.Router();
 const userMappingService = require('../services/userMappingService');
-const { authenticate } = require('../middleware/auth');
+const { authenticate, getEffectiveUserId } = require('../middleware/auth');
 const { successResponse, createdResponse, paginatedResponse } = require('../utils/response');
 const { AppError } = require('../middleware/errorHandler');
 
 // All routes require authentication
 router.use(authenticate);
+
+// Resolve effective userId (for staff: returns owner's ID; for others: returns own ID)
+router.use(async (req, res, next) => {
+    try {
+        req.effectiveUserId = await getEffectiveUserId(req);
+        next();
+    } catch (err) {
+        next(err);
+    }
+});
 
 /**
  * GET /api/user-mappings
@@ -32,7 +42,7 @@ router.get('/', async (req, res, next) => {
         if (limit) options.limit = parseInt(limit);
         if (offset) options.offset = parseInt(offset);
 
-        const mappings = await userMappingService.getMappings(req.user.id, options);
+        const mappings = await userMappingService.getMappings(req.effectiveUserId, options);
         successResponse(res, mappings);
     } catch (error) {
         next(error);
@@ -45,7 +55,7 @@ router.get('/', async (req, res, next) => {
  */
 router.get('/stats', async (req, res, next) => {
     try {
-        const stats = await userMappingService.getStats(req.user.id);
+        const stats = await userMappingService.getStats(req.effectiveUserId);
         successResponse(res, stats);
     } catch (error) {
         next(error);
@@ -59,7 +69,7 @@ router.get('/stats', async (req, res, next) => {
  */
 router.get('/find/by-phone/:phone', async (req, res, next) => {
     try {
-        const mapping = await userMappingService.findByPhone(req.user.id, req.params.phone);
+        const mapping = await userMappingService.findByPhone(req.effectiveUserId, req.params.phone);
 
         if (!mapping) {
             successResponse(res, { found: false, mapping: null });
@@ -78,7 +88,7 @@ router.get('/find/by-phone/:phone', async (req, res, next) => {
  */
 router.get('/find/by-username/:username', async (req, res, next) => {
     try {
-        const mapping = await userMappingService.findByUsername(req.user.id, req.params.username);
+        const mapping = await userMappingService.findByUsername(req.effectiveUserId, req.params.username);
 
         if (!mapping) {
             successResponse(res, { found: false, mapping: null });
@@ -107,7 +117,7 @@ router.post('/bulk-import', async (req, res, next) => {
             throw new AppError('Maximum 100 mappings per import', 400);
         }
 
-        const results = await userMappingService.bulkImport(req.user.id, mappings);
+        const results = await userMappingService.bulkImport(req.effectiveUserId, mappings);
         successResponse(res, results, `Imported ${results.success} mappings`);
     } catch (error) {
         next(error);
@@ -135,7 +145,7 @@ router.post('/bulk-delete', async (req, res, next) => {
         const result = await prisma.userPanelMapping.deleteMany({
             where: {
                 id: { in: ids },
-                userId: req.user.id
+                userId: req.effectiveUserId
             }
         });
 
@@ -155,7 +165,7 @@ router.post('/check-sender', async (req, res, next) => {
         const { phone, isGroup, groupId } = req.body;
 
         const result = await userMappingService.checkSenderAllowed(
-            req.user.id,
+            req.effectiveUserId,
             phone,
             isGroup || false,
             groupId
@@ -174,7 +184,7 @@ router.post('/check-sender', async (req, res, next) => {
  */
 router.get('/:id', async (req, res, next) => {
     try {
-        const mapping = await userMappingService.getById(req.params.id, req.user.id);
+        const mapping = await userMappingService.getById(req.params.id, req.effectiveUserId);
 
         if (!mapping) {
             throw new AppError('Mapping not found', 404);
@@ -193,7 +203,7 @@ router.get('/:id', async (req, res, next) => {
 router.post('/', async (req, res, next) => {
     try {
         console.log('[UserMapping] Creating mapping with data:', JSON.stringify(req.body));
-        const mapping = await userMappingService.createMapping(req.user.id, req.body);
+        const mapping = await userMappingService.createMapping(req.effectiveUserId, req.body);
         createdResponse(res, userMappingService.parseMapping(mapping), 'Mapping created successfully');
     } catch (error) {
         console.error('[UserMapping] Create mapping error:', error.message, error.stack);
@@ -209,7 +219,7 @@ router.put('/:id', async (req, res, next) => {
     try {
         const mapping = await userMappingService.updateMapping(
             req.params.id,
-            req.user.id,
+            req.effectiveUserId,
             req.body
         );
         successResponse(res, mapping, 'Mapping updated successfully');
@@ -224,7 +234,7 @@ router.put('/:id', async (req, res, next) => {
  */
 router.delete('/:id', async (req, res, next) => {
     try {
-        await userMappingService.deleteMapping(req.params.id, req.user.id);
+        await userMappingService.deleteMapping(req.params.id, req.effectiveUserId);
         successResponse(res, null, 'Mapping deleted successfully');
     } catch (error) {
         next(error);
@@ -242,7 +252,7 @@ router.post('/:id/add-phone', async (req, res, next) => {
             throw new AppError('Phone number is required', 400);
         }
 
-        const mapping = await userMappingService.addPhone(req.params.id, req.user.id, phone);
+        const mapping = await userMappingService.addPhone(req.params.id, req.effectiveUserId, phone);
         successResponse(res, mapping, 'Phone number added');
     } catch (error) {
         next(error);
@@ -260,7 +270,7 @@ router.post('/:id/remove-phone', async (req, res, next) => {
             throw new AppError('Phone number is required', 400);
         }
 
-        const mapping = await userMappingService.removePhone(req.params.id, req.user.id, phone);
+        const mapping = await userMappingService.removePhone(req.params.id, req.effectiveUserId, phone);
         successResponse(res, mapping, 'Phone number removed');
     } catch (error) {
         next(error);
@@ -278,7 +288,7 @@ router.post('/:id/add-group', async (req, res, next) => {
             throw new AppError('Group ID is required', 400);
         }
 
-        const mapping = await userMappingService.addGroup(req.params.id, req.user.id, groupId);
+        const mapping = await userMappingService.addGroup(req.params.id, req.effectiveUserId, groupId);
         successResponse(res, mapping, 'Group added');
     } catch (error) {
         next(error);
@@ -296,7 +306,7 @@ router.post('/:id/remove-group', async (req, res, next) => {
             throw new AppError('Group ID is required', 400);
         }
 
-        const mapping = await userMappingService.removeGroup(req.params.id, req.user.id, groupId);
+        const mapping = await userMappingService.removeGroup(req.params.id, req.effectiveUserId, groupId);
         successResponse(res, mapping, 'Group removed');
     } catch (error) {
         next(error);
@@ -309,7 +319,7 @@ router.post('/:id/remove-group', async (req, res, next) => {
  */
 router.post('/:id/toggle-bot', async (req, res, next) => {
     try {
-        const mapping = await userMappingService.toggleBot(req.params.id, req.user.id);
+        const mapping = await userMappingService.toggleBot(req.params.id, req.effectiveUserId);
         const parsed = userMappingService.parseMapping(mapping);
         successResponse(res, parsed, `Bot ${parsed.isBotEnabled ? 'enabled' : 'disabled'}`);
     } catch (error) {
@@ -325,7 +335,7 @@ router.post('/:id/verify', async (req, res, next) => {
     try {
         const validSources = ['ADMIN', 'WHATSAPP', 'API', 'SELF', 'ORDER'];
         const verifiedBy = validSources.includes(req.body.verifiedBy) ? req.body.verifiedBy : 'ADMIN';
-        const mapping = await userMappingService.verifyMapping(req.params.id, req.user.id, verifiedBy);
+        const mapping = await userMappingService.verifyMapping(req.params.id, req.effectiveUserId, verifiedBy);
         successResponse(res, userMappingService.parseMapping(mapping), 'Mapping verified');
     } catch (error) {
         next(error);
@@ -338,7 +348,7 @@ router.post('/:id/verify', async (req, res, next) => {
  */
 router.post('/:id/unverify', async (req, res, next) => {
     try {
-        const mapping = await userMappingService.unverifyMapping(req.params.id, req.user.id);
+        const mapping = await userMappingService.unverifyMapping(req.params.id, req.effectiveUserId);
         successResponse(res, userMappingService.parseMapping(mapping), 'Verification removed');
     } catch (error) {
         next(error);
@@ -352,7 +362,7 @@ router.post('/:id/unverify', async (req, res, next) => {
 router.post('/:id/suspend', async (req, res, next) => {
     try {
         const { reason } = req.body;
-        const mapping = await userMappingService.suspendMapping(req.params.id, req.user.id, reason);
+        const mapping = await userMappingService.suspendMapping(req.params.id, req.effectiveUserId, reason);
         successResponse(res, userMappingService.parseMapping(mapping), 'User suspended');
     } catch (error) {
         next(error);
@@ -365,7 +375,7 @@ router.post('/:id/suspend', async (req, res, next) => {
  */
 router.post('/:id/unsuspend', async (req, res, next) => {
     try {
-        const mapping = await userMappingService.unsuspendMapping(req.params.id, req.user.id);
+        const mapping = await userMappingService.unsuspendMapping(req.params.id, req.effectiveUserId);
         const parsed = userMappingService.parseMapping(mapping);
 
         // Also clear in-memory spam ban so user is truly unblocked immediately
@@ -373,7 +383,7 @@ router.post('/:id/unsuspend', async (req, res, next) => {
             const botMessageHandler = require('../services/botMessageHandler');
             const phones = parsed.whatsappNumbers || [];
             for (const phone of phones) {
-                botMessageHandler.unbanUser(req.user.id, phone);
+                botMessageHandler.unbanUser(req.effectiveUserId, phone);
             }
         } catch (e) {
             // Non-critical — DB unsuspend already succeeded
