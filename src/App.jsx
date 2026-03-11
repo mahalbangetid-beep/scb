@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom'
+import { Menu } from 'lucide-react'
 import { ThemeProvider } from './contexts/ThemeContext'
 import Sidebar from './components/Sidebar'
 import ImpersonationBanner from './components/ImpersonationBanner'
@@ -162,6 +163,7 @@ const AdminRoute = ({ children }) => {
 
 function AppContent() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const location = useLocation();
   const token = localStorage.getItem('token');
 
@@ -201,10 +203,39 @@ function AppContent() {
     setSidebarCollapsed(!sidebarCollapsed)
   }
 
+  // Auto-close mobile menu on route change
+  useEffect(() => {
+    setMobileMenuOpen(false);
+  }, [location.pathname]);
+
   return (
     <div className="app-layout">
       <ImpersonationBanner />
-      {showSidebar && <Sidebar collapsed={sidebarCollapsed} onToggle={toggleSidebar} />}
+      {/* Mobile hamburger button — hidden on desktop via CSS */}
+      {showSidebar && (
+        <button
+          className="mobile-menu-btn"
+          onClick={() => setMobileMenuOpen(true)}
+          aria-label="Open menu"
+        >
+          <Menu size={20} />
+        </button>
+      )}
+      {/* Mobile overlay — hidden on desktop via CSS */}
+      {showSidebar && (
+        <div
+          className={`mobile-overlay ${mobileMenuOpen ? 'active' : ''}`}
+          onClick={() => setMobileMenuOpen(false)}
+        />
+      )}
+      {showSidebar && (
+        <Sidebar
+          collapsed={sidebarCollapsed}
+          onToggle={toggleSidebar}
+          mobileOpen={mobileMenuOpen}
+          onMobileClose={() => setMobileMenuOpen(false)}
+        />
+      )}
       <main className={`main-content ${sidebarCollapsed ? 'collapsed' : ''} ${!showSidebar ? 'full-width' : ''}`}>
         <Routes>
           {/* Public Routes */}

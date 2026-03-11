@@ -172,7 +172,7 @@ function ThemeToggle({ collapsed }) {
     );
 }
 
-export default function Sidebar({ collapsed, onToggle }) {
+export default function Sidebar({ collapsed, onToggle, mobileOpen = false, onMobileClose }) {
     const location = useLocation()
     const navigate = useNavigate()
     const userStr = localStorage.getItem('user')
@@ -227,7 +227,7 @@ export default function Sidebar({ collapsed, onToggle }) {
     }
 
     return (
-        <aside className={`sidebar ${collapsed ? 'collapsed' : ''}`}>
+        <aside className={`sidebar ${collapsed ? 'collapsed' : ''} ${mobileOpen ? 'mobile-open' : ''}`}>
             <div className="sidebar-header">
                 <div className="sidebar-logo">
                     <MessageCircle />
