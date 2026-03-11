@@ -324,6 +324,10 @@ class WhatsAppService {
                 // Skip status messages
                 if (msg.key.remoteJid === 'status@broadcast') continue;
 
+                // Skip WhatsApp Channel/Newsletter messages — bot should never reply to channels
+                // Channels use @newsletter JID suffix and are broadcast-only
+                if (msg.key.remoteJid?.endsWith('@newsletter') || msg.key.remoteJid?.endsWith('@broadcast')) continue;
+
                 // Skip messages from self if it's a reaction/edit
                 if (msg.message?.protocolMessage) continue;
 

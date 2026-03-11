@@ -48,6 +48,14 @@ class BotMessageHandler {
 
         console.log(`[BotHandler] Processing message from ${senderNumber}${panelId ? ` (Panel: ${panel?.alias || panel?.name || panelId})` : ''}: ${message.substring(0, 50)}...`);
 
+        // ==================== CHANNEL/NEWSLETTER SKIP ====================
+        // WhatsApp Channels (newsletters) are broadcast-only — bot must never reply
+        // This is a safety layer in addition to the whatsapp.js filter
+        if (groupJid && (groupJid.endsWith('@newsletter') || groupJid.endsWith('@broadcast'))) {
+            console.log(`[BotHandler] Skipping Channel/Newsletter message: ${groupJid}`);
+            return { handled: false, type: 'channel_skipped' };
+        }
+
         // ==================== AUTO-CAPTURE WHATSAPP NAME (Section 10) ====================
         // Fire-and-forget: capture sender's WhatsApp display name for User Mapping
         if (senderName && senderNumber && platform === 'WHATSAPP') {
