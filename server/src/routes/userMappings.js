@@ -366,7 +366,21 @@ router.post('/:id/suspend', async (req, res, next) => {
 router.post('/:id/unsuspend', async (req, res, next) => {
     try {
         const mapping = await userMappingService.unsuspendMapping(req.params.id, req.user.id);
-        successResponse(res, userMappingService.parseMapping(mapping), 'User unsuspended');
+        const parsed = userMappingService.parseMapping(mapping);
+
+        // Also clear in-memory spam ban so user is truly unblocked immediately
+        try {
+            const botMessageHandler = require('../services/botMessageHandler');
+            const phones = parsed.whatsappNumbers || [];
+            for (const phone of phones) {
+                botMessageHandler.unbanUser(req.user.id, phone);
+            }
+        } catch (e) {
+            // Non-critical — DB unsuspend already succeeded
+            console.error('[UserMapping] Failed to clear in-memory ban:', e.message);
+        }
+
+        successResponse(res, parsed, 'User unsuspended');
     } catch (error) {
         next(error);
     }

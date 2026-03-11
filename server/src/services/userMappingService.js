@@ -154,7 +154,9 @@ class UserMappingService {
                 { panelEmail: { contains: options.search, mode: 'insensitive' } },
                 { whatsappNumbers: { contains: options.search } },
                 { telegramId: { contains: options.search, mode: 'insensitive' } },
-                { whatsappName: { contains: options.search, mode: 'insensitive' } }
+                { whatsappName: { contains: options.search, mode: 'insensitive' } },
+                { groupIds: { contains: options.search } },
+                { panelUserId: { contains: options.search, mode: 'insensitive' } }
             ];
         }
 
@@ -170,15 +172,28 @@ class UserMappingService {
             where.isAutoSuspended = options.isAutoSuspended;
         }
 
-        const mappings = await prisma.userPanelMapping.findMany({
-            where,
-            orderBy: options.orderBy || { createdAt: 'desc' },
-            take: options.limit || 100,
-            skip: options.offset || 0
-        });
+        const pageSize = options.limit || 50;
+        const offset = options.offset || 0;
+
+        // Run data query + count query in parallel for performance
+        const [mappings, total] = await Promise.all([
+            prisma.userPanelMapping.findMany({
+                where,
+                orderBy: options.orderBy || { createdAt: 'desc' },
+                take: pageSize,
+                skip: offset
+            }),
+            prisma.userPanelMapping.count({ where })
+        ]);
 
         // Parse JSON fields
-        return mappings.map(m => this.parseMapping(m));
+        return {
+            mappings: mappings.map(m => this.parseMapping(m)),
+            total,
+            page: Math.floor(offset / pageSize) + 1,
+            pageSize,
+            totalPages: Math.ceil(total / pageSize)
+        };
     }
 
     /**

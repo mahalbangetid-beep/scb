@@ -1411,6 +1411,25 @@ class BotMessageHandler {
             }
         }
     }
+
+    /**
+     * Manually unban a user — clear in-memory spam disable + tracker
+     * Called by admin unsuspend action to fully lift all bans
+     * @param {string} userId - Device owner's user ID
+     * @param {string} senderNumber - The banned user's phone number
+     */
+    unbanUser(userId, senderNumber) {
+        const key = `${userId}:${senderNumber}`;
+        const wasDisabled = this._disabledUsers.has(key);
+        const wasTracked = this._spamTracker.has(key);
+
+        this._disabledUsers.delete(key);
+        this._spamTracker.delete(key);
+
+        if (wasDisabled || wasTracked) {
+            console.log(`[BotHandler] Admin unban: cleared spam state for ${senderNumber} (owner: ${userId})`);
+        }
+    }
 }
 
 module.exports = new BotMessageHandler();

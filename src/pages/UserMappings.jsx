@@ -14,6 +14,13 @@ const UserMappings = () => {
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
 
+    // Pagination
+    const [currentPage, setCurrentPage] = useState(1);
+    const [totalItems, setTotalItems] = useState(0);
+    const [totalPages, setTotalPages] = useState(1);
+    const PAGE_SIZE = 50;
+    const searchTimerRef = useRef(null);
+
     // Bulk select
     const [selectedIds, setSelectedIds] = useState(new Set());
     const [bulkDeleting, setBulkDeleting] = useState(false);
@@ -63,8 +70,26 @@ const UserMappings = () => {
             isFirstMount.current = false;
             return;
         }
-        fetchData();
+        setCurrentPage(1);
+        fetchData(1, searchQuery);
     }, [selectedPanel]);
+
+    // Server-side search with debounce
+    const handleSearchChange = (value) => {
+        setSearchQuery(value);
+        if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
+        searchTimerRef.current = setTimeout(() => {
+            setCurrentPage(1);
+            fetchData(1, value);
+        }, 400);
+    };
+
+    const handleClearSearch = () => {
+        setSearchQuery('');
+        if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
+        setCurrentPage(1);
+        fetchData(1, '');
+    };
 
     const fetchPanels = async () => {
         try {
@@ -75,10 +100,16 @@ const UserMappings = () => {
         }
     };
 
-    const fetchData = async () => {
+    const fetchData = async (page = currentPage, search = searchQuery) => {
         try {
             setLoading(true);
-            const params = {};
+            const params = {
+                limit: PAGE_SIZE,
+                offset: (page - 1) * PAGE_SIZE
+            };
+            if (search && search.trim()) {
+                params.search = search.trim();
+            }
             if (selectedPanel && selectedPanel !== 'all' && selectedPanel !== 'orphan') {
                 params.panelId = selectedPanel;
             }
@@ -86,9 +117,13 @@ const UserMappings = () => {
                 api.get('/user-mappings', { params }),
                 api.get('/user-mappings/stats')
             ]);
-            const mappingsData = mappingsRes.data || [];
+            // New format: { mappings: [...], total, page, pageSize, totalPages }
+            const resData = mappingsRes.data || {};
+            const mappingsData = resData.mappings || (Array.isArray(resData) ? resData : []);
             const statsData = statsRes.data;
             setMappings(Array.isArray(mappingsData) ? mappingsData : []);
+            setTotalItems(resData.total || mappingsData.length);
+            setTotalPages(resData.totalPages || 1);
             setStats(statsData);
         } catch (err) {
             setError('Failed to load user mappings');
@@ -255,20 +290,10 @@ const UserMappings = () => {
     const panelIdSet = new Set(panels.map(p => p.id));
     const orphanMappingCount = mappings.filter(m => m.panelId && !panelIdSet.has(m.panelId)).length;
 
-    const filteredMappings = mappings.filter(m => {
-        // Filter for orphan mappings (panel was deleted)
-        if (selectedPanel === 'orphan') {
-            if (!m.panelId || panelIdSet.has(m.panelId)) return false;
-        }
-        if (!searchQuery) return true;
-        const query = searchQuery.toLowerCase();
-        return m.panelUsername?.toLowerCase().includes(query) ||
-            m.panelEmail?.toLowerCase().includes(query) ||
-            m.whatsappName?.toLowerCase().includes(query) ||
-            m.telegramId?.toLowerCase().includes(query) ||
-            m.whatsappNumbers?.some(n => n.includes(query)) ||
-            m.groupIds?.some(g => g.toLowerCase().includes(query));
-    });
+    // Server-side search is active — only do local filtering for orphan panel view
+    const filteredMappings = selectedPanel === 'orphan'
+        ? mappings.filter(m => m.panelId && !panelIdSet.has(m.panelId))
+        : mappings;
 
     const getPanelName = (panelId) => {
         if (!panelId) return null;
@@ -413,17 +438,22 @@ const UserMappings = () => {
 
                 {/* Main Content - Search + Table */}
                 <div className="um-main-content">
-                    {/* Search Bar */}
+                    {/* Search Bar — server-side search with debounce */}
                     <div className="search-bar" style={{ marginBottom: '1rem' }}>
                         <Search size={18} />
                         <input
                             type="text"
-                            placeholder="Search username, phone, telegram, group..."
+                            placeholder="Search username, phone, email, group ID, telegram..."
                             value={searchQuery}
-                            onChange={(e) => setSearchQuery(e.target.value)}
+                            onChange={(e) => handleSearchChange(e.target.value)}
                         />
                         {searchQuery && (
-                            <button className="search-clear" onClick={() => setSearchQuery('')}><X size={14} /></button>
+                            <button className="search-clear" onClick={handleClearSearch}><X size={14} /></button>
+                        )}
+                        {totalItems > 0 && (
+                            <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginLeft: 'auto', whiteSpace: 'nowrap' }}>
+                                {totalItems} users found
+                            </span>
                         )}
                     </div>
 
@@ -621,6 +651,52 @@ const UserMappings = () => {
                             </table>
                         )}
                     </div>
+
+                    {/* Pagination Controls */}
+                    {totalPages > 1 && (
+                        <div className="pagination-controls" style={{
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            gap: '0.5rem', padding: '1rem 0', marginTop: '0.5rem'
+                        }}>
+                            <button
+                                className="btn btn-secondary btn-sm"
+                                disabled={currentPage <= 1}
+                                onClick={() => { setCurrentPage(currentPage - 1); fetchData(currentPage - 1); }}
+                            >
+                                ← Previous
+                            </button>
+                            {(() => {
+                                const pages = [];
+                                const start = Math.max(1, currentPage - 2);
+                                const end = Math.min(totalPages, currentPage + 2);
+                                if (start > 1) pages.push(<span key="start-dots" style={{ color: 'var(--text-muted)' }}>...</span>);
+                                for (let i = start; i <= end; i++) {
+                                    pages.push(
+                                        <button
+                                            key={i}
+                                            className={`btn btn-sm ${i === currentPage ? 'btn-primary' : 'btn-secondary'}`}
+                                            onClick={() => { setCurrentPage(i); fetchData(i); }}
+                                            style={{ minWidth: '36px' }}
+                                        >
+                                            {i}
+                                        </button>
+                                    );
+                                }
+                                if (end < totalPages) pages.push(<span key="end-dots" style={{ color: 'var(--text-muted)' }}>...</span>);
+                                return pages;
+                            })()}
+                            <button
+                                className="btn btn-secondary btn-sm"
+                                disabled={currentPage >= totalPages}
+                                onClick={() => { setCurrentPage(currentPage + 1); fetchData(currentPage + 1); }}
+                            >
+                                Next →
+                            </button>
+                            <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginLeft: '0.5rem' }}>
+                                Page {currentPage} of {totalPages}
+                            </span>
+                        </div>
+                    )}
                 </div>
             </div>
 
