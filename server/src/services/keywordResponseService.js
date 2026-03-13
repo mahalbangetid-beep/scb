@@ -250,33 +250,45 @@ class KeywordResponseService {
 
     /**
      * Check if message matches keyword rule
+     * Supports comma-separated keywords: "payment, fund" matches if ANY keyword matches
      * @param {string} message - Message to check
      * @param {Object} rule - Keyword response rule
      * @returns {boolean}
      */
     matchKeyword(message, rule) {
-        const keyword = rule.caseSensitive ? rule.keyword : rule.keyword.toLowerCase();
         const content = rule.caseSensitive ? message : message.toLowerCase();
 
-        switch (rule.matchType) {
-            case 'EXACT':
-                return content === keyword;
-
-            case 'CONTAINS':
-                return content.includes(keyword);
-
-            case 'STARTS_WITH':
-                return content.startsWith(keyword);
-
-            case 'ENDS_WITH':
-                return content.endsWith(keyword);
-
-            case 'REGEX':
-                return safeRegexTest(rule.keyword, message, rule.caseSensitive ? '' : 'i');
-
-            default:
-                return content.includes(keyword);
+        // REGEX mode: do NOT split by comma (comma can be part of regex pattern)
+        if (rule.matchType === 'REGEX') {
+            return safeRegexTest(rule.keyword, message, rule.caseSensitive ? '' : 'i');
         }
+
+        // Split keyword by comma for multi-keyword support
+        // If no comma exists, keywords array will have 1 element (same behavior as before)
+        const keywords = rule.keyword.split(',')
+            .map(k => k.trim())
+            .filter(k => k.length > 0)
+            .map(k => rule.caseSensitive ? k : k.toLowerCase());
+
+        // Match if ANY keyword matches
+        return keywords.some(keyword => {
+            switch (rule.matchType) {
+                case 'EXACT':
+                    return content === keyword;
+
+                case 'CONTAINS':
+                    return content.includes(keyword);
+
+                case 'STARTS_WITH':
+                    return content.startsWith(keyword);
+
+                case 'ENDS_WITH':
+                    return content.endsWith(keyword);
+
+                default:
+                    return content.includes(keyword);
+            }
+        });
     }
 
     /**

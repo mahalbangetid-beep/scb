@@ -671,6 +671,9 @@ const KeywordResponses = () => {
                                         placeholder="e.g. price, help, order"
                                         required
                                     />
+                                    {formData.matchType !== 'REGEX' && (
+                                        <span className="form-hint">Use commas to separate multiple keywords. Any match will trigger the response.</span>
+                                    )}
                                 </div>
 
                                 <div className="form-row">
