@@ -61,7 +61,7 @@ export default function SeoSettings() {
             await fetchPages()
         } catch (err) {
             console.error('Failed to save SEO settings:', err)
-            alert('Failed to save: ' + (err.message || 'Unknown error'))
+            alert('Failed to save: ' + (err?.error?.message || err?.message || 'Unknown error'))
         } finally {
             setSaving(false)
         }
@@ -77,7 +77,7 @@ export default function SeoSettings() {
             await fetchPages()
         } catch (err) {
             console.error('Failed to add page:', err)
-            alert('Failed to add: ' + (err.message || 'Unknown error'))
+            alert('Failed to add: ' + (err?.error?.message || err?.message || 'Unknown error'))
         } finally {
             setSaving(false)
         }
@@ -103,9 +103,12 @@ export default function SeoSettings() {
     }
 
     const addKeyword = () => {
-        const keyword = keywordInput.trim()
-        if (keyword && !form.metaKeywords.includes(keyword)) {
-            setForm({ ...form, metaKeywords: [...form.metaKeywords, keyword] })
+        // Split by comma to support pasting multiple keywords at once
+        const newKeywords = keywordInput.split(',')
+            .map(k => k.trim())
+            .filter(k => k.length > 0 && !form.metaKeywords.includes(k))
+        if (newKeywords.length > 0) {
+            setForm({ ...form, metaKeywords: [...form.metaKeywords, ...newKeywords] })
         }
         setKeywordInput('')
     }
@@ -118,6 +121,21 @@ export default function SeoSettings() {
         if (e.key === 'Enter' || e.key === ',') {
             e.preventDefault()
             addKeyword()
+        }
+    }
+
+    const handleKeywordPaste = (e) => {
+        const pastedText = e.clipboardData.getData('text')
+        // If pasted text contains commas, handle it ourselves
+        if (pastedText.includes(',')) {
+            e.preventDefault()
+            const newKeywords = pastedText.split(',')
+                .map(k => k.trim())
+                .filter(k => k.length > 0 && !form.metaKeywords.includes(k))
+            if (newKeywords.length > 0) {
+                setForm({ ...form, metaKeywords: [...form.metaKeywords, ...newKeywords] })
+            }
+            setKeywordInput('')
         }
     }
 
@@ -249,7 +267,8 @@ export default function SeoSettings() {
                                     ))}
                                     <input type="text" className="seo-kw-input" placeholder="Type and press Enter..."
                                         value={keywordInput} onChange={e => setKeywordInput(e.target.value)}
-                                        onKeyDown={handleKeywordKeyDown} onBlur={addKeyword} />
+                                        onKeyDown={handleKeywordKeyDown} onBlur={addKeyword}
+                                        onPaste={handleKeywordPaste} />
                                 </div>
                             </div>
 
