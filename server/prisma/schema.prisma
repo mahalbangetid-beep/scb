@@ -2087,9 +2087,19 @@ model MarketingInterval {
   groupJid    String   // WhatsApp group JID
   groupName   String?  // Display name for the group (cached)
 
-  // Trigger settings
-  interval     Int      // Send marketing message every X messages
-  messageCount Int      @default(0) // Current counter (resets after trigger)
+  // Schedule type
+  scheduleType String  @default("counter") // "counter" = every X messages, "time" = every X minutes
+
+  // Counter-mode settings
+  interval     Int      @default(50) // Send marketing message every X messages (counter mode)
+  messageCount Int      @default(0)  // Current counter (resets after trigger)
+
+  // Time-mode settings
+  timeInterval  Int?      // Minutes between sends (time mode)
+  repeatCount   Int?      // Max number of sends (null = unlimited)
+  repeatsDone   Int       @default(0) // How many times already sent
+  scheduledAt   DateTime? // When to start sending (null = immediately)
+  nextRunAt     DateTime? // When the next send is scheduled
 
   // Marketing content
   message      String   // Marketing message text to send
@@ -2105,10 +2115,25 @@ model MarketingInterval {
 
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
   device Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  logs   MarketingIntervalLog[]
 
   @@unique([userId, deviceId, groupJid]) // One rule per device+group per user
   @@index([userId])
   @@index([deviceId, groupJid, isActive])
+  @@index([scheduleType, isActive, nextRunAt]) // For scheduler queries
+}
+
+model MarketingIntervalLog {
+  id            String   @id @default(cuid())
+  intervalId    String
+  groupJid      String
+  status        String   // "sent", "failed"
+  errorMessage  String?
+  createdAt     DateTime @default(now())
+
+  interval MarketingInterval @relation(fields: [intervalId], references: [id], onDelete: Cascade)
+
+  @@index([intervalId])
 }
 
 // ==================== SEO SETTINGS ====================

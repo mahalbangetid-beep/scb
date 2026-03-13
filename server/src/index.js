@@ -344,6 +344,11 @@ httpServer.listen(PORT, async () => {
     startScheduler(whatsappService);
     console.log('[Server] Broadcast Scheduler initialized');
 
+    // Start Marketing Interval Scheduler (time-based auto-send)
+    const marketingIntervalScheduler = require('./services/marketingIntervalScheduler');
+    marketingIntervalScheduler.start(whatsappService);
+    console.log('[Server] Marketing Interval Scheduler initialized');
+
     // Initialize Subscription Scheduler (auto-renewal cron)
     const subscriptionScheduler = require('./services/subscriptionScheduler');
     subscriptionScheduler.initialize();

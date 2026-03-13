@@ -3,7 +3,7 @@ import {
     Megaphone, Plus, Search, Trash2, Edit3, Power, PowerOff,
     RefreshCw, Loader2, AlertTriangle, CheckCircle, X,
     Smartphone, Users, MessageCircle, RotateCcw, Hash,
-    Clock, Zap, Image
+    Clock, Zap, Image, Calendar, Repeat, Timer, FileText
 } from 'lucide-react'
 import api from '../services/api'
 
@@ -12,22 +12,35 @@ const STATUS_STYLES = {
     paused: { bg: 'rgba(251, 146, 60, 0.1)', color: '#fb923c' }
 }
 
+const MODE_STYLES = {
+    counter: { bg: 'rgba(59, 130, 246, 0.1)', color: '#3b82f6', label: 'Counter' },
+    time: { bg: 'rgba(168, 85, 247, 0.1)', color: '#a855f7', label: 'Time-Based' }
+}
+
 export default function MarketingIntervals() {
     const [intervals, setIntervals] = useState([])
     const [devices, setDevices] = useState([])
     const [loading, setLoading] = useState(true)
     const [showModal, setShowModal] = useState(false)
+    const [showLogsModal, setShowLogsModal] = useState(null)
+    const [logs, setLogs] = useState([])
+    const [logsLoading, setLogsLoading] = useState(false)
     const [editing, setEditing] = useState(null)
     const [error, setError] = useState(null)
     const [success, setSuccess] = useState(null)
     const [actionLoading, setActionLoading] = useState(null)
     const [searchTerm, setSearchTerm] = useState('')
+    const [filterType, setFilterType] = useState('all') // 'all', 'counter', 'time'
 
     const [formData, setFormData] = useState({
         deviceId: '',
         groupJid: '',
         groupName: '',
+        scheduleType: 'counter',
         interval: 50,
+        timeInterval: 30,
+        repeatCount: '',
+        scheduledAt: '',
         message: '',
         mediaUrl: ''
     })
@@ -53,15 +66,30 @@ export default function MarketingIntervals() {
     const fetchData = async () => {
         try {
             setLoading(true)
-            const [intervalsRes, devicesRes] = await Promise.all([
-                api.get('/marketing-intervals'),
-                api.get('/devices')
-            ])
-            setIntervals(intervalsRes.data || [])
-            const devList = devicesRes.data || []
-            setDevices(Array.isArray(devList) ? devList : [])
-        } catch (err) {
-            setError(err.message || 'Failed to load data')
+            setError(null)
+
+            // Fetch independently so one failure doesn't block the other
+            let intervalsData = []
+            let devicesData = []
+
+            try {
+                const intervalsRes = await api.get('/marketing-intervals')
+                intervalsData = intervalsRes.data || []
+            } catch (err) {
+                console.error('Failed to fetch marketing intervals:', err)
+                setError(err?.error?.message || err?.message || 'Failed to load marketing intervals')
+            }
+
+            try {
+                const devicesRes = await api.get('/devices')
+                const devList = devicesRes.data || []
+                devicesData = Array.isArray(devList) ? devList : []
+            } catch (err) {
+                console.error('Failed to fetch devices:', err)
+            }
+
+            setIntervals(intervalsData)
+            setDevices(devicesData)
         } finally {
             setLoading(false)
         }
@@ -74,7 +102,11 @@ export default function MarketingIntervals() {
                 deviceId: item.deviceId,
                 groupJid: item.groupJid,
                 groupName: item.groupName || '',
-                interval: item.interval,
+                scheduleType: item.scheduleType || 'counter',
+                interval: item.interval || 50,
+                timeInterval: item.timeInterval || 30,
+                repeatCount: item.repeatCount || '',
+                scheduledAt: item.scheduledAt ? new Date(item.scheduledAt).toISOString().slice(0, 16) : '',
                 message: item.message,
                 mediaUrl: item.mediaUrl || ''
             })
@@ -84,7 +116,11 @@ export default function MarketingIntervals() {
                 deviceId: '',
                 groupJid: '',
                 groupName: '',
+                scheduleType: 'counter',
                 interval: 50,
+                timeInterval: 30,
+                repeatCount: '',
+                scheduledAt: '',
                 message: '',
                 mediaUrl: ''
             })
@@ -101,11 +137,20 @@ export default function MarketingIntervals() {
         try {
             const payload = {
                 ...formData,
-                interval: parseInt(formData.interval)
+                interval: parseInt(formData.interval),
+                timeInterval: parseInt(formData.timeInterval),
+                repeatCount: formData.repeatCount ? parseInt(formData.repeatCount) : null,
+                scheduledAt: formData.scheduledAt || null
             }
 
-            if (isNaN(payload.interval) || payload.interval < 1) {
-                throw new Error('Interval must be a valid number (minimum 1)')
+            if (payload.scheduleType === 'counter') {
+                if (isNaN(payload.interval) || payload.interval < 1) {
+                    throw new Error('Interval must be a valid number (minimum 1)')
+                }
+            } else {
+                if (isNaN(payload.timeInterval) || payload.timeInterval < 1) {
+                    throw new Error('Time interval must be a valid number (minimum 1 minute)')
+                }
             }
 
             if (editing) {
@@ -168,15 +213,38 @@ export default function MarketingIntervals() {
         }
     }
 
-    const filtered = intervals.filter(i =>
-        !searchTerm ||
-        i.groupName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        i.groupJid?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        i.device?.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        i.message?.toLowerCase().includes(searchTerm.toLowerCase())
-    )
+    const openLogs = async (item) => {
+        setShowLogsModal(item)
+        setLogsLoading(true)
+        try {
+            const res = await api.get(`/marketing-intervals/${item.id}/logs?limit=50`)
+            setLogs(res.data?.logs || [])
+        } catch (err) {
+            setError(err.error?.message || err.message || 'Failed to load logs')
+        } finally {
+            setLogsLoading(false)
+        }
+    }
+
+    const filtered = intervals.filter(i => {
+        if (filterType !== 'all' && (i.scheduleType || 'counter') !== filterType) return false
+        if (!searchTerm) return true
+        return (
+            i.groupName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            i.groupJid?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            i.device?.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            i.message?.toLowerCase().includes(searchTerm.toLowerCase())
+        )
+    })
 
     const formatDate = (d) => d ? new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'Never'
+
+    const formatMinutes = (mins) => {
+        if (!mins) return '—'
+        if (mins < 60) return `${mins}m`
+        if (mins < 1440) return `${Math.floor(mins / 60)}h ${mins % 60}m`
+        return `${Math.floor(mins / 1440)}d ${Math.floor((mins % 1440) / 60)}h`
+    }
 
     if (loading) {
         return (
@@ -194,7 +262,7 @@ export default function MarketingIntervals() {
             <div className="page-header">
                 <div>
                     <h1 className="page-title">Marketing Intervals</h1>
-                    <p className="page-subtitle">Auto-send marketing messages after every X group messages</p>
+                    <p className="page-subtitle">Auto-send marketing messages (counter-based or time-based scheduling)</p>
                 </div>
                 <div className="header-actions">
                     <button className="btn btn-secondary" onClick={fetchData} disabled={loading}>
@@ -225,7 +293,7 @@ export default function MarketingIntervals() {
             )}
 
             {/* Stats */}
-            <div className="stats-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>
+            <div className="stats-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>
                 <div className="stat-card">
                     <div className="stat-label"><Megaphone size={14} /> Total Rules</div>
                     <div className="stat-value">{intervals.length}</div>
@@ -235,15 +303,44 @@ export default function MarketingIntervals() {
                     <div className="stat-value" style={{ color: '#22c55e' }}>{intervals.filter(i => i.isActive).length}</div>
                 </div>
                 <div className="stat-card">
+                    <div className="stat-label"><Hash size={14} /> Counter</div>
+                    <div className="stat-value" style={{ color: '#3b82f6' }}>{intervals.filter(i => (i.scheduleType || 'counter') === 'counter').length}</div>
+                </div>
+                <div className="stat-card">
+                    <div className="stat-label"><Timer size={14} /> Time-Based</div>
+                    <div className="stat-value" style={{ color: '#a855f7' }}>{intervals.filter(i => i.scheduleType === 'time').length}</div>
+                </div>
+                <div className="stat-card">
                     <div className="stat-label"><Hash size={14} /> Total Triggers</div>
                     <div className="stat-value">{intervals.reduce((sum, i) => sum + (i.triggerCount || 0), 0)}</div>
                 </div>
             </div>
 
-            {/* Search */}
+            {/* Filter + Search */}
             {intervals.length > 0 && (
-                <div style={{ marginBottom: '1rem' }}>
-                    <div style={{ position: 'relative' }}>
+                <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
+                    <div style={{ display: 'flex', gap: '0.25rem', background: 'var(--bg-secondary)', borderRadius: '8px', padding: '0.25rem' }}>
+                        {['all', 'counter', 'time'].map(f => (
+                            <button
+                                key={f}
+                                onClick={() => setFilterType(f)}
+                                style={{
+                                    padding: '0.35rem 0.75rem',
+                                    fontSize: '0.75rem',
+                                    fontWeight: 600,
+                                    borderRadius: '6px',
+                                    border: 'none',
+                                    cursor: 'pointer',
+                                    background: filterType === f ? 'var(--primary)' : 'transparent',
+                                    color: filterType === f ? '#fff' : 'var(--text-muted)',
+                                    transition: 'all 0.15s ease'
+                                }}
+                            >
+                                {f === 'all' ? 'All' : f === 'counter' ? '🔢 Counter' : '⏱️ Time'}
+                            </button>
+                        ))}
+                    </div>
+                    <div style={{ position: 'relative', flex: 1, minWidth: '200px' }}>
                         <Search size={16} style={{ position: 'absolute', left: '0.75rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
                         <input
                             type="text"
@@ -266,8 +363,8 @@ export default function MarketingIntervals() {
                     </h3>
                     <p style={{ fontSize: '0.875rem', marginBottom: '1.5rem' }}>
                         {intervals.length === 0
-                            ? 'Create a marketing interval to auto-send messages after every X group messages'
-                            : 'Try a different search term'
+                            ? 'Create a marketing interval — counter-based or time-based scheduling'
+                            : 'Try a different search term or filter'
                         }
                     </p>
                     {intervals.length === 0 && (
@@ -280,7 +377,10 @@ export default function MarketingIntervals() {
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
                     {filtered.map(item => {
                         const statusStyle = item.isActive ? STATUS_STYLES.active : STATUS_STYLES.paused
-                        const progressPct = item.interval > 0 ? Math.min((item.messageCount / item.interval) * 100, 100) : 0
+                        const modeStyle = MODE_STYLES[item.scheduleType || 'counter'] || MODE_STYLES.counter
+                        const isCounter = (item.scheduleType || 'counter') === 'counter'
+                        const progressPct = isCounter && item.interval > 0 ? Math.min((item.messageCount / item.interval) * 100, 100) : 0
+                        const timeProgressPct = !isCounter && item.repeatCount ? Math.min((item.repeatsDone / item.repeatCount) * 100, 100) : 0
 
                         return (
                             <div key={item.id} style={{
@@ -290,18 +390,29 @@ export default function MarketingIntervals() {
                                 padding: '1rem 1.25rem',
                                 transition: 'border-color 0.2s ease'
                             }}>
-                                {/* Top row: status, group, device */}
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.75rem', flexWrap: 'wrap' }}>
+                                {/* Top row: status, mode, group, device */}
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem', flexWrap: 'wrap' }}>
                                     <span style={{
-                                        fontSize: '0.7rem',
+                                        fontSize: '0.65rem',
                                         fontWeight: 600,
-                                        padding: '0.2rem 0.5rem',
+                                        padding: '0.15rem 0.45rem',
                                         borderRadius: '4px',
                                         background: statusStyle.bg,
                                         color: statusStyle.color,
                                         textTransform: 'uppercase'
                                     }}>
                                         {item.isActive ? 'Active' : 'Paused'}
+                                    </span>
+                                    <span style={{
+                                        fontSize: '0.65rem',
+                                        fontWeight: 600,
+                                        padding: '0.15rem 0.45rem',
+                                        borderRadius: '4px',
+                                        background: modeStyle.bg,
+                                        color: modeStyle.color,
+                                        textTransform: 'uppercase'
+                                    }}>
+                                        {isCounter ? '🔢 Counter' : '⏱️ Time'}
                                     </span>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)' }}>
                                         <Users size={14} />
@@ -336,14 +447,29 @@ export default function MarketingIntervals() {
                                 {/* Progress bar */}
                                 <div style={{ marginBottom: '0.75rem' }}>
                                     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.25rem', fontSize: '0.75rem' }}>
-                                        <span style={{ color: 'var(--text-muted)' }}>
-                                            <MessageCircle size={12} style={{ verticalAlign: 'middle', marginRight: '0.25rem' }} />
-                                            {item.messageCount} / {item.interval} messages
-                                        </span>
-                                        <span style={{ color: 'var(--text-muted)' }}>
-                                            <Clock size={12} style={{ verticalAlign: 'middle', marginRight: '0.25rem' }} />
-                                            Last triggered: {formatDate(item.lastTriggeredAt)}
-                                        </span>
+                                        {isCounter ? (
+                                            <>
+                                                <span style={{ color: 'var(--text-muted)' }}>
+                                                    <MessageCircle size={12} style={{ verticalAlign: 'middle', marginRight: '0.25rem' }} />
+                                                    {item.messageCount} / {item.interval} messages
+                                                </span>
+                                                <span style={{ color: 'var(--text-muted)' }}>
+                                                    <Clock size={12} style={{ verticalAlign: 'middle', marginRight: '0.25rem' }} />
+                                                    Last triggered: {formatDate(item.lastTriggeredAt)}
+                                                </span>
+                                            </>
+                                        ) : (
+                                            <>
+                                                <span style={{ color: 'var(--text-muted)' }}>
+                                                    <Timer size={12} style={{ verticalAlign: 'middle', marginRight: '0.25rem' }} />
+                                                    Every {formatMinutes(item.timeInterval)} • {item.repeatsDone}/{item.repeatCount || '∞'} sent
+                                                </span>
+                                                <span style={{ color: 'var(--text-muted)' }}>
+                                                    <Calendar size={12} style={{ verticalAlign: 'middle', marginRight: '0.25rem' }} />
+                                                    Next: {item.nextRunAt ? formatDate(item.nextRunAt) : 'N/A'}
+                                                </span>
+                                            </>
+                                        )}
                                     </div>
                                     <div style={{
                                         height: '6px',
@@ -353,8 +479,10 @@ export default function MarketingIntervals() {
                                     }}>
                                         <div style={{
                                             height: '100%',
-                                            width: `${progressPct}%`,
-                                            background: progressPct >= 80 ? '#22c55e' : 'var(--primary)',
+                                            width: `${isCounter ? progressPct : timeProgressPct}%`,
+                                            background: isCounter
+                                                ? (progressPct >= 80 ? '#22c55e' : 'var(--primary)')
+                                                : (timeProgressPct >= 80 ? '#22c55e' : '#a855f7'),
                                             borderRadius: '3px',
                                             transition: 'width 0.3s ease'
                                         }} />
@@ -365,8 +493,20 @@ export default function MarketingIntervals() {
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                     <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
                                         Triggered {item.triggerCount || 0}x total
+                                        {(item._count?.logs > 0) && ` • ${item._count.logs} log(s)`}
                                     </span>
                                     <div style={{ display: 'flex', gap: '0.375rem' }}>
+                                        {/* Logs button (only for time-based or if has logs) */}
+                                        {(item.scheduleType === 'time' || (item._count?.logs > 0)) && (
+                                            <button
+                                                className="btn btn-ghost btn-sm"
+                                                onClick={() => openLogs(item)}
+                                                title="View logs"
+                                                style={{ fontSize: '0.75rem', padding: '0.3rem 0.5rem' }}
+                                            >
+                                                <FileText size={13} />
+                                            </button>
+                                        )}
                                         <button
                                             className="btn btn-ghost btn-sm"
                                             onClick={() => handleReset(item.id)}
@@ -412,14 +552,52 @@ export default function MarketingIntervals() {
 
             {/* Create/Edit Modal */}
             {showModal && (
-                <div className="modal-overlay" onClick={() => setShowModal(false)}>
-                    <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '520px' }}>
+                <div className="modal-overlay open" onClick={() => setShowModal(false)}>
+                    <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '560px' }}>
                         <div className="modal-header">
                             <h3>{editing ? 'Edit Marketing Interval' : 'New Marketing Interval'}</h3>
-                            <button className="modal-close" onClick={() => setShowModal(false)}><X size={20} /></button>
+                            <button className="btn btn-ghost btn-icon" onClick={() => setShowModal(false)}><X size={20} /></button>
                         </div>
                         <form onSubmit={handleSubmit}>
                             <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+
+                                {/* Schedule Type Selector (only for new) */}
+                                {!editing && (
+                                    <div>
+                                        <label className="form-label">Schedule Type *</label>
+                                        <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                            <button
+                                                type="button"
+                                                onClick={() => setFormData(p => ({ ...p, scheduleType: 'counter' }))}
+                                                style={{
+                                                    flex: 1, padding: '0.75rem', borderRadius: '8px', cursor: 'pointer',
+                                                    border: `2px solid ${formData.scheduleType === 'counter' ? '#3b82f6' : 'var(--border-color)'}`,
+                                                    background: formData.scheduleType === 'counter' ? 'rgba(59,130,246,0.1)' : 'var(--bg-primary)',
+                                                    color: 'var(--text-primary)', textAlign: 'center', transition: 'all 0.15s ease'
+                                                }}
+                                            >
+                                                <Hash size={20} style={{ margin: '0 auto 0.25rem', display: 'block', color: '#3b82f6' }} />
+                                                <div style={{ fontSize: '0.85rem', fontWeight: 600 }}>Counter Mode</div>
+                                                <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Send after every X messages</div>
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => setFormData(p => ({ ...p, scheduleType: 'time' }))}
+                                                style={{
+                                                    flex: 1, padding: '0.75rem', borderRadius: '8px', cursor: 'pointer',
+                                                    border: `2px solid ${formData.scheduleType === 'time' ? '#a855f7' : 'var(--border-color)'}`,
+                                                    background: formData.scheduleType === 'time' ? 'rgba(168,85,247,0.1)' : 'var(--bg-primary)',
+                                                    color: 'var(--text-primary)', textAlign: 'center', transition: 'all 0.15s ease'
+                                                }}
+                                            >
+                                                <Timer size={20} style={{ margin: '0 auto 0.25rem', display: 'block', color: '#a855f7' }} />
+                                                <div style={{ fontSize: '0.85rem', fontWeight: 600 }}>Time-Based</div>
+                                                <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Send every X minutes</div>
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
+
                                 {/* Device selector */}
                                 <div>
                                     <label className="form-label">WhatsApp Device *</label>
@@ -466,22 +644,71 @@ export default function MarketingIntervals() {
                                     />
                                 </div>
 
-                                {/* Interval */}
-                                <div>
-                                    <label className="form-label">Interval (every X messages) *</label>
-                                    <input
-                                        type="number"
-                                        className="form-input"
-                                        min="1"
-                                        max="10000"
-                                        value={formData.interval}
-                                        onChange={e => setFormData(p => ({ ...p, interval: e.target.value }))}
-                                        required
-                                    />
-                                    <small style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}>
-                                        Marketing message will be sent after every {formData.interval || '...'} messages in the group
-                                    </small>
-                                </div>
+                                {/* Mode-specific fields */}
+                                {(formData.scheduleType || 'counter') === 'counter' ? (
+                                    /* COUNTER MODE */
+                                    <div>
+                                        <label className="form-label">Interval (every X messages) *</label>
+                                        <input
+                                            type="number"
+                                            className="form-input"
+                                            min="1"
+                                            max="10000"
+                                            value={formData.interval}
+                                            onChange={e => setFormData(p => ({ ...p, interval: e.target.value }))}
+                                            required
+                                        />
+                                        <small style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}>
+                                            Marketing message will be sent after every {formData.interval || '...'} messages in the group
+                                        </small>
+                                    </div>
+                                ) : (
+                                    /* TIME-BASED MODE */
+                                    <>
+                                        <div>
+                                            <label className="form-label"><Timer size={13} style={{ verticalAlign: 'middle' }} /> Time Interval (minutes) *</label>
+                                            <input
+                                                type="number"
+                                                className="form-input"
+                                                min="1"
+                                                max="43200"
+                                                value={formData.timeInterval}
+                                                onChange={e => setFormData(p => ({ ...p, timeInterval: e.target.value }))}
+                                                required
+                                            />
+                                            <small style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}>
+                                                Message will be sent every {formatMinutes(parseInt(formData.timeInterval) || 0)}
+                                            </small>
+                                        </div>
+                                        <div>
+                                            <label className="form-label"><Repeat size={13} style={{ verticalAlign: 'middle' }} /> Repeat Count (optional)</label>
+                                            <input
+                                                type="number"
+                                                className="form-input"
+                                                min="1"
+                                                max="10000"
+                                                placeholder="Leave empty for unlimited"
+                                                value={formData.repeatCount}
+                                                onChange={e => setFormData(p => ({ ...p, repeatCount: e.target.value }))}
+                                            />
+                                            <small style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}>
+                                                {formData.repeatCount ? `Will send ${formData.repeatCount} times then stop` : 'Will keep sending until paused'}
+                                            </small>
+                                        </div>
+                                        <div>
+                                            <label className="form-label"><Calendar size={13} style={{ verticalAlign: 'middle' }} /> Start Time (optional)</label>
+                                            <input
+                                                type="datetime-local"
+                                                className="form-input"
+                                                value={formData.scheduledAt}
+                                                onChange={e => setFormData(p => ({ ...p, scheduledAt: e.target.value }))}
+                                            />
+                                            <small style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}>
+                                                {formData.scheduledAt ? `First send at ${new Date(formData.scheduledAt).toLocaleString()}` : 'Will start immediately after creation'}
+                                            </small>
+                                        </div>
+                                    </>
+                                )}
 
                                 {/* Message */}
                                 <div>
@@ -524,6 +751,57 @@ export default function MarketingIntervals() {
                                 </button>
                             </div>
                         </form>
+                    </div>
+                </div>
+            )}
+
+            {/* Logs Modal */}
+            {showLogsModal && (
+                <div className="modal-overlay open" onClick={() => setShowLogsModal(null)}>
+                    <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '560px' }}>
+                        <div className="modal-header">
+                            <h3>Sending Logs — {showLogsModal.groupName || showLogsModal.groupJid}</h3>
+                            <button className="btn btn-ghost btn-icon" onClick={() => setShowLogsModal(null)}><X size={20} /></button>
+                        </div>
+                        <div className="modal-body" style={{ maxHeight: '400px', overflowY: 'auto' }}>
+                            {logsLoading ? (
+                                <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>
+                                    <Loader2 size={24} className="animate-spin" style={{ margin: '0 auto 0.5rem' }} />
+                                    <p>Loading logs...</p>
+                                </div>
+                            ) : logs.length === 0 ? (
+                                <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>
+                                    <FileText size={32} style={{ opacity: 0.3, margin: '0 auto 0.5rem' }} />
+                                    <p>No sending logs yet</p>
+                                </div>
+                            ) : (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                                    {logs.map(log => (
+                                        <div key={log.id} style={{
+                                            display: 'flex', alignItems: 'center', gap: '0.75rem',
+                                            padding: '0.5rem 0.75rem',
+                                            background: 'var(--bg-tertiary, var(--bg-primary))',
+                                            borderRadius: '6px',
+                                            fontSize: '0.8rem'
+                                        }}>
+                                            <span style={{
+                                                width: '8px', height: '8px', borderRadius: '50%', flexShrink: 0,
+                                                background: log.status === 'sent' ? '#22c55e' : '#ef4444'
+                                            }} />
+                                            <span style={{ flex: 1, color: 'var(--text-primary)' }}>
+                                                {log.status === 'sent' ? 'Sent' : `Failed: ${log.errorMessage || 'Unknown error'}`}
+                                            </span>
+                                            <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+                                                {formatDate(log.createdAt)}
+                                            </span>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                        <div className="modal-footer">
+                            <button className="btn btn-ghost" onClick={() => setShowLogsModal(null)}>Close</button>
+                        </div>
                     </div>
                 </div>
             )}

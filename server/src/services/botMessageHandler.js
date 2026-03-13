@@ -1211,7 +1211,8 @@ class BotMessageHandler {
                 deviceId,
                 userId,
                 groupJid,
-                isActive: true
+                isActive: true,
+                scheduleType: 'counter' // Only counter-mode intervals
             },
             data: {
                 messageCount: { increment: 1 }
@@ -1227,7 +1228,8 @@ class BotMessageHandler {
                 deviceId,
                 userId,
                 groupJid,
-                isActive: true
+                isActive: true,
+                scheduleType: 'counter' // Only counter-mode intervals
             }
         });
 
