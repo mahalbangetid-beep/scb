@@ -59,6 +59,8 @@ import AdminDashboard from './pages/admin/AdminDashboard'
 import EmailSettings from './pages/admin/EmailSettings'
 import FonepayManagement from './pages/admin/FonepayManagement'
 import DefaultCharges from './pages/admin/DefaultCharges'
+import SeoSettings from './pages/admin/SeoSettings'
+import useSeoMeta from './hooks/useSeoMeta'
 import './index.css'
 
 
@@ -166,6 +168,9 @@ function AppContent() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const location = useLocation();
   const token = localStorage.getItem('token');
+
+  // Apply SEO meta tags based on current route
+  useSeoMeta();
 
   // Hide sidebar on login, register, and landing pages
   const isAuthPage = ['/login', '/register', '/'].includes(location.pathname);
@@ -297,6 +302,7 @@ function AppContent() {
           <Route path="/admin/email-settings" element={<AdminRoute><EmailSettings /></AdminRoute>} />
           <Route path="/admin/fonepay" element={<AdminRoute><FonepayManagement /></AdminRoute>} />
           <Route path="/admin/charges" element={<AdminRoute><DefaultCharges /></AdminRoute>} />
+          <Route path="/admin/seo-settings" element={<AdminRoute><SeoSettings /></AdminRoute>} />
 
           {/* Catch all */}
           <Route path="*" element={<Navigate to="/" replace />} />

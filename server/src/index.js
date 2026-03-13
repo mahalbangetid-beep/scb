@@ -232,6 +232,7 @@ app.use('/api/panel-backup-user', require('./routes/panelBackupUser'));
 
 // ===== PUBLIC ROUTES (No Authentication) =====
 app.use('/api/public', require('./routes/publicCreditPackages'));
+app.use('/api/seo', require('./routes/seoSettings'));
 
 // Socket.IO authentication middleware
 const jwt = require('jsonwebtoken');
@@ -300,6 +301,9 @@ io.on('connection', (socket) => {
         socket.leave(`device:${deviceId}`);
     });
 });
+
+// SPA serve — production only (injects verification meta tags into raw HTML for crawlers)
+app.use(require('./middleware/spaServe')());
 
 // Error handling
 app.use(notFound);

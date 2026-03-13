@@ -2103,3 +2103,19 @@ model MarketingInterval {
   @@index([userId])
   @@index([deviceId, groupJid, isActive])
 }
+
+// ==================== SEO SETTINGS ====================
+
+model SeoSetting {
+  id              String   @id @default(cuid())
+  pageSlug        String   @unique // e.g. "home", "login", "services", "orders"
+  pageName        String   // Display name e.g. "Home Page", "Login"
+  pageTitle       String?  // Browser tab title / Google title
+  metaKeywords    Json?    // Array of keyword strings
+  metaDescription String?  // Google description
+  metaRobots      String?  // e.g. "index, follow"
+  customHeader    String?  // Custom HTML/script in <head>
+  isVisible       Boolean  @default(true) // Page visibility status
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}

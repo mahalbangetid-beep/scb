@@ -114,6 +114,7 @@ const adminNavigation = [
     { name: 'Email Settings', icon: Mail, path: '/admin/email-settings' },
     { name: 'Default Charges', icon: CreditCard, path: '/admin/charges' },
     { name: 'System Settings', icon: Settings, path: '/admin/settings' },
+    { name: 'SEO Settings', icon: Globe, path: '/admin/seo-settings' },
 ]
 
 // Staff navigation - map permissions to pages
