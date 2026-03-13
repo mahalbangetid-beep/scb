@@ -41,6 +41,10 @@ router.get('/balance', async (req, res, next) => {
             dollarBalance: balances.dollarBalance,
             messageCredits: balances.messageCredits,
             creditsPerMessage: balances.creditsPerMessage,
+            // Categorical balances
+            supportCredits: balances.supportCredits,
+            whatsappCredits: balances.whatsappCredits,
+            telegramCredits: balances.telegramCredits,
             // Helper calculations
             canSendMessages: Math.floor(balances.messageCredits / balances.creditsPerMessage),
             todayUsage: 0 // Will be populated if tracking is added

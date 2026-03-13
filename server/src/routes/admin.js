@@ -1184,6 +1184,9 @@ router.get('/charges', requireMasterAdmin, async (req, res, next) => {
                 low_balance_threshold: pricingMap.low_balance_threshold ?? 5.00,
                 default_user_credit: pricingMap.default_user_credit ?? 0,
                 free_signup_credits: pricingMap.free_signup_credits ?? 100,
+                free_signup_support_credits: pricingMap.free_signup_support_credits ?? pricingMap.free_signup_credits ?? 100,
+                free_signup_whatsapp_credits: pricingMap.free_signup_whatsapp_credits ?? 0,
+                free_signup_telegram_credits: pricingMap.free_signup_telegram_credits ?? 0,
             }
         };
 

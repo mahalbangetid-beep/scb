@@ -457,7 +457,8 @@ async function processBroadcast(whatsapp, broadcastId, deviceId, message, mediaU
                     await messageCreditService.deductCredits(
                         userId, totalCharge,
                         `Broadcast: ${broadcast.name} (${chargeCategory})`,
-                        broadcastId
+                        broadcastId,
+                        'whatsapp_marketing'
                     );
                     console.log(`[Broadcast] Charged ${totalCharge} credits for ${sent} messages (${chargeCategory})`);
                 }
@@ -572,7 +573,7 @@ async function processTelegramBroadcast(broadcastId, telegramBotId, message, med
                 const rate = await marketingService.getChargeRate(userId, chargeCategory);
                 const totalCharge = sent * rate;
                 if (totalCharge > 0) {
-                    await messageCreditService.deductCredits(userId, totalCharge, `Telegram Broadcast: ${broadcast.name}`, broadcastId);
+                    await messageCreditService.deductCredits(userId, totalCharge, `Telegram Broadcast: ${broadcast.name}`, broadcastId, 'telegram_marketing');
                 }
             } catch (e) {
                 console.warn('[Broadcast/TG] Failed to charge credits:', e.message);

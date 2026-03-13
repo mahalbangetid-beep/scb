@@ -289,6 +289,7 @@ class BotMessageHandler {
                 username: true,
                 creditBalance: true,
                 messageCredits: true,
+                supportCredits: true,
                 customWaRate: true,
                 customTgRate: true,
                 customGroupRate: true,
@@ -616,7 +617,7 @@ class BotMessageHandler {
                 // Charge credit for keyword response
                 const kwUser = await prisma.user.findUnique({
                     where: { id: userId },
-                    select: { messageCredits: true, creditBalance: true, role: true, customWaRate: true, customTgRate: true, customGroupRate: true, discountRate: true, customCreditRate: true }
+                    select: { messageCredits: true, supportCredits: true, creditBalance: true, role: true, customWaRate: true, customTgRate: true, customGroupRate: true, discountRate: true, customCreditRate: true }
                 });
 
                 let kwCreditResult = { charged: false };
@@ -831,7 +832,7 @@ class BotMessageHandler {
             if (isCreditsMode) {
                 // CREDITS MODE: Check message credits
                 const creditsPerMessage = user.customCreditRate || 1;
-                const userCredits = user.messageCredits || 0;
+                const userCredits = user.supportCredits || user.messageCredits || 0;
 
                 if (userCredits < creditsPerMessage) {
                     console.log(`[BotHandler] Insufficient message credits for ${userId} (has: ${userCredits}, needs: ${creditsPerMessage})`);
@@ -1061,7 +1062,7 @@ class BotMessageHandler {
                 // Charge credit for response
                 const user = await prisma.user.findUnique({
                     where: { id: userId },
-                    select: { messageCredits: true, creditBalance: true, role: true, customWaRate: true, customTgRate: true, customGroupRate: true, discountRate: true, customCreditRate: true }
+                    select: { messageCredits: true, supportCredits: true, creditBalance: true, role: true, customWaRate: true, customTgRate: true, customGroupRate: true, discountRate: true, customCreditRate: true }
                 });
 
                 let creditResult = { charged: false };

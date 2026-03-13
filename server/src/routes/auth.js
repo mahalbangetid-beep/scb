@@ -161,8 +161,14 @@ router.post('/register', authLimiter, async (req, res, next) => {
                 primaryPanelUrl: validatedPanelUrl,
                 primaryPanelKey: encryptedPanelKey,
                 creditBalance: defaultCredit,
-                messageCredits: 0, // Will be added via messageCreditService
+                messageCredits: 0, // LEGACY: Will be synced by messageCreditService
+                supportCredits: 0,
+                whatsappCredits: 0,
+                telegramCredits: 0,
                 freeCreditsGiven: false,
+                freeSupportGiven: false,
+                freeWhatsappGiven: false,
+                freeTelegramGiven: false,
                 registrationIp
             },
             select: {
@@ -176,6 +182,9 @@ router.post('/register', authLimiter, async (req, res, next) => {
                 telegramUsername: true,
                 creditBalance: true,
                 messageCredits: true,
+                supportCredits: true,
+                whatsappCredits: true,
+                telegramCredits: true,
                 createdAt: true
             }
         });
@@ -329,6 +338,9 @@ router.post('/login', authLimiter, async (req, res, next) => {
                 status: user.status,
                 creditBalance: user.creditBalance,
                 messageCredits: user.messageCredits || 0,
+                supportCredits: user.supportCredits || 0,
+                whatsappCredits: user.whatsappCredits || 0,
+                telegramCredits: user.telegramCredits || 0,
                 whatsappNumber: user.whatsappNumber,
                 telegramUsername: user.telegramUsername,
                 ...(user.role === 'STAFF' && user.staffPermissions ? {
@@ -362,6 +374,9 @@ router.get('/me', authenticate, async (req, res, next) => {
                 primaryPanelUrl: true,
                 creditBalance: true,
                 messageCredits: true,
+                supportCredits: true,
+                whatsappCredits: true,
+                telegramCredits: true,
                 discountRate: true,
                 lastLoginAt: true,
                 createdAt: true,

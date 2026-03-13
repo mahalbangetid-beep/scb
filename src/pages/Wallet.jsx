@@ -500,7 +500,7 @@ export default function WalletPage() {
                         </div>
                     </div>
                 ) : (
-                    /* CREDITS MODE: Show Message Credits Card */
+                    /* CREDITS MODE: Show Message Credits Card with Categories */
                     <div className="balance-card message-credits-card">
                         <div className="balance-header">
                             <MessageSquare size={24} />
@@ -509,7 +509,28 @@ export default function WalletPage() {
                         </div>
                         <div className="balance-amount credits-amount">
                             {(messageCreditInfo?.messageCredits || 0).toLocaleString()}
-                            <span className="credits-label">credits</span>
+                            <span className="credits-label">total credits</span>
+                        </div>
+                        {/* Categorical Breakdown */}
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.75rem', margin: '0.75rem 0' }}>
+                            <div style={{ background: 'rgba(59,130,246,0.1)', borderRadius: '8px', padding: '0.75rem', textAlign: 'center' }}>
+                                <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '4px' }}>💬 Support</div>
+                                <div style={{ fontSize: '1.1rem', fontWeight: 700, color: '#3b82f6' }}>
+                                    {(messageCreditInfo?.supportCredits || 0).toLocaleString()}
+                                </div>
+                            </div>
+                            <div style={{ background: 'rgba(34,197,94,0.1)', borderRadius: '8px', padding: '0.75rem', textAlign: 'center' }}>
+                                <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '4px' }}>📱 WA Marketing</div>
+                                <div style={{ fontSize: '1.1rem', fontWeight: 700, color: '#22c55e' }}>
+                                    {(messageCreditInfo?.whatsappCredits || 0).toLocaleString()}
+                                </div>
+                            </div>
+                            <div style={{ background: 'rgba(0,136,204,0.1)', borderRadius: '8px', padding: '0.75rem', textAlign: 'center' }}>
+                                <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '4px' }}>✈️ TG Marketing</div>
+                                <div style={{ fontSize: '1.1rem', fontWeight: 700, color: '#0088cc' }}>
+                                    {(messageCreditInfo?.telegramCredits || 0).toLocaleString()}
+                                </div>
+                            </div>
                         </div>
                         <div className="credits-info">
                             <small>
@@ -580,26 +601,26 @@ export default function WalletPage() {
                             <MessageSquare size={20} />
                         </div>
                         <div className="stat-content">
-                            <span className="stat-label">Credits Used Today</span>
-                            <span className="stat-value">{messageCreditInfo?.todayUsage || 0} credits</span>
+                            <span className="stat-label">Support Credits</span>
+                            <span className="stat-value">{(messageCreditInfo?.supportCredits || 0).toLocaleString()}</span>
                         </div>
                     </div>
                     <div className="stat-card">
-                        <div className="stat-icon credits-icon-bg">
+                        <div className="stat-icon" style={{ background: 'rgba(34,197,94,0.1)', color: '#22c55e' }}>
                             <Zap size={20} />
                         </div>
                         <div className="stat-content">
-                            <span className="stat-label">Messages Remaining</span>
-                            <span className="stat-value">{(messageCreditInfo?.messageCredits || 0).toLocaleString()}</span>
+                            <span className="stat-label">WA Marketing</span>
+                            <span className="stat-value">{(messageCreditInfo?.whatsappCredits || 0).toLocaleString()}</span>
                         </div>
                     </div>
                     <div className="stat-card">
-                        <div className="stat-icon credits-icon-bg">
+                        <div className="stat-icon" style={{ background: 'rgba(0,136,204,0.1)', color: '#0088cc' }}>
                             <DollarSign size={20} />
                         </div>
                         <div className="stat-content">
-                            <span className="stat-label">Wallet Balance</span>
-                            <span className="stat-value">{formatCurrency(walletInfo?.balance)}</span>
+                            <span className="stat-label">TG Marketing</span>
+                            <span className="stat-value">{(messageCreditInfo?.telegramCredits || 0).toLocaleString()}</span>
                         </div>
                     </div>
                 </div>
@@ -629,19 +650,19 @@ export default function WalletPage() {
             {/* Credits Info - Only show for CREDITS mode */}
             {billingMode === 'CREDITS' && (
                 <div className="rates-card credits-info-card">
-                    <h3>Message Credits</h3>
+                    <h3>Credit Balances</h3>
                     <div className="rates-grid">
                         <div className="rate-item">
-                            <span>Cost per Message</span>
-                            <span className="rate-value">1 credit</span>
+                            <span>💬 Support (Bot Replies)</span>
+                            <span className="rate-value">{(messageCreditInfo?.supportCredits || 0).toLocaleString()} credits</span>
                         </div>
                         <div className="rate-item">
-                            <span>Your Credits</span>
-                            <span className="rate-value">{(messageCreditInfo?.messageCredits || 0).toLocaleString()}</span>
+                            <span>📱 WA Marketing (Broadcast)</span>
+                            <span className="rate-value">{(messageCreditInfo?.whatsappCredits || 0).toLocaleString()} credits</span>
                         </div>
                         <div className="rate-item">
-                            <span>Buy More</span>
-                            <span className="rate-value">Top Up → Buy Packages</span>
+                            <span>✈️ TG Marketing (Broadcast)</span>
+                            <span className="rate-value">{(messageCreditInfo?.telegramCredits || 0).toLocaleString()} credits</span>
                         </div>
                     </div>
                 </div>

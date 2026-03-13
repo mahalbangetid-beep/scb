@@ -117,7 +117,7 @@ router.post('/:id/purchase', async (req, res, next) => {
             // 1. Read balance inside transaction for atomicity
             const user = await tx.user.findUnique({
                 where: { id: userId },
-                select: { creditBalance: true, messageCredits: true }
+                select: { creditBalance: true, messageCredits: true, supportCredits: true, whatsappCredits: true, telegramCredits: true }
             });
 
             if (!user) {
@@ -134,14 +134,20 @@ router.post('/:id/purchase', async (req, res, next) => {
 
             const balanceBefore = walletBalance;
             const balanceAfter = balanceBefore - totalPrice;
-            const creditsBefore = user.messageCredits || 0;
+            // Determine the category-specific credit field
+            const pkgCategory = pkg.category || 'support';
+            const CATEGORY_FIELDS = { 'support': 'supportCredits', 'whatsapp_marketing': 'whatsappCredits', 'telegram_marketing': 'telegramCredits' };
+            const creditField = CATEGORY_FIELDS[pkgCategory] || 'supportCredits';
+
+            const creditsBefore = user[creditField] ?? 0;
             const creditsAfter = creditsBefore + totalCredits;
 
-            // 2. Deduct wallet balance
+            // 2. Deduct wallet balance + add credits to correct category + sync legacy
             await tx.user.update({
                 where: { id: userId },
                 data: {
                     creditBalance: { decrement: totalPrice },
+                    [creditField]: { increment: totalCredits },
                     messageCredits: { increment: totalCredits }
                 }
             });
@@ -168,7 +174,8 @@ router.post('/:id/purchase', async (req, res, next) => {
                         description: `${qty}x ${pkg.name} Package — ${baseCredits.toLocaleString()} base + ${bonusCredits.toLocaleString()} bonus`,
                         balanceBefore: creditsBefore,
                         balanceAfter: creditsAfter,
-                        reference: `PKG_${packageId}_${Date.now()}`
+                        reference: `PKG_${packageId}_${Date.now()}`,
+                        creditCategory: pkgCategory
                     }
                 });
             } catch (e) {
@@ -339,21 +346,29 @@ router.post('/admin/:id/grant', requireRole(['ADMIN', 'MASTER_ADMIN']), async (r
 
         // Grant message credits atomically
         const result = await prisma.$transaction(async (tx) => {
+            // Determine the category-specific credit field
+            const pkgCategory = pkg.category || 'support';
+            const CATEGORY_FIELDS = { 'support': 'supportCredits', 'whatsapp_marketing': 'whatsappCredits', 'telegram_marketing': 'telegramCredits' };
+            const creditField = CATEGORY_FIELDS[pkgCategory] || 'supportCredits';
+
             const user = await tx.user.findUnique({
                 where: { id: userId },
-                select: { messageCredits: true }
+                select: { messageCredits: true, [creditField]: true }
             });
 
             if (!user) {
                 throw new AppError('User not found', 404);
             }
 
-            const creditsBefore = user.messageCredits || 0;
+            const creditsBefore = user[creditField] || 0;
             const creditsAfter = creditsBefore + totalCredits;
 
             await tx.user.update({
                 where: { id: userId },
-                data: { messageCredits: { increment: totalCredits } }
+                data: {
+                    [creditField]: { increment: totalCredits },
+                    messageCredits: { increment: totalCredits }
+                }
             });
 
             // Log message credit transaction
@@ -366,7 +381,8 @@ router.post('/admin/:id/grant', requireRole(['ADMIN', 'MASTER_ADMIN']), async (r
                         description: `Admin granted ${qty}x ${pkg.name} Package${note ? ` — ${note}` : ''}`,
                         balanceBefore: creditsBefore,
                         balanceAfter: creditsAfter,
-                        reference: `ADMIN_GRANT_${req.user.id}_${Date.now()}`
+                        reference: `ADMIN_GRANT_${req.user.id}_${Date.now()}`,
+                        creditCategory: pkgCategory
                     }
                 });
             } catch (e) {

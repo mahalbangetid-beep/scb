@@ -20,7 +20,7 @@ export default function DefaultCharges() {
         loginFees: { wa_login_fee: 5.00, tg_login_fee: 5.00 },
         subscriptionFees: { DEVICE: 5.00, TELEGRAM_BOT: 3.00, SMM_PANEL: 2.00 },
         creditPackages: [],
-        other: { low_balance_threshold: 5.00, default_user_credit: 0, free_signup_credits: 100 }
+        other: { low_balance_threshold: 5.00, default_user_credit: 0, free_signup_credits: 100, free_signup_support_credits: 100, free_signup_whatsapp_credits: 0, free_signup_telegram_credits: 0 }
     })
 
     // Original charges for diff checking
@@ -183,7 +183,7 @@ export default function DefaultCharges() {
                     </div>
                     <div className="dc-overview-info">
                         <span className="dc-overview-label">WA Message</span>
-                        <span className="dc-overview-value">${parseFloat(charges.messageRates.wa_message_rate || 0).toFixed(4)}</span>
+                        <span className="dc-overview-value">{parseFloat(charges.messageRates.wa_message_rate || 0)} cr/msg</span>
                     </div>
                 </div>
                 <div className="dc-overview-card">
@@ -192,7 +192,7 @@ export default function DefaultCharges() {
                     </div>
                     <div className="dc-overview-info">
                         <span className="dc-overview-label">TG Message</span>
-                        <span className="dc-overview-value">${parseFloat(charges.messageRates.tg_message_rate || 0).toFixed(4)}</span>
+                        <span className="dc-overview-value">{parseFloat(charges.messageRates.tg_message_rate || 0)} cr/msg</span>
                     </div>
                 </div>
                 <div className="dc-overview-card">
@@ -201,7 +201,7 @@ export default function DefaultCharges() {
                     </div>
                     <div className="dc-overview-info">
                         <span className="dc-overview-label">Group Msg</span>
-                        <span className="dc-overview-value">${parseFloat(charges.messageRates.group_message_rate || 0).toFixed(4)}</span>
+                        <span className="dc-overview-value">{parseFloat(charges.messageRates.group_message_rate || 0)} cr/msg</span>
                     </div>
                 </div>
                 <div className="dc-overview-card">
@@ -235,15 +235,15 @@ export default function DefaultCharges() {
                                 WhatsApp Message Rate
                             </label>
                             <div className="dc-input-group">
-                                <span className="dc-input-prefix">$</span>
+                                <span className="dc-input-prefix">🔢</span>
                                 <input
                                     type="number"
-                                    step="0.001"
+                                    step="1"
                                     min="0"
                                     value={charges.messageRates.wa_message_rate}
                                     onChange={e => updateField('messageRates', 'wa_message_rate', e.target.value)}
                                 />
-                                <span className="dc-input-suffix">/ msg</span>
+                                <span className="dc-input-suffix">credits / msg</span>
                             </div>
                         </div>
                         <div className="dc-field">
@@ -252,15 +252,15 @@ export default function DefaultCharges() {
                                 Telegram Message Rate
                             </label>
                             <div className="dc-input-group">
-                                <span className="dc-input-prefix">$</span>
+                                <span className="dc-input-prefix">🔢</span>
                                 <input
                                     type="number"
-                                    step="0.001"
+                                    step="1"
                                     min="0"
                                     value={charges.messageRates.tg_message_rate}
                                     onChange={e => updateField('messageRates', 'tg_message_rate', e.target.value)}
                                 />
-                                <span className="dc-input-suffix">/ msg</span>
+                                <span className="dc-input-suffix">credits / msg</span>
                             </div>
                         </div>
                         <div className="dc-field">
@@ -269,15 +269,15 @@ export default function DefaultCharges() {
                                 Group Message Rate
                             </label>
                             <div className="dc-input-group">
-                                <span className="dc-input-prefix">$</span>
+                                <span className="dc-input-prefix">🔢</span>
                                 <input
                                     type="number"
-                                    step="0.001"
+                                    step="1"
                                     min="0"
                                     value={charges.messageRates.group_message_rate}
                                     onChange={e => updateField('messageRates', 'group_message_rate', e.target.value)}
                                 />
-                                <span className="dc-input-suffix">/ msg</span>
+                                <span className="dc-input-suffix">credits / msg</span>
                             </div>
                         </div>
                     </div>
@@ -448,7 +448,7 @@ export default function DefaultCharges() {
                         <div className="dc-field">
                             <label>
                                 <MessageSquare size={14} />
-                                Free Signup Message Credits
+                                Free Signup Credits — Support
                             </label>
                             <div className="dc-input-group">
                                 <span className="dc-input-prefix">🎁</span>
@@ -456,11 +456,45 @@ export default function DefaultCharges() {
                                     type="number"
                                     step="1"
                                     min="0"
-                                    value={charges.other.free_signup_credits}
-                                    onChange={e => updateField('other', 'free_signup_credits', e.target.value)}
+                                    value={charges.other.free_signup_support_credits}
+                                    onChange={e => updateField('other', 'free_signup_support_credits', e.target.value)}
                                 />
                             </div>
-                            <span className="dc-field-hint">Free message credits given to new users on signup</span>
+                            <span className="dc-field-hint">Free support credits given on signup (bot replies)</span>
+                        </div>
+                        <div className="dc-field">
+                            <label>
+                                <Smartphone size={14} />
+                                Free Signup Credits — WhatsApp Marketing
+                            </label>
+                            <div className="dc-input-group">
+                                <span className="dc-input-prefix">🎁</span>
+                                <input
+                                    type="number"
+                                    step="1"
+                                    min="0"
+                                    value={charges.other.free_signup_whatsapp_credits}
+                                    onChange={e => updateField('other', 'free_signup_whatsapp_credits', e.target.value)}
+                                />
+                            </div>
+                            <span className="dc-field-hint">Free WhatsApp marketing credits on signup</span>
+                        </div>
+                        <div className="dc-field">
+                            <label>
+                                <SendHorizontal size={14} />
+                                Free Signup Credits — Telegram Marketing
+                            </label>
+                            <div className="dc-input-group">
+                                <span className="dc-input-prefix">🎁</span>
+                                <input
+                                    type="number"
+                                    step="1"
+                                    min="0"
+                                    value={charges.other.free_signup_telegram_credits}
+                                    onChange={e => updateField('other', 'free_signup_telegram_credits', e.target.value)}
+                                />
+                            </div>
+                            <span className="dc-field-hint">Free Telegram marketing credits on signup</span>
                         </div>
                     </div>
                 </div>

@@ -49,9 +49,15 @@ model User {
   customTgRate    Float? // Custom Telegram message rate (dollar)
   customGroupRate Float? // Custom group message rate (dollar)
 
-  // Message Credits System (for bot usage)
-  messageCredits   Int     @default(0) // Message credits balance
-  freeCreditsGiven Boolean @default(false) // Track if free signup credits given
+  // Message Credits System (categorical)
+  messageCredits   Int     @default(0) // LEGACY: Total credits (kept for compat, = sum of 3 categories)
+  supportCredits   Int     @default(0) // Credits for bot auto-reply / support messages
+  whatsappCredits  Int     @default(0) // Credits for WhatsApp marketing/broadcast
+  telegramCredits  Int     @default(0) // Credits for Telegram marketing/broadcast
+  freeCreditsGiven Boolean @default(false) // LEGACY: Track if free signup credits given
+  freeSupportGiven Boolean @default(false) // Track if free support credits given
+  freeWhatsappGiven Boolean @default(false) // Track if free WhatsApp credits given
+  freeTelegramGiven Boolean @default(false) // Track if free Telegram credits given
   customCreditRate Int? // Custom credits per message (null = use system default 1)
 
   // Tracking
@@ -345,15 +351,16 @@ model CreditTransaction {
 // Used for tracking message credits (1 credit = 1 message)
 
 model MessageCreditTransaction {
-  id            String   @id @default(cuid())
-  userId        String
-  type          String // CREDIT, DEBIT, CONVERSION, SIGNUP_BONUS
-  amount        Int // Number of credits (Integer, not Float)
-  balanceBefore Int
-  balanceAfter  Int
-  description   String
-  reference     String? // Conversion ID, Message ID, etc
-  createdAt     DateTime @default(now())
+  id             String   @id @default(cuid())
+  userId         String
+  type           String // CREDIT, DEBIT, CONVERSION, SIGNUP_BONUS
+  amount         Int // Number of credits (Integer, not Float)
+  balanceBefore  Int
+  balanceAfter   Int
+  description    String
+  reference      String? // Conversion ID, Message ID, etc
+  creditCategory String? // 'support', 'whatsapp_marketing', 'telegram_marketing' (null = legacy/support)
+  createdAt      DateTime @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
