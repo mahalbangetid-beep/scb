@@ -123,33 +123,42 @@ class ContactBackupService {
             let contacts = [];
             let groups = [];
 
-            // Try to get contacts from store
-            if (session.store?.contacts) {
-                const contactStore = session.store.contacts;
+            // PRIMARY: Get contacts from event-based contact storage
+            const contactMap = this.whatsappService?.getContacts(deviceId);
+            if (contactMap && contactMap.size > 0) {
+                contacts = Array.from(contactMap.values());
+                logger.info(`Got ${contacts.length} contacts from event store`);
+            }
 
-                // Convert to array
-                if (typeof contactStore.toJSON === 'function') {
-                    const contactData = contactStore.toJSON();
-                    contacts = Object.values(contactData || {}).map(c => ({
-                        jid: c.id,
-                        name: c.name || c.notify || null,
-                        pushName: c.notify || null,
-                        phone: c.id?.replace('@s.whatsapp.net', '').replace('@c.us', '') || null
-                    }));
-                } else if (typeof contactStore === 'object') {
-                    contacts = Object.entries(contactStore).map(([jid, c]) => ({
-                        jid,
-                        name: c?.name || c?.notify || null,
-                        pushName: c?.notify || null,
-                        phone: jid?.replace('@s.whatsapp.net', '').replace('@c.us', '') || null
-                    }));
+            // FALLBACK: Try store.contacts (older baileys versions)
+            if (contacts.length === 0) {
+                const store = this.whatsappService?.getSessionStore(deviceId);
+                if (store?.contacts) {
+                    const contactStore = store.contacts;
+                    if (typeof contactStore.toJSON === 'function') {
+                        const contactData = contactStore.toJSON();
+                        contacts = Object.values(contactData || {}).map(c => ({
+                            jid: c.id,
+                            name: c.name || c.notify || null,
+                            pushName: c.notify || null,
+                            phone: c.id?.replace('@s.whatsapp.net', '').replace('@c.us', '') || null
+                        }));
+                    } else if (typeof contactStore === 'object') {
+                        contacts = Object.entries(contactStore).map(([jid, c]) => ({
+                            jid,
+                            name: c?.name || c?.notify || null,
+                            pushName: c?.notify || null,
+                            phone: jid?.replace('@s.whatsapp.net', '').replace('@c.us', '') || null
+                        }));
+                    }
+                    logger.info(`Got ${contacts.length} contacts from store fallback`);
                 }
             }
 
-            // Try to get groups
-            if (session.store?.chats) {
-                const chatStore = session.store.chats;
-
+            // Try to get groups from store
+            const store = this.whatsappService?.getSessionStore(deviceId);
+            if (store?.chats) {
+                const chatStore = store.chats;
                 if (typeof chatStore.toJSON === 'function') {
                     const chatData = chatStore.toJSON();
                     groups = Object.values(chatData || {})

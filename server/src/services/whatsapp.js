@@ -21,6 +21,7 @@ const silentLogger = pino({ level: 'silent' });
 // Store untuk menyimpan WhatsApp instances
 const sessions = new Map();
 const sessionStores = new Map();
+const sessionContacts = new Map(); // Store contacts per device for backup
 const sessionQRCodes = new Map(); // Store QR codes for polling
 
 // Path untuk menyimpan sessions
@@ -127,6 +128,21 @@ class WhatsAppService {
      */
     getSession(deviceId) {
         return sessions.get(deviceId);
+    }
+
+    /**
+     * Get session store for a device
+     */
+    getSessionStore(deviceId) {
+        return sessionStores.get(deviceId);
+    }
+
+    /**
+     * Get stored contacts for a device
+     * @returns {Map} jid -> contact data
+     */
+    getContacts(deviceId) {
+        return sessionContacts.get(deviceId) || new Map();
     }
 
     /**
@@ -315,6 +331,37 @@ class WhatsAppService {
 
         // Handle credentials update (save ke file)
         socket.ev.on('creds.update', saveCreds);
+
+        // Handle contacts updates — store contacts for backup
+        const deviceContacts = new Map();
+        sessionContacts.set(deviceId, deviceContacts);
+
+        socket.ev.on('contacts.upsert', (contacts) => {
+            for (const contact of contacts) {
+                if (contact.id && !contact.id.endsWith('@g.us') && !contact.id.endsWith('@broadcast')) {
+                    deviceContacts.set(contact.id, {
+                        jid: contact.id,
+                        name: contact.name || contact.notify || null,
+                        pushName: contact.notify || null,
+                        phone: contact.id?.replace('@s.whatsapp.net', '').replace('@c.us', '') || null
+                    });
+                }
+            }
+            console.log(`[WA:${deviceId}] Contacts updated: ${deviceContacts.size} total`);
+        });
+
+        socket.ev.on('contacts.update', (updates) => {
+            for (const update of updates) {
+                if (update.id && deviceContacts.has(update.id)) {
+                    const existing = deviceContacts.get(update.id);
+                    deviceContacts.set(update.id, {
+                        ...existing,
+                        name: update.name || update.notify || existing.name,
+                        pushName: update.notify || existing.pushName
+                    });
+                }
+            }
+        });
 
         // Handle incoming messages
         socket.ev.on('messages.upsert', async ({ messages, type }) => {
@@ -836,6 +883,7 @@ class WhatsAppService {
             }
             sessions.delete(deviceId);
             sessionStores.delete(deviceId);
+            sessionContacts.delete(deviceId);
         }
     }
 
@@ -858,6 +906,7 @@ class WhatsAppService {
             }
             sessions.delete(deviceId);
             sessionStores.delete(deviceId);
+            sessionContacts.delete(deviceId);
         }
 
         // Delete session files
