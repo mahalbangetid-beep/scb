@@ -1540,25 +1540,45 @@ class AdminApiService {
                 }
             } else {
                 // V2/Perfect Panel: Try user lookup endpoint
+                // PerfectPanel API: GET /adminapi/v2/users?username=xxx
+                // Response: { data: { count: N, list: [{ id, username, email, ... }] } }
                 try {
-                    const response = await this.makeAdminRequest(panel, 'GET', '/adminapi/users', {
-                        search: username
+                    const response = await this.makeAdminRequest(panel, 'GET', '/users', {
+                        username: username
                     });
 
-                    if (response && Array.isArray(response.data)) {
-                        const found = response.data.some(u =>
+                    console.log(`[AdminAPI] V2 /users response for "${username}":`, JSON.stringify(response).substring(0, 500));
+
+                    // PerfectPanel response: { success: true, data: { data: { count, list: [...] } } }
+                    // After makeAdminRequest wrapping: response.data = { data: { count, list: [...] } }
+                    const resData = response?.data;
+
+                    // Format 1: PerfectPanel — { data: { count, list: [...] } }
+                    if (resData?.data?.list && Array.isArray(resData.data.list)) {
+                        const found = resData.data.list.some(u =>
+                            (u.username || '').toLowerCase() === username.toLowerCase()
+                        );
+                        console.log(`[AdminAPI] V2 /users list check: found=${found}, count=${resData.data.count}, listLen=${resData.data.list.length}`);
+                        return { exists: found };
+                    }
+
+                    // Format 2: Direct array response — [{ username, ... }]
+                    if (resData && Array.isArray(resData)) {
+                        const found = resData.some(u =>
                             (u.username || '').toLowerCase() === username.toLowerCase()
                         );
                         return { exists: found };
                     }
 
-                    // If response has users directly
-                    if (response && Array.isArray(response)) {
-                        const found = response.some(u =>
+                    // Format 3: { list: [...] } without nested data
+                    if (resData?.list && Array.isArray(resData.list)) {
+                        const found = resData.list.some(u =>
                             (u.username || '').toLowerCase() === username.toLowerCase()
                         );
                         return { exists: found };
                     }
+
+                    console.log(`[AdminAPI] V2 /users: unexpected response format — trying orders fallback`);
                 } catch (v2Err) {
                     // V2 user lookup not available — try orders fallback
                     console.log(`[AdminAPI] V2 user lookup failed, trying orders fallback: ${v2Err.message}`);
@@ -1566,7 +1586,7 @@ class AdminApiService {
 
                 // Fallback: Try getting orders by user
                 try {
-                    const response = await this.makeAdminRequest(panel, 'GET', '/adminapi/orders', {
+                    const response = await this.makeAdminRequest(panel, 'GET', '/orders', {
                         user: username,
                         limit: 1
                     });
@@ -1574,7 +1594,10 @@ class AdminApiService {
                     if (response && !response.error) {
                         // Only confirm exists if actual order data is returned
                         const orderData = response.data || response;
-                        const orders = Array.isArray(orderData) ? orderData :
+
+                        // PerfectPanel orders: { data: { count, list: [...] } }
+                        const orders = orderData?.data?.list ? orderData.data.list :
+                            Array.isArray(orderData) ? orderData :
                             (orderData?.data && Array.isArray(orderData.data)) ? orderData.data : null;
 
                         if (orders && orders.length > 0) {
