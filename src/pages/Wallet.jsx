@@ -500,63 +500,78 @@ export default function WalletPage() {
                         </div>
                     </div>
                 ) : (
-                    /* CREDITS MODE: Show Message Credits Card with Categories */
-                    <div className="balance-card message-credits-card">
-                        <div className="balance-header">
-                            <MessageSquare size={24} />
-                            <span>Message Credits</span>
-                            <Zap size={16} className="credits-icon" />
-                        </div>
-                        <div className="balance-amount credits-amount">
-                            {(messageCreditInfo?.messageCredits || 0).toLocaleString()}
-                            <span className="credits-label">total credits</span>
-                        </div>
-                        {/* Categorical Breakdown */}
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.75rem', margin: '0.75rem 0' }}>
-                            <div style={{ background: 'rgba(59,130,246,0.1)', borderRadius: '8px', padding: '0.75rem', textAlign: 'center' }}>
-                                <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '4px' }}>💬 Support</div>
-                                <div style={{ fontSize: '1.1rem', fontWeight: 700, color: '#3b82f6' }}>
-                                    {(messageCreditInfo?.supportCredits || 0).toLocaleString()}
+                    /* CREDITS MODE: Show 3 Separate Category Cards */
+                    <div className="credit-category-cards">
+                        {/* Support Credits Card */}
+                        <div className="credit-category-card credit-card-support">
+                            <div className="credit-cat-header">
+                                <div className="credit-cat-icon credit-cat-icon-support">
+                                    <MessageSquare size={22} />
                                 </div>
+                                <span className="credit-cat-title">Support</span>
                             </div>
-                            <div style={{ background: 'rgba(34,197,94,0.1)', borderRadius: '8px', padding: '0.75rem', textAlign: 'center' }}>
-                                <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '4px' }}>📱 WA Marketing</div>
-                                <div style={{ fontSize: '1.1rem', fontWeight: 700, color: '#22c55e' }}>
-                                    {(messageCreditInfo?.whatsappCredits || 0).toLocaleString()}
-                                </div>
+                            <div className="credit-cat-amount">
+                                {(messageCreditInfo?.supportCredits || 0).toLocaleString()}
                             </div>
-                            <div style={{ background: 'rgba(0,136,204,0.1)', borderRadius: '8px', padding: '0.75rem', textAlign: 'center' }}>
-                                <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '4px' }}>✈️ TG Marketing</div>
-                                <div style={{ fontSize: '1.1rem', fontWeight: 700, color: '#0088cc' }}>
-                                    {(messageCreditInfo?.telegramCredits || 0).toLocaleString()}
-                                </div>
-                            </div>
-                        </div>
-                        <div className="credits-info">
-                            <small>
-                                1 credit = 1 bot message •
-                                Wallet: ${walletInfo?.balance?.toFixed(2) || '0.00'}
-                            </small>
-                        </div>
-                        <div className="balance-actions">
-                            <button className="btn btn-primary" onClick={() => setShowTopUpModal(true)}>
-                                <Plus size={18} />
-                                Top Up
-                            </button>
-                            <button className="btn btn-secondary" onClick={() => setShowVoucherModal(true)}>
-                                <Gift size={18} />
-                                Voucher
-                            </button>
-                            <button className="btn btn-secondary" onClick={() => openPackagesModal('support')}>
-                                <Package size={18} />
-                                Packages
+                            <div className="credit-cat-label">credits</div>
+                            <div className="credit-cat-desc">Bot auto-reply messages</div>
+                            <button className="btn credit-cat-btn credit-cat-btn-support" onClick={() => openPackagesModal('support')}>
+                                <Package size={16} />
+                                Buy Package
                             </button>
                         </div>
-                        {messageCreditInfo?.canSendMessages !== undefined && (
-                            <div className="credits-estimate">
-                                Can send ~{messageCreditInfo.canSendMessages.toLocaleString()} more messages
+
+                        {/* WhatsApp Marketing Credits Card */}
+                        <div className="credit-category-card credit-card-whatsapp">
+                            <div className="credit-cat-header">
+                                <div className="credit-cat-icon credit-cat-icon-whatsapp">
+                                    <Zap size={22} />
+                                </div>
+                                <span className="credit-cat-title">WhatsApp</span>
                             </div>
-                        )}
+                            <div className="credit-cat-amount">
+                                {(messageCreditInfo?.whatsappCredits || 0).toLocaleString()}
+                            </div>
+                            <div className="credit-cat-label">credits</div>
+                            <div className="credit-cat-desc">Broadcast & marketing</div>
+                            <button className="btn credit-cat-btn credit-cat-btn-whatsapp" onClick={() => openPackagesModal('whatsapp_marketing')}>
+                                <Package size={16} />
+                                Buy Package
+                            </button>
+                        </div>
+
+                        {/* Telegram Marketing Credits Card */}
+                        <div className="credit-category-card credit-card-telegram">
+                            <div className="credit-cat-header">
+                                <div className="credit-cat-icon credit-cat-icon-telegram">
+                                    <DollarSign size={22} />
+                                </div>
+                                <span className="credit-cat-title">Telegram</span>
+                            </div>
+                            <div className="credit-cat-amount">
+                                {(messageCreditInfo?.telegramCredits || 0).toLocaleString()}
+                            </div>
+                            <div className="credit-cat-label">credits</div>
+                            <div className="credit-cat-desc">Broadcast & marketing</div>
+                            <button className="btn credit-cat-btn credit-cat-btn-telegram" onClick={() => openPackagesModal('telegram_marketing')}>
+                                <Package size={16} />
+                                Buy Package
+                            </button>
+                        </div>
+                    </div>
+                )}
+
+                {/* Credits Mode: Top Up & Voucher buttons */}
+                {billingMode === 'CREDITS' && (
+                    <div className="credit-global-actions">
+                        <button className="btn btn-primary" onClick={() => setShowTopUpModal(true)}>
+                            <Plus size={18} />
+                            Top Up
+                        </button>
+                        <button className="btn btn-secondary" onClick={() => setShowVoucherModal(true)}>
+                            <Gift size={18} />
+                            Voucher
+                        </button>
                     </div>
                 )}
             </div>
@@ -593,38 +608,7 @@ export default function WalletPage() {
                         </div>
                     </div>
                 </div>
-            ) : (
-                /* CREDITS MODE: Show credits-based stats */
-                <div className="stats-cards credits-stats">
-                    <div className="stat-card">
-                        <div className="stat-icon credits-icon-bg">
-                            <MessageSquare size={20} />
-                        </div>
-                        <div className="stat-content">
-                            <span className="stat-label">Support Credits</span>
-                            <span className="stat-value">{(messageCreditInfo?.supportCredits || 0).toLocaleString()}</span>
-                        </div>
-                    </div>
-                    <div className="stat-card">
-                        <div className="stat-icon" style={{ background: 'rgba(34,197,94,0.1)', color: '#22c55e' }}>
-                            <Zap size={20} />
-                        </div>
-                        <div className="stat-content">
-                            <span className="stat-label">WA Marketing</span>
-                            <span className="stat-value">{(messageCreditInfo?.whatsappCredits || 0).toLocaleString()}</span>
-                        </div>
-                    </div>
-                    <div className="stat-card">
-                        <div className="stat-icon" style={{ background: 'rgba(0,136,204,0.1)', color: '#0088cc' }}>
-                            <DollarSign size={20} />
-                        </div>
-                        <div className="stat-content">
-                            <span className="stat-label">TG Marketing</span>
-                            <span className="stat-value">{(messageCreditInfo?.telegramCredits || 0).toLocaleString()}</span>
-                        </div>
-                    </div>
-                </div>
-            )}
+            ) : null}
 
             {/* Rates Info - Only show for DOLLARS mode */}
             {billingMode === 'DOLLARS' && (
@@ -647,26 +631,7 @@ export default function WalletPage() {
                 </div>
             )}
 
-            {/* Credits Info - Only show for CREDITS mode */}
-            {billingMode === 'CREDITS' && (
-                <div className="rates-card credits-info-card">
-                    <h3>Credit Balances</h3>
-                    <div className="rates-grid">
-                        <div className="rate-item">
-                            <span>💬 Support (Bot Replies)</span>
-                            <span className="rate-value">{(messageCreditInfo?.supportCredits || 0).toLocaleString()} credits</span>
-                        </div>
-                        <div className="rate-item">
-                            <span>📱 WA Marketing (Broadcast)</span>
-                            <span className="rate-value">{(messageCreditInfo?.whatsappCredits || 0).toLocaleString()} credits</span>
-                        </div>
-                        <div className="rate-item">
-                            <span>✈️ TG Marketing (Broadcast)</span>
-                            <span className="rate-value">{(messageCreditInfo?.telegramCredits || 0).toLocaleString()} credits</span>
-                        </div>
-                    </div>
-                </div>
-            )}
+
 
             {/* Tabs */}
             <div className="tabs">
@@ -1250,23 +1215,173 @@ export default function WalletPage() {
                     text-align: center;
                 }
 
-                /* Credits Mode Stats */
-                .credits-stats .stat-card {
-                    border-left: 3px solid #10b981;
+                /* ===== 3-Card Category Credits Layout ===== */
+                .credit-category-cards {
+                    display: grid;
+                    grid-template-columns: repeat(3, 1fr);
+                    gap: var(--spacing-md);
+                    margin-bottom: var(--spacing-lg);
                 }
 
-                .credits-icon-bg {
-                    background: rgba(16, 185, 129, 0.15) !important;
-                    color: #10b981 !important;
+                @media (max-width: 768px) {
+                    .credit-category-cards {
+                        grid-template-columns: 1fr;
+                    }
                 }
 
-                .credits-info-card {
-                    border-left: 3px solid #10b981;
-                    background: linear-gradient(135deg, rgba(16, 185, 129, 0.05), transparent);
+                .credit-category-card {
+                    background: var(--bg-secondary);
+                    border: 1px solid var(--border-color);
+                    border-radius: var(--radius-lg);
+                    padding: var(--spacing-xl);
+                    display: flex;
+                    flex-direction: column;
+                    align-items: center;
+                    text-align: center;
+                    transition: all 0.2s ease;
+                    position: relative;
+                    overflow: hidden;
                 }
 
-                .credits-info-card h3 {
-                    color: #10b981;
+                .credit-category-card::before {
+                    content: '';
+                    position: absolute;
+                    top: 0;
+                    left: 0;
+                    right: 0;
+                    height: 4px;
+                }
+
+                .credit-category-card:hover {
+                    transform: translateY(-2px);
+                    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+                }
+
+                /* Support card */
+                .credit-card-support { border-top: 3px solid #3b82f6; }
+                .credit-card-support:hover { border-color: #2563eb; }
+
+                /* WhatsApp card */
+                .credit-card-whatsapp { border-top: 3px solid #22c55e; }
+                .credit-card-whatsapp:hover { border-color: #16a34a; }
+
+                /* Telegram card */
+                .credit-card-telegram { border-top: 3px solid #0088cc; }
+                .credit-card-telegram:hover { border-color: #006fa3; }
+
+                .credit-cat-header {
+                    display: flex;
+                    align-items: center;
+                    gap: var(--spacing-sm);
+                    margin-bottom: var(--spacing-md);
+                }
+
+                .credit-cat-icon {
+                    width: 40px;
+                    height: 40px;
+                    border-radius: var(--radius-md);
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                }
+
+                .credit-cat-icon-support {
+                    background: rgba(59, 130, 246, 0.1);
+                    color: #3b82f6;
+                }
+
+                .credit-cat-icon-whatsapp {
+                    background: rgba(34, 197, 94, 0.1);
+                    color: #22c55e;
+                }
+
+                .credit-cat-icon-telegram {
+                    background: rgba(0, 136, 204, 0.1);
+                    color: #0088cc;
+                }
+
+                .credit-cat-title {
+                    font-size: 0.875rem;
+                    font-weight: 600;
+                    color: var(--text-secondary);
+                    text-transform: uppercase;
+                    letter-spacing: 0.5px;
+                }
+
+                .credit-cat-amount {
+                    font-size: 2.25rem;
+                    font-weight: 700;
+                    color: var(--text-primary);
+                    line-height: 1;
+                    margin-bottom: 2px;
+                }
+
+                .credit-cat-label {
+                    font-size: 0.8rem;
+                    color: var(--text-muted);
+                    margin-bottom: var(--spacing-xs);
+                }
+
+                .credit-cat-desc {
+                    font-size: 0.75rem;
+                    color: var(--text-muted);
+                    margin-bottom: var(--spacing-md);
+                }
+
+                .credit-cat-btn {
+                    width: 100%;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    gap: 6px;
+                    padding: 8px 16px;
+                    font-size: 0.8rem;
+                    font-weight: 600;
+                    border-radius: var(--radius-md);
+                    border: none;
+                    cursor: pointer;
+                    transition: all 0.2s ease;
+                }
+
+                .credit-cat-btn-support {
+                    background: rgba(59, 130, 246, 0.1);
+                    color: #3b82f6;
+                }
+
+                .credit-cat-btn-support:hover {
+                    background: #3b82f6;
+                    color: white;
+                }
+
+                .credit-cat-btn-whatsapp {
+                    background: rgba(34, 197, 94, 0.1);
+                    color: #22c55e;
+                }
+
+                .credit-cat-btn-whatsapp:hover {
+                    background: #22c55e;
+                    color: white;
+                }
+
+                .credit-cat-btn-telegram {
+                    background: rgba(0, 136, 204, 0.1);
+                    color: #0088cc;
+                }
+
+                .credit-cat-btn-telegram:hover {
+                    background: #0088cc;
+                    color: white;
+                }
+
+                /* Global actions row (Top Up + Voucher) */
+                .credit-global-actions {
+                    display: flex;
+                    gap: var(--spacing-sm);
+                    margin-bottom: var(--spacing-lg);
+                }
+
+                .credit-global-actions .btn {
+                    flex: 1;
                 }
 
                 .stats-cards {

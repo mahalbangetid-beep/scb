@@ -598,8 +598,16 @@ class EndpointScanner {
      */
     async makeRequest(panel, method, endpoint, params = {}, testMode = false, pattern = {}) {
         try {
-            const baseUrl = panel.adminApiBaseUrl || panel.url;
-            const url = `${baseUrl.replace(/\/$/, '')}${endpoint}`;
+            // Use panel.url (base domain) NOT adminApiBaseUrl, because scanner patterns
+            // already include the full API path (e.g., /adminapi/v1, /adminapi/v2/orders).
+            // Using adminApiBaseUrl would cause double paths like: .../adminapi/v1/adminapi/v1
+            const rawUrl = panel.url || panel.adminApiBaseUrl;
+            // Strip any trailing API path segments to get clean base domain
+            const baseUrl = rawUrl.replace(/\/+$/, '')
+                .replace(/\/adminapi(\/v[12])?$/i, '')
+                .replace(/\/api\/admin(\/v[12])?$/i, '')
+                .replace(/\/admin\/api(\/v[12])?$/i, '');
+            const url = `${baseUrl}${endpoint}`;
 
             // Decrypt API key
             let apiKey;

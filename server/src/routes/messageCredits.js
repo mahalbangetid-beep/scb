@@ -46,7 +46,10 @@ router.get('/balance', async (req, res, next) => {
             whatsappCredits: balances.whatsappCredits,
             telegramCredits: balances.telegramCredits,
             // Helper calculations
-            canSendMessages: Math.floor(balances.messageCredits / balances.creditsPerMessage),
+            canSendMessages: Math.floor(
+                ((balances.supportCredits || 0) + (balances.whatsappCredits || 0) + (balances.telegramCredits || 0))
+                / balances.creditsPerMessage
+            ),
             todayUsage: 0 // Will be populated if tracking is added
         });
     } catch (error) {
