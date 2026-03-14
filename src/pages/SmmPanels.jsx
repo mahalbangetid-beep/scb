@@ -181,6 +181,7 @@ export default function SmmPanels() {
             const res = await api.post('/panels/detect-and-add', {
                 url: smartForm.url,
                 adminApiKey: smartForm.adminApiKey,
+                panelType: smartForm.panelType,
                 name: smartForm.name,
                 alias: smartForm.alias,
                 isPrimary: smartForm.isPrimary

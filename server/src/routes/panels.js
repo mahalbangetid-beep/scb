@@ -124,7 +124,7 @@ router.post('/detect', async (req, res, next) => {
 // POST /api/panels/detect-and-add - Detect and add panel in one step (Admin API only)
 router.post('/detect-and-add', async (req, res, next) => {
     try {
-        const { url, adminApiKey, name, alias, isPrimary } = req.body;
+        const { url, adminApiKey, panelType, name, alias, isPrimary } = req.body;
 
         if (!url || !adminApiKey) {
             throw new AppError('URL and Admin API Key are required', 400);
@@ -136,8 +136,8 @@ router.post('/detect-and-add', async (req, res, next) => {
 
         console.log(`[Panel Detect+Add] User ${req.user.id} scanning: ${url}`);
 
-        // Run smart scanner (Admin API only)
-        const scanResult = await smartPanelScanner.scan(url, adminApiKey);
+        // Run smart scanner (Admin API only) — pass panelType from user selection
+        const scanResult = await smartPanelScanner.scan(url, adminApiKey, panelType);
 
         if (!scanResult.success) {
             return successResponse(res, {
