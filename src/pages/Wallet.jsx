@@ -561,18 +561,32 @@ export default function WalletPage() {
                     </div>
                 )}
 
-                {/* Credits Mode: Top Up & Voucher buttons */}
+                {/* Credits Mode: Wallet Balance + Top Up & Voucher buttons */}
                 {billingMode === 'CREDITS' && (
-                    <div className="credit-global-actions">
-                        <button className="btn btn-primary" onClick={() => setShowTopUpModal(true)}>
-                            <Plus size={18} />
-                            Top Up
-                        </button>
-                        <button className="btn btn-secondary" onClick={() => setShowVoucherModal(true)}>
-                            <Gift size={18} />
-                            Voucher
-                        </button>
-                    </div>
+                    <>
+                        {/* Show dollar wallet balance so users know their top-up arrived */}
+                        <div className="credit-wallet-balance">
+                            <div className="credit-wallet-row">
+                                <span className="credit-wallet-label">💰 Wallet Balance</span>
+                                <span className="credit-wallet-amount">${walletInfo?.balance?.toFixed(2) || '0.00'}</span>
+                            </div>
+                            {(walletInfo?.balance || 0) > 0 && (
+                                <div className="credit-wallet-hint">
+                                    Use your wallet balance to buy credit packages above
+                                </div>
+                            )}
+                        </div>
+                        <div className="credit-global-actions">
+                            <button className="btn btn-primary" onClick={() => setShowTopUpModal(true)}>
+                                <Plus size={18} />
+                                Top Up
+                            </button>
+                            <button className="btn btn-secondary" onClick={() => setShowVoucherModal(true)}>
+                                <Gift size={18} />
+                                Voucher
+                            </button>
+                        </div>
+                    </>
                 )}
             </div>
 
@@ -1382,6 +1396,40 @@ export default function WalletPage() {
 
                 .credit-global-actions .btn {
                     flex: 1;
+                }
+
+                /* Wallet balance indicator in CREDITS mode */
+                .credit-wallet-balance {
+                    background: var(--bg-secondary);
+                    border: 1px solid var(--border-color);
+                    border-radius: var(--radius-md);
+                    padding: var(--spacing-md) var(--spacing-lg);
+                    margin-bottom: var(--spacing-md);
+                }
+
+                .credit-wallet-row {
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                }
+
+                .credit-wallet-label {
+                    font-size: 0.875rem;
+                    color: var(--text-secondary);
+                    font-weight: 500;
+                }
+
+                .credit-wallet-amount {
+                    font-size: 1.25rem;
+                    font-weight: 700;
+                    color: var(--primary-500);
+                }
+
+                .credit-wallet-hint {
+                    font-size: 0.75rem;
+                    color: var(--text-muted);
+                    margin-top: 4px;
+                    font-style: italic;
                 }
 
                 .stats-cards {
