@@ -11,6 +11,37 @@ const CHECK_INTERVAL = 30 * 1000; // Check every 30 seconds
 let schedulerInterval = null;
 let whatsappInstance = null;
 
+// Default delays (ms) between messages
+const DEFAULT_WA_DELAY = 1500;
+const DEFAULT_TG_DELAY = 500;
+const DEFAULT_GROUP_DELAY = 2000;
+
+/**
+ * Get user-configured broadcast delay from Setting table
+ * Falls back to platform-specific defaults
+ */
+async function getUserBroadcastDelay(userId, platform = 'WHATSAPP') {
+    try {
+        if (!userId) return platform === 'TELEGRAM' ? DEFAULT_TG_DELAY : DEFAULT_WA_DELAY;
+        const setting = await prisma.setting.findUnique({
+            where: {
+                key_userId: {
+                    key: 'broadcast_message_delay_ms',
+                    userId
+                }
+            }
+        });
+        if (setting && setting.value) {
+            const val = parseInt(setting.value);
+            // Enforce minimum 500ms to prevent spam/ban
+            if (!isNaN(val) && val >= 500) return val;
+        }
+    } catch (e) {
+        // Fail silently — use default
+    }
+    return platform === 'TELEGRAM' ? DEFAULT_TG_DELAY : DEFAULT_WA_DELAY;
+}
+
 /**
  * Process a single broadcast campaign
  * Section 6 enhanced — supports auto ID, watermark, group targets, charge categories
@@ -39,6 +70,10 @@ async function processBroadcast(broadcastId) {
     const { watermarkService } = require('./watermarkService');
     const marketingService = require('./marketingService');
     const broadcastUserId = broadcast.device?.userId || null;
+
+    // Get configurable message delay (admin can set per-user)
+    const messageDelay = await getUserBroadcastDelay(broadcastUserId, 'WHATSAPP');
+    const groupDelay = Math.max(messageDelay, DEFAULT_GROUP_DELAY); // Groups need at least 2s
 
     // Note: status is already set to 'processing' by checkScheduledBroadcasts()
 
@@ -104,8 +139,8 @@ async function processBroadcast(broadcastId) {
             failed++;
         }
 
-        // Delay between messages
-        await new Promise(r => setTimeout(r, 1500));
+        // Configurable delay between messages (admin can set per-user)
+        await new Promise(r => setTimeout(r, messageDelay));
 
         // Check cancellation
         if ((sent + failed) % 3 === 0 && (sent + failed) > 0) {
@@ -143,7 +178,7 @@ async function processBroadcast(broadcastId) {
                 failed++;
             }
 
-            await new Promise(r => setTimeout(r, 2000));
+            await new Promise(r => setTimeout(r, groupDelay));
         }
     }
 
@@ -211,6 +246,7 @@ async function processScheduledTelegramBroadcast(broadcast) {
     const visibleWatermark = broadcast.watermarkText;
     const autoIdPrefix = broadcast.autoIdPrefix || '';
     const broadcastUserId = broadcast.telegramBot?.userId || null;
+    const tgDelay = await getUserBroadcastDelay(broadcastUserId, 'TELEGRAM');
 
     function composeFinalText(baseMessage) {
         let text = baseMessage;
@@ -244,7 +280,7 @@ async function processScheduledTelegramBroadcast(broadcast) {
             });
             failed++;
         }
-        await new Promise(r => setTimeout(r, 500));
+        await new Promise(r => setTimeout(r, tgDelay));
         if ((sent + failed) % 10 === 0) {
             const current = await prisma.broadcast.findUnique({ where: { id: broadcastId }, select: { status: true } });
             if (current?.status === 'cancelled') break;
