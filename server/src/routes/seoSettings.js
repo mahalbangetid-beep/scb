@@ -158,14 +158,17 @@ router.put('/admin/pages/:id', async (req, res, next) => {
             throw new AppError('SEO page not found', 404);
         }
 
+        // Coerce empty strings to null for nullable fields
+        const coerce = (v) => (typeof v === 'string' && v.trim() === '') ? null : v;
+
         const updated = await prisma.seoSetting.update({
             where: { id: req.params.id },
             data: {
-                ...(pageTitle !== undefined && { pageTitle }),
+                ...(pageTitle !== undefined && { pageTitle: coerce(pageTitle) }),
                 ...(metaKeywords !== undefined && { metaKeywords }),
-                ...(metaDescription !== undefined && { metaDescription }),
-                ...(metaRobots !== undefined && { metaRobots }),
-                ...(customHeader !== undefined && { customHeader }),
+                ...(metaDescription !== undefined && { metaDescription: coerce(metaDescription) }),
+                ...(metaRobots !== undefined && { metaRobots: coerce(metaRobots) }),
+                ...(customHeader !== undefined && { customHeader: coerce(customHeader) }),
                 ...(isVisible !== undefined && { isVisible })
             }
         });
