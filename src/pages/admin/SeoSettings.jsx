@@ -56,12 +56,23 @@ export default function SeoSettings() {
         if (!editingPage) return
         try {
             setSaving(true)
-            await api.put(`/seo/admin/pages/${editingPage.id}`, form)
+            // Coerce empty strings to null for nullable fields (prevents Prisma edge cases)
+            const payload = {
+                ...form,
+                metaRobots: form.metaRobots || null,
+                customHeader: form.customHeader || null,
+                metaDescription: form.metaDescription || null,
+                pageTitle: form.pageTitle || null,
+                metaKeywords: Array.isArray(form.metaKeywords) && form.metaKeywords.length > 0
+                    ? form.metaKeywords
+                    : null
+            }
+            await api.put(`/seo/admin/pages/${editingPage.id}`, payload)
             setEditingPage(null)
             await fetchPages()
         } catch (err) {
             console.error('Failed to save SEO settings:', err)
-            alert('Failed to save: ' + (err?.error?.message || err?.message || 'Unknown error'))
+            alert('Failed to save: ' + (err?.message || err?.error || 'Unknown error'))
         } finally {
             setSaving(false)
         }
@@ -77,7 +88,7 @@ export default function SeoSettings() {
             await fetchPages()
         } catch (err) {
             console.error('Failed to add page:', err)
-            alert('Failed to add: ' + (err?.error?.message || err?.message || 'Unknown error'))
+            alert('Failed to add: ' + (err?.message || err?.error || 'Unknown error'))
         } finally {
             setSaving(false)
         }
