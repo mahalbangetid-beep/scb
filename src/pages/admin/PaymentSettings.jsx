@@ -43,6 +43,12 @@ const PaymentSettings = () => {
         esewa_sandbox: true,
         esewa_countries: 'NP',
         esewa_disallowed_countries: '',
+        esewa_exchange_rate: 133.50,
+        esewa_exchange_mode: 'manual',
+        esewa_min_amount: 10,
+        esewa_max_amount: 100000,
+        esewa_bonus: 0,
+        esewa_tax: 0,
 
         // Cryptomus
         cryptomus_enabled: false,
@@ -371,6 +377,88 @@ const PaymentSettings = () => {
                                     placeholder="e.g. IN,CN"
                                 />
                                 <small className="form-hint">Comma-separated ISO codes. These countries will be BLOCKED even if in allowed list.</small>
+                            </div>
+                        </div>
+
+                        {/* Exchange Rate & Conversion */}
+                        <div className="info-box warning" style={{ marginTop: 'var(--spacing-lg)' }}>
+                            <AlertTriangle size={16} />
+                            <span><strong>Currency Conversion:</strong> eSewa processes payments in NPR. The system automatically converts NPR → USD before crediting the user's wallet.</span>
+                        </div>
+
+                        <div className="settings-grid" style={{ marginTop: 'var(--spacing-md)' }}>
+                            <div className="form-group">
+                                <label><DollarSign size={16} /> Exchange Rate (NPR per 1 USD)</label>
+                                <input
+                                    type="number"
+                                    step="0.01"
+                                    min="1"
+                                    value={settings.esewa_exchange_rate}
+                                    onChange={(e) => handleChange('esewa_exchange_rate', e.target.value)}
+                                    placeholder="133.50"
+                                />
+                                <small className="form-hint">How many NPR equals 1 USD. Example: 133.50 means 133.50 NPR = $1 USD</small>
+                            </div>
+                            <div className="form-group">
+                                <label>Exchange Rate Mode</label>
+                                <select
+                                    value={settings.esewa_exchange_mode || 'manual'}
+                                    onChange={(e) => handleChange('esewa_exchange_mode', e.target.value)}
+                                >
+                                    <option value="manual">Manual (Admin sets rate)</option>
+                                    <option value="auto" disabled>Automatic (Google API) — Coming Soon</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div className="settings-grid">
+                            <div className="form-group">
+                                <label>Minimum Amount (NPR)</label>
+                                <input
+                                    type="number"
+                                    step="1"
+                                    min="1"
+                                    value={settings.esewa_min_amount}
+                                    onChange={(e) => handleChange('esewa_min_amount', e.target.value)}
+                                    placeholder="10"
+                                />
+                            </div>
+                            <div className="form-group">
+                                <label>Maximum Amount (NPR)</label>
+                                <input
+                                    type="number"
+                                    step="1"
+                                    min="1"
+                                    value={settings.esewa_max_amount}
+                                    onChange={(e) => handleChange('esewa_max_amount', e.target.value)}
+                                    placeholder="100000"
+                                />
+                            </div>
+                            <div className="form-group">
+                                <label>Bonus Percentage (%)</label>
+                                <input
+                                    type="number"
+                                    step="0.5"
+                                    min="0"
+                                    max="100"
+                                    value={settings.esewa_bonus}
+                                    onChange={(e) => handleChange('esewa_bonus', e.target.value)}
+                                    placeholder="0"
+                                />
+                                <small className="form-hint">Extra credit given to customers (added to converted USD amount)</small>
+                            </div>
+                            <div className="form-group">
+                                <label>Tax Percentage (%)</label>
+                                <input
+                                    type="number"
+                                    step="0.5"
+                                    min="0"
+                                    max="100"
+                                    value={settings.esewa_tax}
+                                    onChange={(e) => handleChange('esewa_tax', e.target.value)}
+                                    placeholder="0"
+                                />
+                                <small className="form-hint">Tax deducted from converted USD amount before crediting wallet</small>
                             </div>
                         </div>
                     </div>

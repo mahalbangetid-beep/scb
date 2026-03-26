@@ -42,7 +42,12 @@ class EsewaService {
             const configs = await prisma.systemConfig.findMany({
                 where: {
                     key: {
-                        in: ['esewa_enabled', 'esewa_merchant_code', 'esewa_secret_key', 'esewa_sandbox']
+                        in: [
+                            'esewa_enabled', 'esewa_merchant_code', 'esewa_secret_key', 'esewa_sandbox',
+                            'esewa_exchange_rate', 'esewa_exchange_mode',
+                            'esewa_min_amount', 'esewa_max_amount',
+                            'esewa_bonus', 'esewa_tax'
+                        ]
                     }
                 }
             });
@@ -62,7 +67,15 @@ class EsewaService {
                 merchantCode: configMap.esewa_merchant_code || this.defaultMerchantCode,
                 secretKey: configMap.esewa_secret_key || this.defaultSecretKey,
                 gatewayUrl: isSandbox ? this.sandboxGatewayUrl : this.productionGatewayUrl,
-                verifyUrl: isSandbox ? this.sandboxVerifyUrl : this.productionVerifyUrl
+                verifyUrl: isSandbox ? this.sandboxVerifyUrl : this.productionVerifyUrl,
+                // Exchange rate settings (NPR → USD conversion)
+                exchangeRate: parseFloat(configMap.esewa_exchange_rate) || 133.50, // Default NPR/USD rate
+                exchangeMode: configMap.esewa_exchange_mode || 'manual', // 'manual' or 'auto'
+                // Payment limits & extras
+                minAmount: parseFloat(configMap.esewa_min_amount) || 10, // Min NPR
+                maxAmount: parseFloat(configMap.esewa_max_amount) || 100000, // Max NPR
+                bonusPercent: parseFloat(configMap.esewa_bonus) || 0, // Bonus %
+                taxPercent: parseFloat(configMap.esewa_tax) || 0, // Tax %
             };
         } catch (error) {
             console.error('[Esewa] Failed to get config:', error.message);
@@ -73,9 +86,50 @@ class EsewaService {
                 merchantCode: this.defaultMerchantCode,
                 secretKey: this.defaultSecretKey,
                 gatewayUrl: this.sandboxGatewayUrl,
-                verifyUrl: this.sandboxVerifyUrl
+                verifyUrl: this.sandboxVerifyUrl,
+                exchangeRate: 133.50,
+                exchangeMode: 'manual',
+                minAmount: 10,
+                maxAmount: 100000,
+                bonusPercent: 0,
+                taxPercent: 0,
             };
         }
+    }
+
+    /**
+     * Convert NPR amount to USD using configured exchange rate
+     * Applies tax deduction and bonus addition.
+     * @param {number} nprAmount - Amount in NPR
+     * @param {Object} config - Config from getConfig()
+     * @returns {Object} { usdAmount, nprAmount, exchangeRate, tax, bonus, breakdown }
+     */
+    convertNprToUsd(nprAmount, config) {
+        const exchangeRate = config.exchangeRate;
+        const rawUsd = nprAmount / exchangeRate;
+
+        // Calculate tax (deducted)
+        const taxPercent = config.taxPercent || 0;
+        const taxAmount = rawUsd * (taxPercent / 100);
+
+        // Calculate bonus (added)
+        const bonusPercent = config.bonusPercent || 0;
+        const bonusAmount = rawUsd * (bonusPercent / 100);
+
+        // Final amount: raw - tax + bonus
+        const finalUsd = Math.round((rawUsd - taxAmount + bonusAmount) * 100000) / 100000; // 5 decimal precision
+
+        return {
+            usdAmount: Math.max(0, finalUsd),
+            nprAmount,
+            exchangeRate,
+            rawUsd: Math.round(rawUsd * 100000) / 100000,
+            taxPercent,
+            taxAmount: Math.round(taxAmount * 100000) / 100000,
+            bonusPercent,
+            bonusAmount: Math.round(bonusAmount * 100000) / 100000,
+            breakdown: `Amount: ${nprAmount} NPR | Exchange Rate: ${exchangeRate} | Raw: $${rawUsd.toFixed(5)} | Tax: ${taxPercent}% ($${taxAmount.toFixed(5)}) | Bonus: ${bonusPercent}% ($${bonusAmount.toFixed(5)}) | Final: $${Math.max(0, finalUsd).toFixed(5)}`
+        };
     }
 
     /**
@@ -106,21 +160,35 @@ class EsewaService {
             throw new Error('eSewa payment is not enabled');
         }
 
-        console.log(`[Esewa] Creating payment in ${config.isSandbox ? 'SANDBOX' : 'PRODUCTION'} mode`);
+        const nprAmount = parseFloat(amount);
+
+        // Validate min/max (amount is in NPR)
+        if (nprAmount < config.minAmount) {
+            throw new Error(`Minimum amount is ${config.minAmount} NPR`);
+        }
+        if (nprAmount > config.maxAmount) {
+            throw new Error(`Maximum amount is ${config.maxAmount} NPR`);
+        }
+
+        // Pre-calculate USD conversion for display
+        const conversion = this.convertNprToUsd(nprAmount, config);
+
+        console.log(`[Esewa] Creating payment in ${config.isSandbox ? 'SANDBOX' : 'PRODUCTION'} mode | ${nprAmount} NPR → $${conversion.usdAmount.toFixed(5)} USD`);
 
         // Generate unique transaction UUID
         const transactionUuid = `TX-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
-        // Prepare signature message
-        const signatureMessage = `total_amount=${amount},transaction_uuid=${transactionUuid},product_code=${config.merchantCode}`;
+        // Prepare signature message — eSewa needs the NPR amount
+        const signatureMessage = `total_amount=${nprAmount},transaction_uuid=${transactionUuid},product_code=${config.merchantCode}`;
         const signature = this.generateSignature(signatureMessage, config.secretKey);
 
         // Store pending transaction in database
+        // CRITICAL: Store the USD amount (converted), NOT the NPR amount
         const transaction = await prisma.walletTransaction.create({
             data: {
                 userId,
                 type: 'TOPUP',
-                amount: parseFloat(amount),
+                amount: conversion.usdAmount, // ← FIXED: Store USD, not NPR
                 status: 'PENDING',
                 gateway: 'ESEWA',
                 gatewayRef: transactionUuid,
@@ -129,16 +197,25 @@ class EsewaService {
                     orderId,
                     signature,
                     isSandbox: config.isSandbox,
+                    nprAmount,
+                    exchangeRate: config.exchangeRate,
+                    usdAmount: conversion.usdAmount,
+                    taxPercent: conversion.taxPercent,
+                    taxAmount: conversion.taxAmount,
+                    bonusPercent: conversion.bonusPercent,
+                    bonusAmount: conversion.bonusAmount,
+                    breakdown: conversion.breakdown,
                     createdAt: new Date().toISOString()
                 })
             }
         });
 
         // Return form data for client-side redirect
+        // eSewa form uses NPR amount (checkout currency)
         const formData = {
-            amount: amount.toString(),
+            amount: nprAmount.toString(),
             tax_amount: '0',
-            total_amount: amount.toString(),
+            total_amount: nprAmount.toString(),
             transaction_uuid: transactionUuid,
             product_code: config.merchantCode,
             product_service_charge: '0',
@@ -155,7 +232,8 @@ class EsewaService {
             formData,
             transactionId: transaction.id,
             transactionUuid,
-            isSandbox: config.isSandbox
+            isSandbox: config.isSandbox,
+            conversion // Include conversion info for frontend display
         };
     }
 
@@ -264,6 +342,38 @@ class EsewaService {
                 return { success: false, error: 'Payment verification failed' };
             }
 
+            // Parse transaction metadata to get conversion info
+            let txMetadata = {};
+            try {
+                txMetadata = JSON.parse(transaction.metadata || '{}');
+            } catch (e) { txMetadata = {}; }
+
+            // The USD amount is already stored in transaction.amount (fixed in createPayment)
+            // For legacy transactions without conversion, re-convert now
+            // Note: config already fetched at function start (line 297)
+            const nprAmount = parseFloat(total_amount) || txMetadata.nprAmount || transaction.amount;
+            let usdAmount = transaction.amount;
+
+            // Safety check: if transaction.amount looks like NPR (> exchange rate),
+            // it's a legacy transaction — re-convert
+            if (transaction.amount >= config.exchangeRate && !txMetadata.usdAmount) {
+                const conversion = this.convertNprToUsd(nprAmount, config);
+                usdAmount = conversion.usdAmount;
+                console.log(`[Esewa] Legacy NPR transaction detected — converting ${nprAmount} NPR → $${usdAmount.toFixed(5)} USD`);
+            }
+
+            // Build detailed memo for admin
+            const memo = [
+                `eSewa Token: ${transaction_code || 'N/A'}`,
+                `Paid Amount via TransactionId: ${transaction_uuid}`,
+                `Amount: ${nprAmount} NPR`,
+                `Default Currency: USD | Exchange Rate: ${config.exchangeRate}`,
+                `Amount to Add: ${usdAmount.toFixed(5)} USD`,
+                `Tax Percentage: ${config.taxPercent}% | Calculated Tax: ${(usdAmount * config.taxPercent / 100).toFixed(5)} USD`,
+                `Bonus: ${config.bonusPercent}% | Final Amount: ${usdAmount.toFixed(5)} USD`,
+                `Payment Status: ${status}`
+            ].join('\n');
+
             // Use atomic transaction to prevent race condition (double credit)
             const result = await prisma.$transaction(async (tx) => {
                 // Re-fetch transaction inside transaction to get latest status
@@ -284,26 +394,33 @@ class EsewaService {
                     existingMetadata = {};
                 }
 
-                // Update transaction status
+                // Update transaction with USD amount and full memo
                 await tx.walletTransaction.update({
                     where: { id: transaction.id },
                     data: {
                         status: 'COMPLETED',
+                        amount: usdAmount, // Ensure USD amount is stored
                         metadata: JSON.stringify({
                             ...existingMetadata,
                             refId: transaction_code,
+                            nprAmount,
+                            exchangeRate: config.exchangeRate,
+                            usdAmount,
+                            taxPercent: config.taxPercent,
+                            bonusPercent: config.bonusPercent,
+                            memo,
                             verificationData: verification.data,
                             updatedAt: new Date().toISOString()
                         })
                     }
                 });
 
-                // Credit user wallet
+                // Credit user wallet with USD amount (NOT NPR!)
                 await tx.user.update({
                     where: { id: transaction.userId },
                     data: {
                         creditBalance: {
-                            increment: transaction.amount
+                            increment: usdAmount  // ← FIXED: credit USD, not NPR
                         }
                     }
                 });
@@ -313,30 +430,30 @@ class EsewaService {
                     data: {
                         userId: transaction.userId,
                         type: 'CREDIT',
-                        amount: transaction.amount,
+                        amount: usdAmount,
                         balanceBefore: transaction.user.creditBalance,
-                        balanceAfter: transaction.user.creditBalance + transaction.amount,
-                        description: `eSewa payment +NPR ${transaction.amount.toFixed(2)}`,
+                        balanceAfter: transaction.user.creditBalance + usdAmount,
+                        description: `eSewa payment: ${nprAmount} NPR → $${usdAmount.toFixed(5)} USD (rate: ${config.exchangeRate})`,
                         reference: transaction.gatewayRef
                     }
                 });
 
-                return { credited: true };
+                return { credited: true, usdAmount, nprAmount };
             });
 
             if (result.credited) {
-                console.log(`[Esewa] Successfully credited ${transaction.amount} to user ${transaction.userId}`);
+                console.log(`[Esewa] Successfully credited $${usdAmount.toFixed(5)} USD (${nprAmount} NPR) to user ${transaction.userId}`);
 
                 // Auto-generate invoice
                 try {
                     const invoiceService = require('../invoiceService');
                     await invoiceService.createFromPayment({
                         userId: transaction.userId,
-                        amount: transaction.amount,
-                        currency: 'NPR',
+                        amount: usdAmount,
+                        currency: 'USD',
                         method: 'ESEWA',
-                        description: `Credit Top-Up via eSewa`,
-                        metadata: { gateway: 'esewa', refId: transaction_code }
+                        description: `Credit Top-Up via eSewa (${nprAmount} NPR)`,
+                        metadata: { gateway: 'esewa', refId: transaction_code, nprAmount, exchangeRate: config.exchangeRate }
                     });
                 } catch (invoiceError) {
                     console.error('[Esewa] Invoice generation failed:', invoiceError.message);
@@ -348,7 +465,8 @@ class EsewaService {
             return {
                 success: true,
                 transactionId: transaction.id,
-                amount: transaction.amount,
+                amount: usdAmount,
+                nprAmount,
                 userId: transaction.userId,
                 credited: result.credited
             };
@@ -418,8 +536,13 @@ class EsewaService {
             description: 'Pay with eSewa (Nepal)',
             icon: '📱',
             currency: 'NPR',
-            minAmount: 10,
-            maxAmount: 100000,
+            walletCurrency: 'USD',
+            exchangeRate: config.exchangeRate,
+            exchangeMode: config.exchangeMode,
+            minAmount: config.minAmount,
+            maxAmount: config.maxAmount,
+            bonusPercent: config.bonusPercent,
+            taxPercent: config.taxPercent,
             isAvailable: config.enabled,
             isSandbox: config.isSandbox,
             countries,
