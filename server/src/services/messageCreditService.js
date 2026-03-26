@@ -46,7 +46,7 @@ class MessageCreditService {
     constructor() {
         // Default configuration
         this.defaults = {
-            freeSignupCredits: parseInt(process.env.FREE_SIGNUP_CREDITS) || 100,
+            freeSignupCredits: parseInt(process.env.FREE_SIGNUP_CREDITS) || 0,
             conversionRate: parseInt(process.env.CREDIT_CONVERSION_RATE) || 100, // $1 = 100 credits
             creditsPerMessage: parseInt(process.env.CREDITS_PER_MESSAGE) || 1
         };
