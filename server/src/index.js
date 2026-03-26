@@ -182,6 +182,7 @@ app.use('/api', apiLimiter);
 
 // API Routes
 app.use('/api/auth', authRoutes);
+app.use('/api/auth/2fa', require('./routes/auth2fa'));
 app.use('/api/devices', deviceRoutes);
 app.use('/api/messages', messageRoutes);
 app.use('/api/contacts', contactRoutes);

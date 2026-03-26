@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link, useNavigate, useLocation } from 'react-router-dom'
-import { User, Lock, Loader2, ArrowRight, ShieldCheck, AlertCircle } from 'lucide-react'
+import { User, Lock, Loader2, ArrowRight, ShieldCheck, AlertCircle, Shield } from 'lucide-react'
 import api from '../services/api'
 
 export default function Login() {
@@ -10,6 +10,8 @@ export default function Login() {
     })
     const [loading, setLoading] = useState(false)
     const [error, setError] = useState(null)
+    const [needs2FA, setNeeds2FA] = useState(false)
+    const [twoFactorCode, setTwoFactorCode] = useState('')
     const navigate = useNavigate()
     const location = useLocation()
 
@@ -19,7 +21,20 @@ export default function Login() {
         setError(null)
 
         try {
-            const res = await api.post('/auth/login', formData)
+            const payload = { ...formData }
+            if (needs2FA && twoFactorCode) {
+                payload.twoFactorCode = twoFactorCode
+            }
+
+            const res = await api.post('/auth/login', payload)
+
+            // Check if 2FA is required
+            if (res.data?.requires2FA) {
+                setNeeds2FA(true)
+                setLoading(false)
+                return
+            }
+
             localStorage.setItem('token', res.data.token)
             localStorage.setItem('user', JSON.stringify(res.data.user))
 
@@ -90,6 +105,32 @@ export default function Login() {
                             />
                         </div>
                     </div>
+
+                    {needs2FA && (
+                        <div className="form-group">
+                            <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                <Shield size={14} /> Two-Factor Authentication Code
+                            </label>
+                            <div className="input-with-icon">
+                                <Shield size={18} />
+                                <input
+                                    type="text"
+                                    className="form-input"
+                                    placeholder="Enter 6-digit code"
+                                    value={twoFactorCode}
+                                    onChange={(e) => setTwoFactorCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                                    required
+                                    disabled={loading}
+                                    maxLength={6}
+                                    autoFocus
+                                    autoComplete="one-time-code"
+                                />
+                            </div>
+                            <small style={{ color: 'var(--text-muted)', fontSize: '0.75rem', marginTop: 4, display: 'block' }}>
+                                Enter the code from your authenticator app
+                            </small>
+                        </div>
+                    )}
 
                     <button type="submit" className="btn btn-primary auth-btn" disabled={loading}>
                         {loading ? (

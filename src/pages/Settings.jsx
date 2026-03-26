@@ -57,6 +57,9 @@ export default function Settings() {
 
     // Security state
     const [passwords, setPasswords] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' })
+    
+    // 2FA state
+    const [twoFA, setTwoFA] = useState({ enabled: false, loading: true, setupData: null, verifyCode: '', disablePassword: '', disableCode: '' })
 
     // General state (from backend Setting model)
     const [generalSettings, setGeneralSettings] = useState({
@@ -125,6 +128,68 @@ export default function Settings() {
         }
     }
 
+    // 2FA functions
+    const fetch2FAStatus = async () => {
+        try {
+            const res = await api.get('/auth/2fa/status')
+            setTwoFA(prev => ({ ...prev, enabled: res.data?.enabled || false, loading: false }))
+        } catch (err) {
+            console.error('Failed to fetch 2FA status:', err)
+            setTwoFA(prev => ({ ...prev, loading: false }))
+        }
+    }
+
+    const handle2FASetup = async () => {
+        setSubmitting(true)
+        setError(null)
+        try {
+            const res = await api.post('/auth/2fa/setup')
+            setTwoFA(prev => ({ ...prev, setupData: res.data }))
+        } catch (err) {
+            setError(err.error?.message || err.message || 'Failed to set up 2FA')
+        } finally {
+            setSubmitting(false)
+        }
+    }
+
+    const handle2FAVerify = async () => {
+        if (!twoFA.verifyCode || twoFA.verifyCode.length < 6) {
+            setError('Please enter a 6-digit code')
+            return
+        }
+        setSubmitting(true)
+        setError(null)
+        try {
+            await api.post('/auth/2fa/verify', { code: twoFA.verifyCode })
+            setTwoFA(prev => ({ ...prev, enabled: true, setupData: null, verifyCode: '' }))
+            setSaved(true)
+            setTimeout(() => setSaved(false), 3000)
+        } catch (err) {
+            setError(err.error?.message || err.message || 'Invalid code')
+        } finally {
+            setSubmitting(false)
+        }
+    }
+
+    const handle2FADisable = async () => {
+        if (!twoFA.disablePassword || !twoFA.disableCode) {
+            setError('Password and 2FA code are required')
+            return
+        }
+        setSubmitting(true)
+        setError(null)
+        try {
+            await api.post('/auth/2fa/disable', { password: twoFA.disablePassword, code: twoFA.disableCode })
+            setTwoFA(prev => ({ ...prev, enabled: false, disablePassword: '', disableCode: '' }))
+            setSaved(true)
+            setTimeout(() => setSaved(false), 3000)
+        } catch (err) {
+            setError(err.error?.message || err.message || 'Failed to disable 2FA')
+        } finally {
+            setSubmitting(false)
+        }
+    }
+
     // Save Bot Security Settings
     const handleSaveSecuritySettings = async () => {
         setSubmitting(true)
@@ -143,7 +208,7 @@ export default function Settings() {
     useEffect(() => {
         const load = async () => {
             setLoading(true)
-            await Promise.all([fetchProfile(), fetchApiKeys(), fetchGeneralSettings(), fetchBotSecuritySettings()])
+            await Promise.all([fetchProfile(), fetchApiKeys(), fetchGeneralSettings(), fetchBotSecuritySettings(), fetch2FAStatus()])
             setLoading(false)
         }
         load()
@@ -459,6 +524,117 @@ export default function Settings() {
                                     {submitting ? <Loader2 size={14} className="animate-spin" /> : null}
                                     Update Password
                                 </button>
+                            </div>
+
+                            {/* Two-Factor Authentication Section */}
+                            <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: 'var(--spacing-xl)', marginTop: 'var(--spacing-xl)', marginBottom: 'var(--spacing-xl)' }}>
+                                <h4 style={{ marginBottom: 'var(--spacing-md)', display: 'flex', alignItems: 'center', gap: 'var(--spacing-sm)' }}>
+                                    <Shield size={18} /> Two-Factor Authentication (2FA)
+                                </h4>
+
+                                {twoFA.loading ? (
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--text-muted)' }}>
+                                        <Loader2 size={16} className="animate-spin" /> Checking 2FA status...
+                                    </div>
+                                ) : twoFA.enabled ? (
+                                    /* 2FA is ENABLED — show disable form */
+                                    <div>
+                                        <div style={{
+                                            padding: 'var(--spacing-md)',
+                                            background: 'rgba(16, 185, 129, 0.1)',
+                                            borderRadius: 'var(--radius-md)',
+                                            marginBottom: 'var(--spacing-md)',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: 'var(--spacing-sm)',
+                                            color: '#10b981',
+                                            fontWeight: 500
+                                        }}>
+                                            <CheckCircle size={18} /> Two-factor authentication is enabled
+                                        </div>
+                                        <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: 'var(--spacing-md)' }}>
+                                            To disable 2FA, enter your current password and a 2FA code from your authenticator app.
+                                        </p>
+                                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 'var(--spacing-md)' }}>
+                                            <div className="form-group">
+                                                <label className="form-label">Password</label>
+                                                <input type="password" className="form-input" value={twoFA.disablePassword}
+                                                    onChange={e => setTwoFA({ ...twoFA, disablePassword: e.target.value })}
+                                                    placeholder="Your account password"
+                                                />
+                                            </div>
+                                            <div className="form-group">
+                                                <label className="form-label">2FA Code</label>
+                                                <input type="text" className="form-input" value={twoFA.disableCode}
+                                                    onChange={e => setTwoFA({ ...twoFA, disableCode: e.target.value.replace(/\D/g, '').slice(0, 6) })}
+                                                    placeholder="6-digit code"
+                                                    maxLength={6}
+                                                />
+                                            </div>
+                                        </div>
+                                        <button className="btn btn-secondary" onClick={handle2FADisable} disabled={submitting}
+                                            style={{ marginTop: 'var(--spacing-sm)', color: 'var(--error)' }}
+                                        >
+                                            {submitting ? <Loader2 size={14} className="animate-spin" /> : null}
+                                            Disable 2FA
+                                        </button>
+                                    </div>
+                                ) : twoFA.setupData ? (
+                                    /* 2FA SETUP in progress — show QR code */
+                                    <div>
+                                        <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: 'var(--spacing-md)' }}>
+                                            Scan this QR code with your authenticator app (Google Authenticator, Authy, etc.), then enter the 6-digit code to verify.
+                                        </p>
+                                        <div style={{
+                                            display: 'flex',
+                                            flexDirection: 'column',
+                                            alignItems: 'center',
+                                            gap: 'var(--spacing-md)',
+                                            padding: 'var(--spacing-lg)',
+                                            background: 'var(--bg-tertiary)',
+                                            borderRadius: 'var(--radius-lg)',
+                                            marginBottom: 'var(--spacing-md)'
+                                        }}>
+                                            {twoFA.setupData.qrCodeUrl && (
+                                                <img src={twoFA.setupData.qrCodeUrl} alt="2FA QR Code" style={{ width: 200, height: 200, borderRadius: 'var(--radius-md)' }} />
+                                            )}
+                                            <div style={{ textAlign: 'center' }}>
+                                                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: 4 }}>Manual entry key:</div>
+                                                <code style={{ padding: '4px 12px', background: 'var(--bg-primary)', borderRadius: 'var(--radius-sm)', fontSize: '0.85rem', letterSpacing: 2 }}>
+                                                    {twoFA.setupData.secret}
+                                                </code>
+                                            </div>
+                                        </div>
+                                        <div style={{ display: 'flex', gap: 'var(--spacing-sm)', alignItems: 'flex-end' }}>
+                                            <div className="form-group" style={{ flex: 1, marginBottom: 0 }}>
+                                                <label className="form-label">Verification Code</label>
+                                                <input type="text" className="form-input" value={twoFA.verifyCode}
+                                                    onChange={e => setTwoFA({ ...twoFA, verifyCode: e.target.value.replace(/\D/g, '').slice(0, 6) })}
+                                                    placeholder="Enter 6-digit code"
+                                                    maxLength={6}
+                                                />
+                                            </div>
+                                            <button className="btn btn-primary" onClick={handle2FAVerify} disabled={submitting} style={{ marginBottom: 0 }}>
+                                                {submitting ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle size={14} />}
+                                                Verify & Enable
+                                            </button>
+                                            <button className="btn btn-secondary" onClick={() => setTwoFA(prev => ({ ...prev, setupData: null }))} style={{ marginBottom: 0 }}>
+                                                Cancel
+                                            </button>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    /* 2FA NOT enabled — show enable button */
+                                    <div>
+                                        <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: 'var(--spacing-md)' }}>
+                                            Add an extra layer of security by requiring a code from your authenticator app when signing in.
+                                        </p>
+                                        <button className="btn btn-primary" onClick={handle2FASetup} disabled={submitting}>
+                                            {submitting ? <Loader2 size={14} className="animate-spin" /> : <Shield size={14} />}
+                                            Set Up Two-Factor Authentication
+                                        </button>
+                                    </div>
+                                )}
                             </div>
 
                             {/* Bot Security Section */}

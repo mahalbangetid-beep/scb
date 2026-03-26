@@ -272,7 +272,7 @@ router.post('/register', authLimiter, async (req, res, next) => {
 // Rate limited to prevent brute force attacks
 router.post('/login', authLimiter, async (req, res, next) => {
     try {
-        const { username, email, password } = req.body;
+        const { username, email, password, twoFactorCode } = req.body;
 
         // Support login with username or email
         const loginIdentifier = username || email;
@@ -325,6 +325,34 @@ router.post('/login', authLimiter, async (req, res, next) => {
         if (!isPasswordValid) {
             await logLogin(user.id, ipAddress, userAgent, 'FAILED', 'Invalid password');
             throw new AppError('Invalid credentials', 401);
+        }
+
+        // ===== 2FA Check (if enabled) =====
+        if (user.twoFactorEnabled) {
+            if (!twoFactorCode) {
+                // Password valid but 2FA required — return challenge
+                return successResponse(res, {
+                    requires2FA: true,
+                    userId: user.id
+                }, 'Two-factor authentication required');
+            }
+
+            // Verify TOTP code
+            try {
+                const { authenticator } = require('otplib');
+                const { decrypt } = require('../utils/encryption');
+                const secret = decrypt(user.twoFactorSecret);
+                const isValidOTP = authenticator.verify({ token: String(twoFactorCode), secret });
+
+                if (!isValidOTP) {
+                    await logLogin(user.id, ipAddress, userAgent, 'FAILED', 'Invalid 2FA code');
+                    throw new AppError('Invalid two-factor authentication code', 401);
+                }
+            } catch (otpError) {
+                if (otpError instanceof AppError) throw otpError;
+                console.error('[Auth] 2FA verification error:', otpError.message);
+                throw new AppError('Two-factor authentication verification failed', 500);
+            }
         }
 
         // Update last login info

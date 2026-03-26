@@ -75,6 +75,104 @@ router.get('/history', async (req, res, next) => {
     }
 });
 
+// ==================== DELETED PANELS (ARCHIVE) ====================
+
+// GET /api/panels/deleted - List user's deleted panels (from MasterBackup)
+router.get('/deleted', async (req, res, next) => {
+    try {
+        const deletedPanels = await prisma.masterBackup.findMany({
+            where: {
+                userId: req.effectiveUserId,
+                deletedByUser: true
+            },
+            select: {
+                id: true,
+                panelName: true,
+                panelAlias: true,
+                panelDomain: true,
+                panelType: true,
+                userDeletedAt: true,
+                backupReason: true,
+                createdAt: true
+            },
+            orderBy: { userDeletedAt: 'desc' }
+        });
+
+        successResponse(res, deletedPanels);
+    } catch (error) {
+        next(error);
+    }
+});
+
+// POST /api/panels/deleted/:backupId/restore - Restore a deleted panel
+router.post('/deleted/:backupId/restore', async (req, res, next) => {
+    try {
+        const backup = await prisma.masterBackup.findFirst({
+            where: {
+                id: req.params.backupId,
+                userId: req.effectiveUserId,
+                deletedByUser: true
+            }
+        });
+
+        if (!backup) {
+            throw new AppError('Deleted panel not found', 404);
+        }
+
+        // Check if panel with same URL already exists
+        const existingPanel = await prisma.smmPanel.findFirst({
+            where: {
+                userId: req.effectiveUserId,
+                url: backup.panelDomain
+            }
+        });
+
+        if (existingPanel) {
+            throw new AppError('A panel with this URL already exists. Remove it first to restore from archive.', 400);
+        }
+
+        // Restore panel from backup
+        const restoredPanel = await prisma.smmPanel.create({
+            data: {
+                userId: req.effectiveUserId,
+                name: backup.panelName,
+                alias: backup.panelAlias || `${backup.panelName} (Restored)`,
+                url: backup.panelDomain,
+                apiKey: backup.panelApiKey,
+                adminApiKey: backup.panelAdminApiKey || null,
+                supportsAdminApi: !!backup.panelAdminApiKey,
+                panelType: backup.panelType || 'GENERIC',
+                isActive: true
+            },
+            select: {
+                id: true,
+                name: true,
+                alias: true,
+                url: true,
+                panelType: true,
+                isActive: true,
+                createdAt: true
+            }
+        });
+
+        // Clear the deletedByUser flag on backup
+        await prisma.masterBackup.update({
+            where: { id: req.params.backupId },
+            data: {
+                deletedByUser: false,
+                originalPanelId: restoredPanel.id,
+                backupReason: `Restored by user at ${new Date().toISOString()}`
+            }
+        });
+
+        console.log(`[Panel] Restored deleted panel ${backup.panelName} -> ${restoredPanel.id}`);
+
+        successResponse(res, restoredPanel, 'Panel restored successfully');
+    } catch (error) {
+        next(error);
+    }
+});
+
 // ==================== SMART DETECTION ====================
 
 // POST /api/panels/detect - Auto-detect panel Admin API configuration

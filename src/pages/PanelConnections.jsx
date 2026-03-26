@@ -21,7 +21,9 @@ import {
     Info,
     Zap,
     ExternalLink,
-    HelpCircle
+    HelpCircle,
+    Trash2,
+    ChevronDown
 } from 'lucide-react';
 import api from '../services/api';
 
@@ -33,6 +35,11 @@ const PanelConnections = () => {
     const [scanResults, setScanResults] = useState(null);
     const [editingService, setEditingService] = useState(null);
     const [manualEndpoint, setManualEndpoint] = useState('');
+
+    // Deleted panels state
+    const [deletedPanels, setDeletedPanels] = useState([]);
+    const [showDeleted, setShowDeleted] = useState(false);
+    const [restoringId, setRestoringId] = useState(null);
 
     // Section scanning state
     const [selectedSection, setSelectedSection] = useState('');
@@ -93,6 +100,7 @@ const PanelConnections = () => {
     // Fetch all panels
     useEffect(() => {
         fetchPanels();
+        fetchDeletedPanels();
     }, []);
 
     const fetchPanels = async () => {
@@ -116,6 +124,32 @@ const PanelConnections = () => {
             console.error('[PanelConnections] Error fetching panels:', error);
         } finally {
             setLoading(false);
+        }
+    };
+
+    const fetchDeletedPanels = async () => {
+        try {
+            const response = await api.get('/panels/deleted');
+            setDeletedPanels(Array.isArray(response.data) ? response.data : []);
+        } catch (error) {
+            console.error('[PanelConnections] Error fetching deleted panels:', error);
+            setDeletedPanels([]);
+        }
+    };
+
+    const handleRestorePanel = async (backupId) => {
+        if (!window.confirm('Restore this panel? It will be re-added to your active panels.')) return;
+
+        setRestoringId(backupId);
+        try {
+            await api.post(`/panels/deleted/${backupId}/restore`);
+            alert('Panel restored successfully!');
+            fetchPanels();
+            fetchDeletedPanels();
+        } catch (error) {
+            alert('Error restoring panel: ' + (error.error?.message || error.message || 'Unknown error'));
+        } finally {
+            setRestoringId(null);
         }
     };
 
@@ -489,6 +523,57 @@ const PanelConnections = () => {
                             })
                         )}
                     </div>
+
+                    {/* Deleted Panels Archive */}
+                    {deletedPanels.length > 0 && (
+                        <div className="deleted-section">
+                            <div 
+                                className="deleted-header" 
+                                onClick={() => setShowDeleted(!showDeleted)}
+                            >
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                    <Trash2 size={14} />
+                                    <span>Deleted Panels</span>
+                                    <span className="deleted-count">{deletedPanels.length}</span>
+                                </div>
+                                <ChevronDown 
+                                    size={14} 
+                                    style={{ 
+                                        transform: showDeleted ? 'rotate(180deg)' : 'rotate(0deg)',
+                                        transition: 'transform 0.2s ease'
+                                    }} 
+                                />
+                            </div>
+                            {showDeleted && (
+                                <div className="deleted-list">
+                                    {deletedPanels.map(dp => (
+                                        <div key={dp.id} className="deleted-item">
+                                            <div className="deleted-info">
+                                                <span className="deleted-name">
+                                                    {dp.panelAlias || dp.panelName}
+                                                </span>
+                                                <span className="deleted-date">
+                                                    Deleted {dp.userDeletedAt ? new Date(dp.userDeletedAt).toLocaleDateString() : 'N/A'}
+                                                </span>
+                                            </div>
+                                            <button
+                                                className="btn-restore"
+                                                onClick={() => handleRestorePanel(dp.id)}
+                                                disabled={restoringId === dp.id}
+                                                title="Restore panel"
+                                            >
+                                                {restoringId === dp.id ? (
+                                                    <Loader2 className="animate-spin" size={13} />
+                                                ) : (
+                                                    <RotateCcw size={13} />
+                                                )}
+                                            </button>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    )}
                 </div>
 
                 {/* Main Content - Service Cards */}
@@ -1352,6 +1437,106 @@ const PanelConnections = () => {
                     animation: spin 1s linear infinite;
                 }
                 
+                
+                /* Deleted Panels Archive */
+                .deleted-section {
+                    border-top: 1px solid var(--border-color);
+                }
+                
+                .deleted-header {
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                    padding: var(--spacing-sm) var(--spacing-md);
+                    cursor: pointer;
+                    color: var(--text-secondary);
+                    font-size: 0.75rem;
+                    font-weight: 600;
+                    text-transform: uppercase;
+                    letter-spacing: 0.5px;
+                    transition: background 0.15s ease;
+                }
+                
+                .deleted-header:hover {
+                    background: rgba(239, 68, 68, 0.05);
+                }
+                
+                .deleted-count {
+                    background: rgba(239, 68, 68, 0.15);
+                    color: #ef4444;
+                    padding: 1px 6px;
+                    border-radius: var(--radius-full);
+                    font-size: 0.65rem;
+                    font-weight: 700;
+                }
+                
+                .deleted-list {
+                    max-height: 200px;
+                    overflow-y: auto;
+                }
+                
+                .deleted-item {
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                    padding: 8px var(--spacing-md);
+                    border-bottom: 1px solid var(--border-color);
+                    opacity: 0.7;
+                    transition: opacity 0.15s ease;
+                }
+                
+                .deleted-item:hover {
+                    opacity: 1;
+                    background: rgba(239, 68, 68, 0.03);
+                }
+                
+                .deleted-info {
+                    display: flex;
+                    flex-direction: column;
+                    gap: 2px;
+                    min-width: 0;
+                }
+                
+                .deleted-name {
+                    font-size: 0.8rem;
+                    font-weight: 500;
+                    color: var(--text-primary);
+                    white-space: nowrap;
+                    overflow: hidden;
+                    text-overflow: ellipsis;
+                }
+                
+                .deleted-date {
+                    font-size: 0.65rem;
+                    color: var(--text-secondary);
+                }
+                
+                .btn-restore {
+                    background: rgba(16, 185, 129, 0.1);
+                    color: #10b981;
+                    border: 1px solid rgba(16, 185, 129, 0.2);
+                    padding: 4px 8px;
+                    border-radius: var(--radius-sm);
+                    cursor: pointer;
+                    display: flex;
+                    align-items: center;
+                    gap: 4px;
+                    font-size: 0.7rem;
+                    font-weight: 600;
+                    transition: all 0.15s ease;
+                    flex-shrink: 0;
+                }
+                
+                .btn-restore:hover:not(:disabled) {
+                    background: rgba(16, 185, 129, 0.2);
+                    border-color: rgba(16, 185, 129, 0.4);
+                }
+                
+                .btn-restore:disabled {
+                    opacity: 0.5;
+                    cursor: not-allowed;
+                }
+
                 /* Responsive */
                 @media (max-width: 1024px) {
                     .connections-layout {
