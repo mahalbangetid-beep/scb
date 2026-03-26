@@ -3,7 +3,8 @@ import {
     DollarSign, Save, Loader2, AlertCircle, CheckCircle2,
     MessageSquare, Smartphone, Bot, Globe, CreditCard,
     Zap, Package, RefreshCw,
-    SendHorizontal, Users, Shield, Tag
+    SendHorizontal, Users, Shield, Tag,
+    ToggleLeft, ToggleRight, ArrowRightLeft
 } from 'lucide-react'
 import api from '../../services/api'
 
@@ -20,8 +21,28 @@ export default function DefaultCharges() {
         loginFees: { wa_login_fee: 5.00, tg_login_fee: 5.00 },
         subscriptionFees: { DEVICE: 5.00, TELEGRAM_BOT: 3.00, SMM_PANEL: 2.00 },
         creditPackages: [],
+        messageTypeRates: {},
         other: { low_balance_threshold: 5.00, default_user_credit: 0, free_signup_credits: 100, free_signup_support_credits: 100, free_signup_whatsapp_credits: 0, free_signup_telegram_credits: 0 }
     })
+
+    // Message type labels for UI display
+    const MESSAGE_TYPE_LABELS = {
+        wa_forward_message:      { label: 'Forward Message (WhatsApp)', note: 'Bot forwards message to another number/group', platform: 'wa' },
+        wa_user_sends:           { label: 'User Sends Message', note: 'Incoming message from user (no charge)', platform: 'wa' },
+        wa_keyword_response:     { label: 'Keyword Response', note: 'Bot auto-replies to a keyword trigger', platform: 'wa' },
+        wa_status_update:        { label: 'AI Status Update Message', note: 'Bot sends order status update to user', platform: 'wa' },
+        wa_system_message:       { label: 'System Message', note: 'Covers: .help, .group, .list, commands, etc.', platform: 'wa' },
+        wa_general_response:     { label: 'General Response', note: 'Utility/general bot replies', platform: 'wa' },
+        wa_payment_notification: { label: 'Payment Notification', note: 'Fund added/deducted notification to user', platform: 'wa' },
+        wa_ticket_reply:         { label: 'Ticket Reply', note: 'Auto ticket response', platform: 'wa' },
+        wa_register_confirm:     { label: 'Username Register Confirmation', note: 'Bot confirms user registration', platform: 'wa' },
+        wa_security_text:        { label: 'Security Access Text', note: '2FA or access control messages', platform: 'wa' },
+        wa_fonepay_verification: { label: 'Fonepay Verification Message', note: 'Transaction verification dialogue', platform: 'wa' },
+        tg_keyword_response:     { label: 'Telegram Keyword Response', note: 'Same as WhatsApp but via Telegram', platform: 'tg' },
+        tg_system_message:       { label: 'Telegram System Message', note: 'Telegram equivalent of system messages', platform: 'tg' },
+        tg_forward:              { label: 'Telegram Forward', note: 'Forwarding via Telegram channel/group', platform: 'tg' },
+        bulk_marketing:          { label: 'Bulk / Marketing Message', note: 'Set separately in broadcast settings', platform: 'other' },
+    }
 
     // Original charges for diff checking
     const [originalCharges, setOriginalCharges] = useState(null)
@@ -92,6 +113,12 @@ export default function DefaultCharges() {
                 payload.other = {}
                 for (const [k, v] of Object.entries(charges.other)) {
                     payload.other[k] = parseFloat(v)
+                }
+            }
+            if (JSON.stringify(charges.messageTypeRates) !== JSON.stringify(originalCharges.messageTypeRates)) {
+                payload.messageTypeRates = {}
+                for (const [k, v] of Object.entries(charges.messageTypeRates)) {
+                    payload.messageTypeRates[k] = { enabled: v.enabled !== false, rate: parseFloat(v.rate) || 0 }
                 }
             }
 
@@ -498,6 +525,172 @@ export default function DefaultCharges() {
                         </div>
                     </div>
                 </div>
+            </div>
+
+            {/* Per-Message Type Charges (Section 2.1) */}
+            <div className="dc-packages-section">
+                <div className="dc-section-header">
+                    <div>
+                        <h2><ArrowRightLeft size={22} /> Per-Message Type Charges</h2>
+                        <p>Set individual credit charges per message type. WhatsApp and Telegram have independent settings.</p>
+                    </div>
+                </div>
+
+                {charges.messageTypeRates && Object.keys(charges.messageTypeRates).length > 0 ? (
+                    <div className="dc-table-wrapper">
+                        <table className="dc-table">
+                            <thead>
+                                <tr>
+                                    <th>Message Type</th>
+                                    <th style={{width: '100px', textAlign: 'center'}}>Enabled</th>
+                                    <th style={{width: '140px'}}>Default Charge</th>
+                                    <th>Notes</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {/* WhatsApp Section */}
+                                <tr className="dc-section-divider">
+                                    <td colSpan={4}>
+                                        <div className="dc-divider-label">
+                                            <Smartphone size={14} />
+                                            <span>WhatsApp</span>
+                                        </div>
+                                    </td>
+                                </tr>
+                                {Object.entries(charges.messageTypeRates)
+                                    .filter(([key]) => MESSAGE_TYPE_LABELS[key]?.platform === 'wa')
+                                    .map(([key, config]) => (
+                                        <tr key={key} className={!config.enabled ? 'dc-row-inactive' : ''}>
+                                            <td>
+                                                <span className="dc-type-label">{MESSAGE_TYPE_LABELS[key]?.label || key}</span>
+                                            </td>
+                                            <td style={{textAlign: 'center'}}>
+                                                <button
+                                                    className={`dc-toggle ${config.enabled ? 'active' : ''}`}
+                                                    onClick={() => {
+                                                        updateField('messageTypeRates', key, { ...config, enabled: !config.enabled })
+                                                    }}
+                                                >
+                                                    {config.enabled ? <ToggleRight size={22} /> : <ToggleLeft size={22} />}
+                                                </button>
+                                            </td>
+                                            <td>
+                                                <div className="dc-input-group dc-input-compact">
+                                                    <input
+                                                        type="number"
+                                                        step="0.1"
+                                                        min="0"
+                                                        value={config.rate}
+                                                        onChange={e => {
+                                                            updateField('messageTypeRates', key, { ...config, rate: e.target.value })
+                                                        }}
+                                                        disabled={!config.enabled}
+                                                    />
+                                                    <span className="dc-input-suffix">cr</span>
+                                                </div>
+                                            </td>
+                                            <td><span className="dc-type-note">{MESSAGE_TYPE_LABELS[key]?.note}</span></td>
+                                        </tr>
+                                    ))}
+
+                                {/* Telegram Section */}
+                                <tr className="dc-section-divider">
+                                    <td colSpan={4}>
+                                        <div className="dc-divider-label">
+                                            <SendHorizontal size={14} />
+                                            <span>Telegram</span>
+                                        </div>
+                                    </td>
+                                </tr>
+                                {Object.entries(charges.messageTypeRates)
+                                    .filter(([key]) => MESSAGE_TYPE_LABELS[key]?.platform === 'tg')
+                                    .map(([key, config]) => (
+                                        <tr key={key} className={!config.enabled ? 'dc-row-inactive' : ''}>
+                                            <td>
+                                                <span className="dc-type-label">{MESSAGE_TYPE_LABELS[key]?.label || key}</span>
+                                            </td>
+                                            <td style={{textAlign: 'center'}}>
+                                                <button
+                                                    className={`dc-toggle ${config.enabled ? 'active' : ''}`}
+                                                    onClick={() => {
+                                                        updateField('messageTypeRates', key, { ...config, enabled: !config.enabled })
+                                                    }}
+                                                >
+                                                    {config.enabled ? <ToggleRight size={22} /> : <ToggleLeft size={22} />}
+                                                </button>
+                                            </td>
+                                            <td>
+                                                <div className="dc-input-group dc-input-compact">
+                                                    <input
+                                                        type="number"
+                                                        step="0.1"
+                                                        min="0"
+                                                        value={config.rate}
+                                                        onChange={e => {
+                                                            updateField('messageTypeRates', key, { ...config, rate: e.target.value })
+                                                        }}
+                                                        disabled={!config.enabled}
+                                                    />
+                                                    <span className="dc-input-suffix">cr</span>
+                                                </div>
+                                            </td>
+                                            <td><span className="dc-type-note">{MESSAGE_TYPE_LABELS[key]?.note}</span></td>
+                                        </tr>
+                                    ))}
+
+                                {/* Other Section */}
+                                <tr className="dc-section-divider">
+                                    <td colSpan={4}>
+                                        <div className="dc-divider-label">
+                                            <Globe size={14} />
+                                            <span>Other</span>
+                                        </div>
+                                    </td>
+                                </tr>
+                                {Object.entries(charges.messageTypeRates)
+                                    .filter(([key]) => MESSAGE_TYPE_LABELS[key]?.platform === 'other')
+                                    .map(([key, config]) => (
+                                        <tr key={key} className={!config.enabled ? 'dc-row-inactive' : ''}>
+                                            <td>
+                                                <span className="dc-type-label">{MESSAGE_TYPE_LABELS[key]?.label || key}</span>
+                                            </td>
+                                            <td style={{textAlign: 'center'}}>
+                                                <button
+                                                    className={`dc-toggle ${config.enabled ? 'active' : ''}`}
+                                                    onClick={() => {
+                                                        updateField('messageTypeRates', key, { ...config, enabled: !config.enabled })
+                                                    }}
+                                                >
+                                                    {config.enabled ? <ToggleRight size={22} /> : <ToggleLeft size={22} />}
+                                                </button>
+                                            </td>
+                                            <td>
+                                                <div className="dc-input-group dc-input-compact">
+                                                    <input
+                                                        type="number"
+                                                        step="0.1"
+                                                        min="0"
+                                                        value={config.rate}
+                                                        onChange={e => {
+                                                            updateField('messageTypeRates', key, { ...config, rate: e.target.value })
+                                                        }}
+                                                        disabled={!config.enabled}
+                                                    />
+                                                    <span className="dc-input-suffix">cr</span>
+                                                </div>
+                                            </td>
+                                            <td><span className="dc-type-note">{MESSAGE_TYPE_LABELS[key]?.note}</span></td>
+                                        </tr>
+                                    ))}
+                            </tbody>
+                        </table>
+                    </div>
+                ) : (
+                    <div className="dc-empty">
+                        <Zap size={40} />
+                        <h4>Loading message type rates...</h4>
+                    </div>
+                )}
             </div>
 
             {/* Credit Packages Table */}
@@ -1091,6 +1284,60 @@ const styles = `
     .dc-floating-actions {
         display: flex;
         gap: 0.5rem;
+    }
+
+    /* Per-Message Type Charges */
+    .dc-toggle {
+        background: none;
+        border: none;
+        cursor: pointer;
+        padding: 4px;
+        border-radius: 6px;
+        transition: all 0.2s ease;
+        color: var(--text-secondary);
+        display: inline-flex;
+        align-items: center;
+    }
+    .dc-toggle:hover {
+        background: var(--bg-tertiary);
+    }
+    .dc-toggle.active {
+        color: #10b981;
+    }
+    .dc-section-divider td {
+        padding: 0.5rem 1rem !important;
+        background: var(--bg-tertiary);
+        border-bottom: 1px solid var(--border-color);
+    }
+    .dc-divider-label {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        font-size: 0.75rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: var(--text-secondary);
+    }
+    .dc-type-label {
+        font-size: 0.875rem;
+        font-weight: 500;
+        color: var(--text-primary);
+    }
+    .dc-type-note {
+        font-size: 0.8rem;
+        color: var(--text-secondary);
+    }
+    .dc-input-compact {
+        max-width: 120px;
+    }
+    .dc-input-compact input {
+        padding: 0.4rem 0.5rem !important;
+        font-size: 0.875rem;
+    }
+    .dc-input-compact input:disabled {
+        opacity: 0.4;
+        cursor: not-allowed;
     }
 
     /* Responsive */

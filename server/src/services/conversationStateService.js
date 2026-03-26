@@ -393,55 +393,116 @@ john123
             };
         }
 
-        console.log(`[Registration] Processing registration for WA ${senderPhone}: username="${normalizedUsername}"`);
+        const registrationPlatform = conversation.platform || 'WHATSAPP';
+        const isTelegram = registrationPlatform === 'TELEGRAM';
+
+        console.log(`[Registration] Processing registration for ${isTelegram ? 'TG' : 'WA'} ${senderPhone}: username="${normalizedUsername}"`);
 
         const userMappingService = require('./userMappingService');
 
-        // Step 1: Check if username already linked to another WA number
+        // Step 1: Check if username already linked
         // Only block for SAME panel — cross-panel registration is allowed
         const existingMapping = await userMappingService.findByUsername(userId, normalizedUsername);
         if (existingMapping) {
-            const existingNumbers = existingMapping.whatsappNumbers || [];
             const normalizedSender = userMappingService.normalizePhone(senderPhone);
 
-            // If already linked to THIS number, just complete
-            if (existingNumbers.includes(normalizedSender)) {
-                await this.completeConversation(conversation.id);
-                const responseTemplateService = require('./responseTemplateService');
-                return {
-                    success: true,
-                    message: await responseTemplateService.getResponse(userId, 'REGISTRATION_ALREADY_LINKED') || '✅ Your number is already registered with this username. You can now use commands.'
-                };
+            if (isTelegram) {
+                // === TELEGRAM REGISTRATION ===
+                // If this Telegram ID is already linked to this mapping, just complete
+                if (existingMapping.telegramId === normalizedSender) {
+                    await this.completeConversation(conversation.id);
+                    const responseTemplateService = require('./responseTemplateService');
+                    return {
+                        success: true,
+                        message: await responseTemplateService.getResponse(userId, 'REGISTRATION_ALREADY_LINKED') || '✅ Your Telegram account is already registered with this username. You can now use commands.'
+                    };
+                }
+
+                // Username exists (possibly from WhatsApp registration) — LINK Telegram ID to same mapping
+                // This allows cross-platform: same username has both WA numbers and TG ID
+                if (!existingMapping.telegramId) {
+                    // No Telegram ID yet — link it
+                    try {
+                        await userMappingService.updateMapping(existingMapping.id, userId, {
+                            telegramId: normalizedSender
+                        });
+                        await this.completeConversation(conversation.id);
+                        console.log(`[Registration] ✅ Linked Telegram ID ${normalizedSender} to existing mapping "${normalizedUsername}" (id: ${existingMapping.id})`);
+                        const responseTemplateService = require('./responseTemplateService');
+                        const templateSuccess = await responseTemplateService.getResponse(userId, 'REGISTRATION_SUCCESS', { username: normalizedUsername });
+                        return {
+                            success: true,
+                            message: templateSuccess || `✅ Registration successful!\n\nYour username *${normalizedUsername}* is now linked with your Telegram account.\n\nYou can now use bot commands.`
+                        };
+                    } catch (linkErr) {
+                        console.error(`[Registration] Failed to link Telegram to existing mapping:`, linkErr.message);
+                        await this.completeConversation(conversation.id);
+                        return {
+                            success: false,
+                            message: '❌ Failed to link Telegram account. Please try again or contact support.'
+                        };
+                    }
+                }
+
+                // Already has a DIFFERENT Telegram ID — block (same panel only)
+                const targetPanelIds = context.panelIds || [];
+                const existingPanelId = existingMapping.panelId;
+                const isSamePanel = targetPanelIds.length === 0 || targetPanelIds.includes(existingPanelId);
+
+                if (isSamePanel) {
+                    await this.completeConversation(conversation.id);
+                    const responseTemplateService = require('./responseTemplateService');
+                    const templateMsg = await responseTemplateService.getResponse(userId, 'REGISTRATION_USERNAME_TAKEN', { username: normalizedUsername });
+                    return {
+                        success: false,
+                        message: templateMsg || `❌ This username is already linked with another Telegram account.\n\nPlease contact the support team.`
+                    };
+                }
+                // Different panel — allow registration to continue
+                console.log(`[Registration] Username "${normalizedUsername}" exists on panel ${existingPanelId} but target panels are [${targetPanelIds.join(', ')}] — allowing cross-panel registration`);
+            } else {
+                // === WHATSAPP REGISTRATION (original logic) ===
+                const existingNumbers = existingMapping.whatsappNumbers || [];
+
+                // If already linked to THIS number, just complete
+                if (existingNumbers.includes(normalizedSender)) {
+                    await this.completeConversation(conversation.id);
+                    const responseTemplateService = require('./responseTemplateService');
+                    return {
+                        success: true,
+                        message: await responseTemplateService.getResponse(userId, 'REGISTRATION_ALREADY_LINKED') || '✅ Your number is already registered with this username. You can now use commands.'
+                    };
+                }
+
+                // Linked to another number — only block if SAME panel (cross-panel is allowed)
+                const targetPanelIds = context.panelIds || [];
+                const existingPanelId = existingMapping.panelId;
+                const isSamePanel = targetPanelIds.length === 0 || targetPanelIds.includes(existingPanelId);
+
+                if (isSamePanel) {
+                    await this.completeConversation(conversation.id);
+
+                    // Load custom messages
+                    const msgs = await this._getRegistrationMessages(userId);
+                    const supportMsg = msgs.supportNumber
+                        ? `Please contact WhatsApp support team at ${msgs.supportNumber}.`
+                        : 'Please contact the support team.';
+
+                    const responseTemplateService = require('./responseTemplateService');
+                    const templateMsg = await responseTemplateService.getResponse(userId, 'REGISTRATION_USERNAME_TAKEN', { username: normalizedUsername });
+                    // Priority: template > custom toggle > hardcoded fallback
+                    const alreadyLinkedMsg = templateMsg
+                        || (msgs.alreadyLinked ? this._replaceVars(msgs.alreadyLinked, { username: normalizedUsername, support_number: msgs.supportNumber }) : null)
+                        || `❌ This username is already linked with another WhatsApp number.\n\n${supportMsg}`;
+
+                    return {
+                        success: false,
+                        message: alreadyLinkedMsg
+                    };
+                }
+                // Different panel — allow registration to continue
+                console.log(`[Registration] Username "${normalizedUsername}" exists on panel ${existingPanelId} but target panels are [${targetPanelIds.join(', ')}] — allowing cross-panel registration`);
             }
-
-            // Linked to another number — only block if SAME panel (cross-panel is allowed)
-            const targetPanelIds = context.panelIds || [];
-            const existingPanelId = existingMapping.panelId;
-            const isSamePanel = targetPanelIds.length === 0 || targetPanelIds.includes(existingPanelId);
-
-            if (isSamePanel) {
-                await this.completeConversation(conversation.id);
-
-                // Load custom messages
-                const msgs = await this._getRegistrationMessages(userId);
-                const supportMsg = msgs.supportNumber
-                    ? `Please contact WhatsApp support team at ${msgs.supportNumber}.`
-                    : 'Please contact the support team.';
-
-                const responseTemplateService = require('./responseTemplateService');
-                const templateMsg = await responseTemplateService.getResponse(userId, 'REGISTRATION_USERNAME_TAKEN', { username: normalizedUsername });
-                // Priority: template > custom toggle > hardcoded fallback
-                const alreadyLinkedMsg = templateMsg
-                    || (msgs.alreadyLinked ? this._replaceVars(msgs.alreadyLinked, { username: normalizedUsername, support_number: msgs.supportNumber }) : null)
-                    || `❌ This username is already linked with another WhatsApp number.\n\n${supportMsg}`;
-
-                return {
-                    success: false,
-                    message: alreadyLinkedMsg
-                };
-            }
-            // Different panel — allow registration to continue
-            console.log(`[Registration] Username "${normalizedUsername}" exists on panel ${existingPanelId} but target panels are [${targetPanelIds.join(', ')}] — allowing cross-panel registration`);
         }
 
         // Step 2: Validate username exists in panel via Admin API
@@ -531,23 +592,35 @@ john123
             };
         }
 
-        // Step 3: Create mapping
+        // Step 3: Create mapping — platform-aware
         try {
             const normalizedSender = userMappingService.normalizePhone(senderPhone);
             // Use matchedPanelId (panel where username was FOUND) > defaultPanelId (device setting) > first panel
             const targetPanelId = matchedPanelId || context.defaultPanelId || (panelIds.length > 0 ? panelIds[0] : null);
             console.log(`[Registration] Creating mapping with panelId: ${targetPanelId} (matched: ${matchedPanelId}, default: ${context.defaultPanelId}, first: ${panelIds[0] || 'none'})`);
-            const newMapping = await userMappingService.createMapping(userId, {
+
+            // Platform-aware: save to correct field
+            const mappingData = {
                 panelUsername: normalizedUsername,
                 panelId: targetPanelId,
-                whatsappNumbers: [normalizedSender],
-                whatsappName: null,
                 isBotEnabled: true,
                 isVerified: false,
-                adminNotes: `Self-registered via WhatsApp DM`
-            });
+            };
 
-            console.log(`[Registration] Created mapping ID ${newMapping.id}: username="${normalizedUsername}", WA=${normalizedSender}`);
+            if (isTelegram) {
+                mappingData.telegramId = normalizedSender;
+                mappingData.whatsappNumbers = [];
+                mappingData.adminNotes = `Self-registered via Telegram`;
+            } else {
+                mappingData.whatsappNumbers = [normalizedSender];
+                mappingData.whatsappName = null;
+                mappingData.adminNotes = `Self-registered via WhatsApp DM`;
+            }
+
+            const newMapping = await userMappingService.createMapping(userId, mappingData);
+
+            const platformLabel = isTelegram ? 'TG' : 'WA';
+            console.log(`[Registration] Created mapping ID ${newMapping.id}: username="${normalizedUsername}", ${platformLabel}=${normalizedSender}`);
 
             await this.completeConversation(conversation.id);
 
@@ -555,10 +628,11 @@ john123
             const msgs2 = await this._getRegistrationMessages(userId);
             const responseTemplateService = require('./responseTemplateService');
             const templateSuccess = await responseTemplateService.getResponse(userId, 'REGISTRATION_SUCCESS', { username: normalizedUsername });
+            const platformName = isTelegram ? 'Telegram account' : 'WhatsApp number';
             // Priority: template > custom toggle > hardcoded fallback
             const successMsg = templateSuccess
                 || (msgs2.success ? this._replaceVars(msgs2.success, { username: normalizedUsername }) : null)
-                || `✅ Registration successful!\n\nYour username *${normalizedUsername}* is now linked with your WhatsApp number.\n\nYou can now use bot commands.`;
+                || `✅ Registration successful!\n\nYour username *${normalizedUsername}* is now linked with your ${platformName}.\n\nYou can now use bot commands.`;
 
             return {
                 success: true,

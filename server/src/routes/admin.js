@@ -1151,6 +1151,19 @@ router.get('/charges', requireMasterAdmin, async (req, res, next) => {
             orderBy: { sortOrder: 'asc' }
         });
 
+        // 4. Per-message type rates (Section 2.1)
+        const creditServiceInstance = require('../services/creditService');
+        const typeDefaults = creditServiceInstance.constructor.MESSAGE_TYPE_DEFAULTS || {};
+        const messageTypeRates = {};
+        for (const [key, defaultVal] of Object.entries(typeDefaults)) {
+            // If admin has configured this type, use it; otherwise use default
+            if (pricingMap[key] && typeof pricingMap[key] === 'object') {
+                messageTypeRates[key] = pricingMap[key];
+            } else {
+                messageTypeRates[key] = { ...defaultVal };
+            }
+        }
+
         // Build unified response
         const charges = {
             messageRates: {
@@ -1180,6 +1193,7 @@ router.get('/charges', requireMasterAdmin, async (req, res, next) => {
                 isFeatured: p.isFeatured,
                 sortOrder: p.sortOrder,
             })),
+            messageTypeRates,
             other: {
                 low_balance_threshold: pricingMap.low_balance_threshold ?? 5.00,
                 default_user_credit: pricingMap.default_user_credit ?? 0,
@@ -1260,6 +1274,26 @@ router.put('/charges', requireMasterAdmin, async (req, res, next) => {
                     where: { key },
                     update: { value: JSON.stringify(num), category: 'pricing' },
                     create: { key, value: JSON.stringify(num), category: 'pricing' }
+                }));
+            }
+        }
+
+        // Per-message type rates (Section 2.1)
+        const { messageTypeRates } = req.body;
+        if (messageTypeRates) {
+            for (const [key, config] of Object.entries(messageTypeRates)) {
+                if (typeof config !== 'object') {
+                    throw new AppError(`Invalid config for ${key}: must be an object with {enabled, rate}`, 400);
+                }
+                const rate = parseFloat(config.rate);
+                if (isNaN(rate) || rate < 0) {
+                    throw new AppError(`Invalid rate for ${key}: must be a non-negative number`, 400);
+                }
+                const value = JSON.stringify({ enabled: config.enabled !== false, rate });
+                upserts.push(prisma.systemConfig.upsert({
+                    where: { key },
+                    update: { value, category: 'pricing' },
+                    create: { key, value, category: 'pricing' }
                 }));
             }
         }

@@ -649,6 +649,79 @@ class MessageCreditService {
     async getAllBalances(userId) {
         return await this.getBothBalances(userId);
     }
+
+    // ==================== PER-MESSAGE TYPE CHARGE (Section 2.1) ====================
+
+    /**
+     * Charge for a message with per-type rate (credits mode companion).
+     * Uses creditService.getMessageTypeRate() for rate lookup (shared config).
+     * Deducts from 'support' category (same as chargeMessage).
+     * Does NOT replace chargeMessage().
+     *
+     * @param {string} userId
+     * @param {string} messageType - e.g. 'wa_keyword_response'
+     * @param {string} platform - WHATSAPP or TELEGRAM
+     * @param {boolean} isGroup
+     * @param {Object} user
+     * @returns {Object} { charged, amount, balance, reason }
+     */
+    async chargeMessageByType(userId, messageType, platform = 'WHATSAPP', isGroup = false, user = null) {
+        // Get user config if not provided
+        if (!user) {
+            user = await prisma.user.findUnique({
+                where: { id: userId },
+                select: {
+                    id: true,
+                    supportCredits: true,
+                    messageCredits: true,
+                    customCreditRate: true,
+                    role: true
+                }
+            });
+        }
+
+        // Admin exempt
+        if (user?.role === 'MASTER_ADMIN' || user?.role === 'ADMIN') {
+            return {
+                charged: false,
+                amount: 0,
+                balance: user.supportCredits || user.messageCredits,
+                reason: 'admin_exempt'
+            };
+        }
+
+        // Get per-type rate from shared creditService config
+        const creditService = require('./creditService');
+        const { rate, enabled } = await creditService.getMessageTypeRate(messageType, platform, isGroup);
+
+        // If disabled or zero rate, skip
+        if (!enabled || rate <= 0) {
+            return {
+                charged: false,
+                amount: 0,
+                balance: user?.supportCredits || user?.messageCredits || 0,
+                reason: enabled ? 'zero_rate' : 'type_disabled'
+            };
+        }
+
+        // Deduct from support category
+        const result = await this.deductCredits(
+            userId,
+            rate,
+            `${platform} ${messageType.replace(/_/g, ' ')}`,
+            `MSG_${Date.now()}`,
+            'support'
+        );
+
+        return {
+            charged: result.charged,
+            amount: rate,
+            balance: result.balance,
+            reason: result.reason,
+            messageType
+        };
+    }
 }
 
 module.exports = new MessageCreditService();
+

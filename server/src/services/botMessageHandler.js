@@ -624,10 +624,11 @@ class BotMessageHandler {
                 if (kwUser.role !== 'MASTER_ADMIN' && kwUser.role !== 'ADMIN') {
                     try {
                         const isCreditsMode = await billingModeService.isCreditsMode();
+                        const kwMessageType = platform === 'TELEGRAM' ? 'tg_keyword_response' : 'wa_keyword_response';
                         if (isCreditsMode) {
-                            kwCreditResult = await messageCreditService.chargeMessage(userId, platform, isGroup, kwUser);
+                            kwCreditResult = await messageCreditService.chargeMessageByType(userId, kwMessageType, platform, isGroup, kwUser);
                         } else {
-                            kwCreditResult = await creditService.chargeMessage(userId, platform, isGroup, kwUser);
+                            kwCreditResult = await creditService.chargeMessageByType(userId, kwMessageType, platform, isGroup, kwUser);
                         }
                         if (!kwCreditResult.charged && kwCreditResult.reason === 'insufficient_credits') {
                             const responseTemplateService = require('./responseTemplateService');
@@ -855,8 +856,9 @@ class BotMessageHandler {
                 }
             } else {
                 // DOLLARS MODE: Check dollar balance
-                const rate = await creditService.getMessageRate(platform, isGroup, user);
-                if ((user.creditBalance || 0) < rate) {
+                const smmPreCheckType = platform === 'TELEGRAM' ? 'tg_system_message' : 'wa_system_message';
+                const { rate: preCheckRate } = await creditService.getMessageTypeRate(smmPreCheckType, platform, isGroup, user);
+                if ((user.creditBalance || 0) < preCheckRate) {
                     console.log(`[BotHandler] Insufficient balance for ${userId}`);
                     const responseTemplateService = require('./responseTemplateService');
                     return {
@@ -903,10 +905,11 @@ class BotMessageHandler {
             // Charge upfront
             let creditResult = { charged: false };
             try {
+                const smmMessageType = platform === 'TELEGRAM' ? 'tg_system_message' : 'wa_system_message';
                 if (isCreditsMode) {
-                    creditResult = await messageCreditService.chargeMessage(userId, platform, isGroup, user);
+                    creditResult = await messageCreditService.chargeMessageByType(userId, smmMessageType, platform, isGroup, user);
                 } else {
-                    creditResult = await creditService.chargeMessage(userId, platform, isGroup, user);
+                    creditResult = await creditService.chargeMessageByType(userId, smmMessageType, platform, isGroup, user);
                 }
             } catch (error) {
                 console.error(`[BotHandler] Async bulk charge error:`, error);
@@ -1013,10 +1016,11 @@ class BotMessageHandler {
         // Charge based on billing mode
         let creditResult = { charged: false };
         try {
+            const smmMessageType = platform === 'TELEGRAM' ? 'tg_system_message' : 'wa_system_message';
             if (isCreditsMode) {
-                creditResult = await messageCreditService.chargeMessage(userId, platform, isGroup, user);
+                creditResult = await messageCreditService.chargeMessageByType(userId, smmMessageType, platform, isGroup, user);
             } else {
-                creditResult = await creditService.chargeMessage(userId, platform, isGroup, user);
+                creditResult = await creditService.chargeMessageByType(userId, smmMessageType, platform, isGroup, user);
             }
         } catch (error) {
             console.error(`[BotHandler] Sync command charge error:`, error);
@@ -1094,10 +1098,11 @@ class BotMessageHandler {
                     try {
                         // Check billing mode (same pattern as handleSmmCommand)
                         const isCreditsMode = await billingModeService.isCreditsMode();
+                        const arMessageType = platform === 'TELEGRAM' ? 'tg_keyword_response' : 'wa_general_response';
                         if (isCreditsMode) {
-                            creditResult = await messageCreditService.chargeMessage(userId, platform, isGroup, user);
+                            creditResult = await messageCreditService.chargeMessageByType(userId, arMessageType, platform, isGroup, user);
                         } else {
-                            creditResult = await creditService.chargeMessage(userId, platform, isGroup, user);
+                            creditResult = await creditService.chargeMessageByType(userId, arMessageType, platform, isGroup, user);
                         }
 
                         if (!creditResult.charged && creditResult.reason === 'insufficient_credits') {

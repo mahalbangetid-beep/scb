@@ -408,6 +408,174 @@ class CreditService {
 
         return count === 0;
     }
+
+    // ==================== PER-MESSAGE TYPE RATES (Section 2.1) ====================
+
+    /**
+     * Default rates for each message type.
+     * Used when admin hasn't configured a specific type in SystemConfig.
+     */
+    static MESSAGE_TYPE_DEFAULTS = {
+        // WhatsApp
+        wa_forward_message:     { enabled: true, rate: 2 },
+        wa_user_sends:          { enabled: false, rate: 0 },  // Incoming — no charge
+        wa_keyword_response:    { enabled: true, rate: 1 },
+        wa_status_update:       { enabled: true, rate: 2 },
+        wa_system_message:      { enabled: true, rate: 1 },
+        wa_general_response:    { enabled: true, rate: 1 },
+        wa_payment_notification:{ enabled: true, rate: 1 },
+        wa_ticket_reply:        { enabled: true, rate: 1 },
+        wa_register_confirm:    { enabled: true, rate: 1 },
+        wa_security_text:       { enabled: true, rate: 1 },
+        wa_fonepay_verification:{ enabled: true, rate: 1 },
+        // Telegram
+        tg_keyword_response:    { enabled: true, rate: 1 },
+        tg_system_message:      { enabled: true, rate: 1 },
+        tg_forward:             { enabled: true, rate: 1 },
+        // Bulk — handled separately via broadcast settings
+        bulk_marketing:         { enabled: true, rate: 1 },
+    };
+
+    /**
+     * Get the charge rate for a specific message type.
+     * Reads per-type config from SystemConfig (category: 'pricing', key = messageType).
+     * Falls back to existing platform rate if not configured.
+     *
+     * @param {string} messageType - One of the MESSAGE_TYPE_DEFAULTS keys
+     * @param {string} platform - WHATSAPP or TELEGRAM (for fallback)
+     * @param {boolean} isGroup - For fallback rate
+     * @param {Object} user - User object for discount
+     * @returns {Object} { rate: number, enabled: boolean }
+     */
+    async getMessageTypeRate(messageType, platform = 'WHATSAPP', isGroup = false, user = null) {
+        const config = await this.getConfig();
+
+        // Check if per-type config exists in SystemConfig
+        const typeConfig = config[messageType];
+
+        if (typeConfig && typeof typeConfig === 'object') {
+            // Per-type config exists — use it
+            if (typeConfig.enabled === false) {
+                return { rate: 0, enabled: false };
+            }
+            let rate = parseFloat(typeConfig.rate);
+            if (isNaN(rate) || rate < 0) rate = 0;
+
+            // Apply user discount
+            if (user?.discountRate && user.discountRate > 0) {
+                rate = rate * (1 - user.discountRate / 100);
+            }
+            return { rate: round2(rate), enabled: true };
+        }
+
+        // Check hardcoded defaults
+        const defaults = CreditService.MESSAGE_TYPE_DEFAULTS[messageType];
+        if (defaults) {
+            if (!defaults.enabled) {
+                return { rate: 0, enabled: false };
+            }
+            let rate = defaults.rate;
+            if (user?.discountRate && user.discountRate > 0) {
+                rate = rate * (1 - user.discountRate / 100);
+            }
+            return { rate: round2(rate), enabled: true };
+        }
+
+        // Ultimate fallback: use existing platform rate
+        const fallbackRate = await this.getMessageRate(platform, isGroup, user);
+        return { rate: fallbackRate, enabled: true };
+    }
+
+    /**
+     * Charge for sending a message with per-type rate (Section 2.1).
+     * Drop-in companion to chargeMessage() — does NOT replace it.
+     *
+     * @param {string} userId
+     * @param {string} messageType - e.g. 'wa_keyword_response'
+     * @param {string} platform - WHATSAPP or TELEGRAM
+     * @param {boolean} isGroup
+     * @param {Object} user
+     * @returns {Object} { charged, amount, balance, reason }
+     */
+    async chargeMessageByType(userId, messageType, platform = 'WHATSAPP', isGroup = false, user = null) {
+        // Get user details if not provided
+        if (!user) {
+            user = await prisma.user.findUnique({
+                where: { id: userId },
+                select: {
+                    id: true,
+                    creditBalance: true,
+                    customWaRate: true,
+                    customTgRate: true,
+                    customGroupRate: true,
+                    discountRate: true,
+                    role: true
+                }
+            });
+        }
+
+        // Skip charging for admin roles
+        if (user?.role === 'MASTER_ADMIN' || user?.role === 'ADMIN') {
+            return {
+                charged: false,
+                amount: 0,
+                balance: user.creditBalance,
+                reason: 'admin_exempt'
+            };
+        }
+
+        // Get per-type rate
+        const { rate, enabled } = await this.getMessageTypeRate(messageType, platform, isGroup, user);
+
+        // If disabled or zero rate, skip
+        if (!enabled || rate <= 0) {
+            return {
+                charged: false,
+                amount: 0,
+                balance: user?.creditBalance || 0,
+                reason: enabled ? 'zero_rate' : 'type_disabled'
+            };
+        }
+
+        // Check balance
+        if ((user?.creditBalance || 0) < rate) {
+            return {
+                charged: false,
+                amount: rate,
+                balance: user?.creditBalance || 0,
+                reason: 'insufficient_balance'
+            };
+        }
+
+        // Deduct
+        try {
+            const result = await this.deductCredit(
+                userId,
+                rate,
+                `${platform} ${messageType.replace(/_/g, ' ')}`,
+                `MSG_${Date.now()}`
+            );
+
+            return {
+                charged: true,
+                amount: rate,
+                balance: result.balanceAfter,
+                transactionId: result.transaction.id,
+                messageType
+            };
+        } catch (error) {
+            if (error.message === 'Insufficient balance') {
+                return {
+                    charged: false,
+                    amount: rate,
+                    balance: 0,
+                    reason: 'insufficient_balance'
+                };
+            }
+            throw error;
+        }
+    }
 }
 
 module.exports = new CreditService();
+
