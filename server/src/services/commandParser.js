@@ -13,7 +13,7 @@ class CommandParserService {
         // Order-related commands (require order IDs)
         this.commands = {
             refill: ['refill', 'rf', 'isi', 'reff', 'refil'],
-            cancel: ['cancel', 'batal', 'cn', 'batalkan', 'refund'],
+            cancel: ['cancel', 'cancelled', 'cancelll', 'batal', 'cn', 'batalkan', 'refund', 'refunded', 'firta paisa'],
             speedup: ['speedup', 'speed-up', 'speed up', 'speed', 'cepat', 'sp', 'fast'],
             status: ['status', 'cek', 'check', 'st', 'info']
         };
@@ -43,6 +43,73 @@ class CommandParserService {
 
         // Max order IDs per message
         this.maxOrderIds = 100;
+
+        // Cache for per-user custom aliases (userId → merged lookup)
+        this._userLookupCache = new Map();
+        this._userLookupCacheExpiry = new Map();
+        this._cacheTTL = 5 * 60 * 1000; // 5 minutes
+    }
+
+    /**
+     * Load user-defined custom command aliases from Setting table
+     * Returns a merged lookup (defaults + custom) that is thread-safe
+     * @param {string} userId - User ID to load custom aliases for
+     * @returns {Object} Merged commandLookup
+     */
+    async getUserCommandLookup(userId) {
+        if (!userId) return this.commandLookup;
+
+        // Check cache
+        const cached = this._userLookupCache.get(userId);
+        const expiry = this._userLookupCacheExpiry.get(userId);
+        if (cached && expiry && Date.now() < expiry) {
+            return cached;
+        }
+
+        try {
+            const prisma = require('../utils/prisma');
+            const setting = await prisma.setting.findUnique({
+                where: {
+                    key_userId: {
+                        key: 'custom_command_aliases',
+                        userId
+                    }
+                }
+            });
+
+            if (!setting || !setting.value) {
+                return this.commandLookup;
+            }
+
+            // Parse custom aliases JSON: { cancel: ["word1", "word2"], refill: ["word3"] }
+            const customAliases = JSON.parse(setting.value);
+
+            // Merge with defaults (additive only — never removes defaults)
+            const mergedLookup = { ...this.commandLookup };
+            for (const [command, aliases] of Object.entries(customAliases)) {
+                const canonicalCommand = command.toLowerCase();
+                // Only allow mapping to known commands
+                if (!this.commands[canonicalCommand]) continue;
+
+                if (Array.isArray(aliases)) {
+                    for (const alias of aliases) {
+                        const normalizedAlias = alias.toLowerCase().trim();
+                        if (normalizedAlias) {
+                            mergedLookup[normalizedAlias] = canonicalCommand;
+                        }
+                    }
+                }
+            }
+
+            // Cache the merged lookup
+            this._userLookupCache.set(userId, mergedLookup);
+            this._userLookupCacheExpiry.set(userId, Date.now() + this._cacheTTL);
+
+            return mergedLookup;
+        } catch (error) {
+            console.error('[CommandParser] Failed to load custom aliases:', error.message);
+            return this.commandLookup;
+        }
     }
 
     /**
@@ -406,6 +473,31 @@ class CommandParserService {
                         return true;
                     }
                 }
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Check if a message looks like a command, including user-custom aliases
+     * @param {string} message - The message to check
+     * @param {Object} customLookup - Merged lookup from getUserCommandLookup()
+     */
+    isCommandMessageWithCustom(message, customLookup) {
+        // First check default aliases
+        if (this.isCommandMessage(message)) return true;
+
+        if (!customLookup || !message) return false;
+
+        // Check custom aliases against message
+        const normalized = message.trim().toLowerCase();
+        for (const alias of Object.keys(customLookup)) {
+            // Skip aliases that are already in default lookup
+            if (this.commandLookup[alias]) continue;
+
+            if (normalized.includes(alias) && /\d{3,}/.test(message)) {
+                return true;
             }
         }
 

@@ -561,10 +561,23 @@ class BotMessageHandler {
             }
         }
 
+        // ==================== LOAD USER CUSTOM COMMAND ALIASES ====================
+        // Load per-user custom command aliases (admin-configurable)
+        let userCommandLookup = null;
+        try {
+            userCommandLookup = await commandParser.getUserCommandLookup(userId);
+        } catch (e) {
+            // Fail silently — use defaults
+        }
+
         // ==================== DM COMMAND RESTRICTION ====================
         // If DM and allowDmCommands is disabled, block SMM commands but allow other features
         // Registration, utility commands, auto-reply, keyword responses still work in DM
-        if (!isGroup && commandParser.isCommandMessage(message)) {
+        const isCommand = userCommandLookup
+            ? commandParser.isCommandMessageWithCustom(message, userCommandLookup)
+            : commandParser.isCommandMessage(message);
+
+        if (!isGroup && isCommand) {
             try {
                 const botFeatureService = require('./botFeatureService');
                 const scope = {};
@@ -588,7 +601,7 @@ class BotMessageHandler {
         }
 
         // Priority 1: Check if it's an SMM command
-        if (commandParser.isCommandMessage(message)) {
+        if (isCommand) {
             const smmResult = await this.handleSmmCommand({
                 userId,
                 user,
