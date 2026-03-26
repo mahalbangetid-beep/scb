@@ -1196,6 +1196,8 @@ router.get('/charges', requireMasterAdmin, async (req, res, next) => {
             messageTypeRates,
             other: {
                 low_balance_threshold: pricingMap.low_balance_threshold ?? 5.00,
+                low_credit_notify_enabled: pricingMap.low_credit_notify_enabled ?? true,
+                low_credit_notify_threshold: pricingMap.low_credit_notify_threshold ?? 50,
                 default_user_credit: pricingMap.default_user_credit ?? 0,
                 free_signup_credits: pricingMap.free_signup_credits ?? 100,
                 free_signup_support_credits: pricingMap.free_signup_support_credits ?? pricingMap.free_signup_credits ?? 100,
@@ -1266,6 +1268,15 @@ router.put('/charges', requireMasterAdmin, async (req, res, next) => {
         // Other settings
         if (other) {
             for (const [key, value] of Object.entries(other)) {
+                // Support boolean values (e.g., low_credit_notify_enabled)
+                if (typeof value === 'boolean') {
+                    upserts.push(prisma.systemConfig.upsert({
+                        where: { key },
+                        update: { value: JSON.stringify(value), category: 'pricing' },
+                        create: { key, value: JSON.stringify(value), category: 'pricing' }
+                    }));
+                    continue;
+                }
                 const num = parseFloat(value);
                 if (isNaN(num) || num < 0) {
                     throw new AppError(`Invalid value for ${key}: must be a non-negative number`, 400);

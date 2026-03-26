@@ -274,6 +274,11 @@ class ResponseTemplateService {
                 description: 'Warning when credits are too low for auto-reply responses',
                 variables: []
             },
+            'LOW_CREDIT_NOTIFICATION': {
+                template: `⚠️ *Low Balance Alert*\n\nYour balance has dropped to *{balance}*.\nThreshold: {threshold}\n\nPlease top up to continue using bot services without interruption.\n\n💳 Top up here: {topup_url}`,
+                description: 'Proactive notification sent via WhatsApp/Telegram when balance drops below threshold',
+                variables: ['balance', 'threshold', 'topup_url']
+            },
             'USAGE_LIMIT_REACHED': {
                 template: `⚠️ Usage limit reached ({usage_count}/{usage_limit} messages this period). Please wait for the next billing cycle or upgrade your plan.`,
                 description: 'Warning when system bot usage limit is reached',

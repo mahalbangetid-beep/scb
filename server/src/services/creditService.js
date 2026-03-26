@@ -28,6 +28,9 @@ class CreditService {
         this.configCache = null;
         this.configCacheTime = 0;
         this.configCacheTTL = 15000; // 15 seconds (reduced from 60s for faster price propagation)
+
+        // Anti-spam for low credit notifications (24h cooldown per user)
+        this._lowCreditNotifTracker = new Map(); // userId -> lastNotifTimestamp
     }
 
     /**
@@ -189,6 +192,11 @@ class CreditService {
             } catch (e) { /* email is non-critical */ }
         }
 
+        // Low-credit WhatsApp/Telegram notification (Section 2.2)
+        setImmediate(() => {
+            this.sendLowCreditNotification(userId, result.balanceAfter, result.balanceBefore, 'dollars').catch(() => {});
+        });
+
         return result;
     }
 
@@ -241,6 +249,132 @@ class CreditService {
         }, {
             isolationLevel: 'Serializable'
         });
+    }
+
+    // ==================== LOW CREDIT NOTIFICATION (Section 2.2) ====================
+
+    /**
+     * Send proactive low-credit notification via WhatsApp or Telegram.
+     * Non-blocking, fire-and-forget. Called after deductCredit / deductCredits.
+     * Anti-spam: max 1 notification per user per 24 hours.
+     *
+     * @param {string} userId - User ID
+     * @param {number} balanceAfter - Balance after deduction
+     * @param {number} balanceBefore - Balance before deduction
+     * @param {string} billingMode - 'dollars' or 'credits'
+     */
+    async sendLowCreditNotification(userId, balanceAfter, balanceBefore, billingMode = 'dollars') {
+        try {
+            const config = await this.getConfig();
+
+            // Check if notifications are enabled
+            const notifEnabled = config.low_credit_notify_enabled !== false; // Default: true
+            if (!notifEnabled) return;
+
+            // Get threshold based on billing mode
+            let threshold;
+            if (billingMode === 'credits') {
+                threshold = parseFloat(config.low_credit_notify_threshold) || 50;
+            } else {
+                threshold = parseFloat(config.low_balance_threshold) || 5;
+            }
+
+            // Check if balance crossed threshold (was above, now below)
+            if (balanceAfter >= threshold || balanceBefore < threshold) return;
+
+            // Anti-spam: check 24h cooldown
+            const lastNotif = this._lowCreditNotifTracker.get(userId);
+            const now = Date.now();
+            const COOLDOWN_MS = 24 * 60 * 60 * 1000; // 24 hours
+            if (lastNotif && (now - lastNotif) < COOLDOWN_MS) return;
+
+            // Mark as notified (set before sending to prevent double-fire)
+            this._lowCreditNotifTracker.set(userId, now);
+
+            // Cleanup old entries periodically (keep map small)
+            if (this._lowCreditNotifTracker.size > 1000) {
+                for (const [uid, ts] of this._lowCreditNotifTracker) {
+                    if (now - ts > COOLDOWN_MS) this._lowCreditNotifTracker.delete(uid);
+                }
+            }
+
+            // Build notification message from admin-editable template
+            const responseTemplateService = require('./responseTemplateService');
+            const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+            const balanceDisplay = billingMode === 'credits'
+                ? `${Math.floor(balanceAfter)} credits`
+                : `$${balanceAfter.toFixed(2)}`;
+            const thresholdDisplay = billingMode === 'credits'
+                ? `${threshold} credits`
+                : `$${threshold.toFixed(2)}`;
+
+            const notifMessage = await responseTemplateService.getResponse(userId, 'LOW_CREDIT_NOTIFICATION', {
+                balance: balanceDisplay,
+                threshold: thresholdDisplay,
+                topup_url: `${frontendUrl}/wallet`
+            }) || `⚠️ Low Balance Alert\n\nYour balance has dropped to ${balanceDisplay}. Please top up to continue using bot services.`;
+
+            // Find user's connected WhatsApp device to send notification
+            const user = await prisma.user.findUnique({
+                where: { id: userId },
+                select: { whatsappNumber: true }
+            });
+
+            let sent = false;
+
+            // Try WhatsApp first
+            if (user?.whatsappNumber) {
+                const device = await prisma.device.findFirst({
+                    where: { userId, status: 'connected' },
+                    select: { id: true }
+                });
+                if (device) {
+                    try {
+                        const botMessageHandler = require('./botMessageHandler');
+                        if (botMessageHandler.whatsappService) {
+                            const jid = `${user.whatsappNumber.replace(/\D/g, '')}@s.whatsapp.net`;
+                            await botMessageHandler.whatsappService.sendMessage(device.id, jid, notifMessage);
+                            sent = true;
+                            console.log(`[CreditService] Low credit notification sent via WhatsApp to ${userId}`);
+                        }
+                    } catch (waErr) {
+                        console.error(`[CreditService] WA notification error:`, waErr.message);
+                    }
+                }
+            }
+
+            // Fallback to Telegram if WhatsApp failed
+            if (!sent) {
+                try {
+                    const tgBot = await prisma.telegramBot.findFirst({
+                        where: { userId, status: 'connected' },
+                        select: { id: true }
+                    });
+                    if (tgBot) {
+                        // Find user's telegram mapping to get chatId
+                        const mapping = await prisma.userPanelMapping.findFirst({
+                            where: { userId, telegramId: { not: null } },
+                            select: { telegramId: true }
+                        });
+                        if (mapping?.telegramId) {
+                            const telegramService = require('./telegram');
+                            await telegramService.sendMessage(tgBot.id, mapping.telegramId, notifMessage);
+                            sent = true;
+                            console.log(`[CreditService] Low credit notification sent via Telegram to ${userId}`);
+                        }
+                    }
+                } catch (tgErr) {
+                    console.error(`[CreditService] TG notification error:`, tgErr.message);
+                }
+            }
+
+            if (!sent) {
+                console.log(`[CreditService] No channel available for low credit notification to ${userId}`);
+            }
+        } catch (err) {
+            // Entirely non-critical — never let notification break deduction
+            console.error(`[CreditService] Low credit notification error:`, err.message);
+        }
     }
 
     /**

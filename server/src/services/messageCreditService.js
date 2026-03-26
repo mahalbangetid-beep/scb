@@ -389,7 +389,7 @@ class MessageCreditService {
     async deductCredits(userId, amount = 1, description = 'Bot message sent', reference = null, category = 'support') {
         const field = getCreditField(category);
 
-        return await prisma.$transaction(async (tx) => {
+        const result = await prisma.$transaction(async (tx) => {
             const user = await tx.user.findUnique({
                 where: { id: userId },
                 select: { [field]: true, messageCredits: true, role: true }
@@ -451,11 +451,23 @@ class MessageCreditService {
                 success: true,
                 charged: true,
                 amount,
-                balance: newBalance
+                balance: newBalance,
+                _balanceBefore: balanceBefore  // Internal: for notification check
             };
         }, {
             isolationLevel: 'Serializable'
         });
+
+        // Low-credit notification hook (Section 2.2) — fire-and-forget
+        if (result.charged && result._balanceBefore !== undefined) {
+            setImmediate(() => {
+                const creditService = require('./creditService');
+                creditService.sendLowCreditNotification(userId, result.balance, result._balanceBefore, 'credits').catch(() => {});
+            });
+            delete result._balanceBefore; // Clean internal field
+        }
+
+        return result;
     }
 
     /**

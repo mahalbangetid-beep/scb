@@ -4,7 +4,7 @@ import {
     MessageSquare, Smartphone, Bot, Globe, CreditCard,
     Zap, Package, RefreshCw,
     SendHorizontal, Users, Shield, Tag,
-    ToggleLeft, ToggleRight, ArrowRightLeft
+    ToggleLeft, ToggleRight, ArrowRightLeft, Bell
 } from 'lucide-react'
 import api from '../../services/api'
 
@@ -22,7 +22,7 @@ export default function DefaultCharges() {
         subscriptionFees: { DEVICE: 5.00, TELEGRAM_BOT: 3.00, SMM_PANEL: 2.00 },
         creditPackages: [],
         messageTypeRates: {},
-        other: { low_balance_threshold: 5.00, default_user_credit: 0, free_signup_credits: 100, free_signup_support_credits: 100, free_signup_whatsapp_credits: 0, free_signup_telegram_credits: 0 }
+        other: { low_balance_threshold: 5.00, low_credit_notify_enabled: true, low_credit_notify_threshold: 50, default_user_credit: 0, free_signup_credits: 100, free_signup_support_credits: 100, free_signup_whatsapp_credits: 0, free_signup_telegram_credits: 0 }
     })
 
     // Message type labels for UI display
@@ -454,6 +454,36 @@ export default function DefaultCharges() {
                                 />
                             </div>
                             <span className="dc-field-hint">Alert email sent when balance drops below this</span>
+                        </div>
+                        <div className="dc-field">
+                            <label>
+                                <Bell size={14} />
+                                Low Credit Notification (WhatsApp/Telegram)
+                            </label>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                                <button
+                                    className={`dc-toggle ${charges.other.low_credit_notify_enabled ? 'active' : ''}`}
+                                    onClick={() => updateField('other', 'low_credit_notify_enabled', !charges.other.low_credit_notify_enabled)}
+                                    style={{ minWidth: 'auto' }}
+                                >
+                                    {charges.other.low_credit_notify_enabled ? <ToggleRight size={22} /> : <ToggleLeft size={22} />}
+                                    <span style={{ marginLeft: '0.4rem', fontSize: '0.85rem' }}>
+                                        {charges.other.low_credit_notify_enabled ? 'Enabled' : 'Disabled'}
+                                    </span>
+                                </button>
+                                <div className="dc-input-group" style={{ maxWidth: '120px' }}>
+                                    <input
+                                        type="number"
+                                        step="1"
+                                        min="1"
+                                        value={charges.other.low_credit_notify_threshold}
+                                        onChange={e => updateField('other', 'low_credit_notify_threshold', e.target.value)}
+                                        disabled={!charges.other.low_credit_notify_enabled}
+                                    />
+                                    <span className="dc-input-suffix">cr</span>
+                                </div>
+                            </div>
+                            <span className="dc-field-hint">Send WhatsApp/Telegram alert when credits drop below threshold (once per 24h)</span>
                         </div>
                         <div className="dc-field">
                             <label>
