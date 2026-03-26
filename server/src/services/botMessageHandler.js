@@ -70,16 +70,56 @@ class BotMessageHandler {
             }
         }
 
-        // ==================== DEVICE ACTIVE CHECK ====================
-        // If device is deactivated (ON/OFF toggle), skip all message processing
-        const device = await prisma.device.findUnique({
-            where: { id: deviceId },
-            select: { isSystemBot: true, groupOnly: true, usageLimit: true, isActive: true, replyScope: true, forwardOnly: true }
-        });
+        // ==================== DEVICE/BOT ACTIVE CHECK ====================
+        // If device/bot is deactivated (ON/OFF toggle), skip all message processing
+        // Platform-aware: WhatsApp uses Device table, Telegram uses TelegramBot table
+        let device = null;
 
-        if (device && !device.isActive) {
-            // Device is OFF — silently ignore all messages
-            return { handled: false, type: 'device_inactive' };
+        if (platform === 'TELEGRAM') {
+            // Telegram bots are stored in TelegramBot table, not Device
+            const telegramBot = await prisma.telegramBot.findUnique({
+                where: { id: deviceId },
+                select: { id: true, status: true }
+            });
+
+            if (!telegramBot) {
+                console.log(`[BotHandler] Telegram bot ${deviceId} not found in database, ignoring`);
+                return { handled: false, type: 'bot_not_found' };
+            }
+
+            // Telegram bot doesn't have isActive field - check status instead
+            // 'disconnected' status means bot should not process
+            if (telegramBot.status === 'disconnected') {
+                console.log(`[BotHandler] Telegram bot ${deviceId} is disconnected, ignoring message`);
+                return { handled: false, type: 'device_inactive' };
+            }
+
+            // Create a device-like object for downstream compatibility
+            // Telegram bots don't have these Device-specific fields
+            device = {
+                isSystemBot: false,
+                groupOnly: false,
+                usageLimit: null,
+                isActive: true, // Telegram bot is active if not disconnected
+                replyScope: 'all',
+                forwardOnly: false
+            };
+        } else {
+            // WhatsApp — query Device table
+            device = await prisma.device.findUnique({
+                where: { id: deviceId },
+                select: { isSystemBot: true, groupOnly: true, usageLimit: true, isActive: true, replyScope: true, forwardOnly: true }
+            });
+
+            if (!device) {
+                console.log(`[BotHandler] Device ${deviceId} not found in database, ignoring`);
+                return { handled: false, type: 'device_not_found' };
+            }
+
+            if (!device.isActive) {
+                // Device is OFF — silently ignore all messages
+                return { handled: false, type: 'device_inactive' };
+            }
         }
 
         // ==================== REPLY SCOPE CONTROL ====================
