@@ -573,6 +573,23 @@ class WhatsAppService {
 
                     console.log(`[WA:${deviceId}] Incoming ${isGroup ? 'group' : 'personal'} call from ${callerNumber}`);
 
+                    // Check device active status BEFORE any automation
+                    const device = await prisma.device.findUnique({
+                        where: { id: deviceId },
+                        select: { userId: true, isActive: true, replyScope: true }
+                    });
+                    if (!device) continue;
+
+                    // If device is OFF or replyScope is disabled, skip ALL call automation
+                    if (!device.isActive) {
+                        console.log(`[WA:${deviceId}] Device inactive, skipping call automation for ${callerNumber}`);
+                        continue;
+                    }
+                    if (device.replyScope === 'disabled') {
+                        console.log(`[WA:${deviceId}] ReplyScope disabled, skipping call automation for ${callerNumber}`);
+                        continue;
+                    }
+
                     // Reject the call automatically
                     try {
                         await socket.rejectCall(call.id, call.from);
@@ -582,12 +599,6 @@ class WhatsAppService {
                     }
 
                     // Get device owner's bot feature settings
-                    const device = await prisma.device.findUnique({
-                        where: { id: deviceId },
-                        select: { userId: true }
-                    });
-                    if (!device) continue;
-
                     const botFeatureService = require('./botFeatureService');
                     const toggles = await botFeatureService.getToggles(device.userId, { deviceId });
 

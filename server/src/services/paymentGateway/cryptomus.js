@@ -304,6 +304,13 @@ class CryptomusService {
 
             // Credit wallet only if this is the first completion
             if (shouldCredit) {
+                // Fetch current balance INSIDE transaction for accurate audit trail
+                const currentUser = await tx.user.findUnique({
+                    where: { id: transaction.userId },
+                    select: { creditBalance: true }
+                });
+                const balanceBefore = currentUser?.creditBalance || 0;
+
                 await tx.user.update({
                     where: { id: transaction.userId },
                     data: {
@@ -319,8 +326,8 @@ class CryptomusService {
                         userId: transaction.userId,
                         type: 'CREDIT',
                         amount: transaction.amount,
-                        balanceBefore: transaction.user.creditBalance,
-                        balanceAfter: transaction.user.creditBalance + transaction.amount,
+                        balanceBefore,
+                        balanceAfter: balanceBefore + transaction.amount,
                         description: `Cryptomus payment +$${transaction.amount.toFixed(2)}`,
                         reference: transaction.gatewayRef
                     }

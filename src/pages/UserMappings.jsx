@@ -398,7 +398,7 @@ const UserMappings = () => {
                             </div>
                             <div className="um-panel-info">
                                 <span className="um-panel-name">All Panels</span>
-                                <span className="um-panel-count-text">{mappings.length} users</span>
+                                <span className="um-panel-count-text">{totalItems} users</span>
                             </div>
                         </div>
                         {panels.map(panel => {

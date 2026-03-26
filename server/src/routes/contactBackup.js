@@ -319,80 +319,6 @@ router.post('/backup-all-my-devices', async (req, res, next) => {
 });
 
 /**
- * GET /api/contact-backup/:backupId
- * Get specific backup with full data
- */
-router.get('/:backupId', async (req, res, next) => {
-    try {
-        const { backupId } = req.params;
-
-        const backup = await contactBackupService.getBackup(backupId, req.effectiveUserId);
-
-        if (!backup) {
-            throw new AppError('Backup not found', 404);
-        }
-
-        successResponse(res, backup);
-    } catch (error) {
-        next(error);
-    }
-});
-
-/**
- * GET /api/contact-backup/:backupId/download
- * Download backup as JSON file
- */
-router.get('/:backupId/download', async (req, res, next) => {
-    try {
-        const { backupId } = req.params;
-
-        const backup = await contactBackupService.getBackup(backupId, req.effectiveUserId);
-
-        if (!backup) {
-            throw new AppError('Backup not found', 404);
-        }
-
-        const filename = `backup_${backup.deviceId}_${backup.createdAt.toISOString().split('T')[0]}.json`;
-
-        res.setHeader('Content-Type', 'application/json');
-        res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-
-        res.json({
-            exportedAt: new Date().toISOString(),
-            backupId: backup.id,
-            deviceId: backup.deviceId,
-            createdAt: backup.createdAt,
-            totalContacts: backup.totalContacts,
-            totalGroups: backup.totalGroups,
-            contacts: backup.contacts || [],
-            groups: backup.groups || []
-        });
-    } catch (error) {
-        next(error);
-    }
-});
-
-/**
- * DELETE /api/contact-backup/:backupId
- * Delete a backup
- */
-router.delete('/:backupId', async (req, res, next) => {
-    try {
-        const { backupId } = req.params;
-
-        const result = await contactBackupService.deleteBackup(backupId, req.effectiveUserId);
-
-        if (result.count === 0) {
-            throw new AppError('Backup not found', 404);
-        }
-
-        successResponse(res, null, 'Backup deleted');
-    } catch (error) {
-        next(error);
-    }
-});
-
-/**
  * GET /api/contact-backup/device/:deviceId/latest
  * Get latest backup for a device
  */
@@ -475,7 +401,15 @@ router.get('/admin/all', requireMasterAdmin, async (req, res, next) => {
                 orderBy: { createdAt: 'desc' },
                 take: limit,
                 skip,
-                include: {
+                select: {
+                    id: true,
+                    backupType: true,
+                    totalContacts: true,
+                    totalGroups: true,
+                    fileSize: true,
+                    status: true,
+                    errorMessage: true,
+                    createdAt: true,
                     device: { select: { name: true } },
                     user: { select: { username: true, email: true } }
                 }
@@ -587,5 +521,80 @@ router.delete('/admin/backup/:backupId', requireMasterAdmin, async (req, res, ne
     }
 });
 
+/**
+ * GET /api/contact-backup/:backupId
+ * Get specific backup with full data
+ */
+router.get('/:backupId', async (req, res, next) => {
+    try {
+        const { backupId } = req.params;
+
+        const backup = await contactBackupService.getBackup(backupId, req.effectiveUserId);
+
+        if (!backup) {
+            throw new AppError('Backup not found', 404);
+        }
+
+        successResponse(res, backup);
+    } catch (error) {
+        next(error);
+    }
+});
+
+/**
+ * GET /api/contact-backup/:backupId/download
+ * Download backup as JSON file
+ */
+router.get('/:backupId/download', async (req, res, next) => {
+    try {
+        const { backupId } = req.params;
+
+        const backup = await contactBackupService.getBackup(backupId, req.effectiveUserId);
+
+        if (!backup) {
+            throw new AppError('Backup not found', 404);
+        }
+
+        const filename = `backup_${backup.deviceId}_${backup.createdAt.toISOString().split('T')[0]}.json`;
+
+        res.setHeader('Content-Type', 'application/json');
+        res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+
+        res.json({
+            exportedAt: new Date().toISOString(),
+            backupId: backup.id,
+            deviceId: backup.deviceId,
+            createdAt: backup.createdAt,
+            totalContacts: backup.totalContacts,
+            totalGroups: backup.totalGroups,
+            contacts: backup.contacts || [],
+            groups: backup.groups || []
+        });
+    } catch (error) {
+        next(error);
+    }
+});
+
+/**
+ * DELETE /api/contact-backup/:backupId
+ * Delete a backup
+ */
+router.delete('/:backupId', async (req, res, next) => {
+    try {
+        const { backupId } = req.params;
+
+        const result = await contactBackupService.deleteBackup(backupId, req.effectiveUserId);
+
+        if (result.count === 0) {
+            throw new AppError('Backup not found', 404);
+        }
+
+        successResponse(res, null, 'Backup deleted');
+    } catch (error) {
+        next(error);
+    }
+});
+
 
 module.exports = router;
+

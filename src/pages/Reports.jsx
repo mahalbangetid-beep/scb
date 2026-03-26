@@ -18,18 +18,21 @@ export default function Reports() {
         endDate: ''
     })
 
-    useEffect(() => {
-        fetchData()
-    }, [])
-
     const fetchData = async () => {
         try {
             setLoading(true)
+            // Build date query params
+            const dateParams = {}
+            if (dateRange.startDate) dateParams.startDate = dateRange.startDate
+            if (dateRange.endDate) dateParams.endDate = dateRange.endDate + 'T23:59:59'
+            const qs = new URLSearchParams(dateParams).toString()
+            const suffix = qs ? `?${qs}` : ''
+
             const [dashboardRes, ordersRes, commandsRes, creditsRes] = await Promise.all([
                 api.get('/reports/dashboard'),
-                api.get('/reports/orders'),
-                api.get('/reports/commands'),
-                api.get('/reports/credits')
+                api.get(`/reports/orders${suffix}`),
+                api.get(`/reports/commands${suffix}`),
+                api.get(`/reports/credits${suffix}`)
             ])
             setDashboard(dashboardRes.data)
             setOrderStats(ordersRes.data)
@@ -41,6 +44,36 @@ export default function Reports() {
             setLoading(false)
         }
     }
+
+    const applyDateFilter = () => fetchData()
+    const clearDateFilter = () => {
+        setDateRange({ startDate: '', endDate: '' })
+        // fetchData will be called by useEffect below
+    }
+    const setPreset = (preset) => {
+        const now = new Date()
+        const fmt = (d) => d.toISOString().split('T')[0]
+        let start = ''
+        const end = fmt(now)
+        if (preset === 'today') {
+            start = end
+        } else if (preset === '7d') {
+            const d = new Date(now); d.setDate(d.getDate() - 7)
+            start = fmt(d)
+        } else if (preset === '30d') {
+            const d = new Date(now); d.setDate(d.getDate() - 30)
+            start = fmt(d)
+        } else if (preset === 'month') {
+            start = fmt(new Date(now.getFullYear(), now.getMonth(), 1))
+        }
+        setDateRange({ startDate: start, endDate: end })
+    }
+
+    // Re-fetch when dateRange changes (including clear)
+    const dateKey = `${dateRange.startDate}-${dateRange.endDate}`
+    useEffect(() => {
+        fetchData()
+    }, [dateKey])
 
     const formatCurrency = (amount) => `$${(amount || 0).toFixed(2)}`
 
@@ -80,6 +113,41 @@ export default function Reports() {
                     <RefreshCw size={18} />
                     Refresh
                 </button>
+            </div>
+
+            {/* Date Range Filter */}
+            <div className="date-filter-bar">
+                <div className="date-filter-presets">
+                    <button className={`preset-btn ${dateRange.startDate === new Date().toISOString().split('T')[0] && dateRange.endDate === new Date().toISOString().split('T')[0] ? 'active' : ''}`} onClick={() => setPreset('today')}>
+                        Today
+                    </button>
+                    <button className="preset-btn" onClick={() => setPreset('7d')}>7 Days</button>
+                    <button className="preset-btn" onClick={() => setPreset('30d')}>30 Days</button>
+                    <button className="preset-btn" onClick={() => setPreset('month')}>This Month</button>
+                </div>
+                <div className="date-filter-inputs">
+                    <div className="date-input-group">
+                        <Calendar size={14} />
+                        <input
+                            type="date"
+                            value={dateRange.startDate}
+                            onChange={(e) => setDateRange(prev => ({ ...prev, startDate: e.target.value }))}
+                            className="date-input"
+                        />
+                        <span className="date-separator">→</span>
+                        <input
+                            type="date"
+                            value={dateRange.endDate}
+                            onChange={(e) => setDateRange(prev => ({ ...prev, endDate: e.target.value }))}
+                            className="date-input"
+                        />
+                    </div>
+                    {(dateRange.startDate || dateRange.endDate) && (
+                        <button className="btn btn-ghost btn-sm" onClick={clearDateFilter} style={{ fontSize: '0.8rem' }}>
+                            ✕ Clear
+                        </button>
+                    )}
+                </div>
             </div>
 
             {/* Overview Stats */}
@@ -863,6 +931,85 @@ export default function Reports() {
                     color: var(--text-secondary);
                     text-align: center;
                     padding: var(--spacing-lg);
+                }
+
+                /* Date Filter */
+                .date-filter-bar {
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                    flex-wrap: wrap;
+                    gap: var(--spacing-md);
+                    padding: var(--spacing-md) var(--spacing-lg);
+                    background: var(--bg-secondary);
+                    border: 1px solid var(--border-color);
+                    border-radius: var(--radius-lg);
+                    margin-bottom: var(--spacing-lg);
+                }
+                .date-filter-presets {
+                    display: flex;
+                    gap: var(--spacing-xs);
+                }
+                .preset-btn {
+                    padding: 6px 14px;
+                    border: 1px solid var(--border-color);
+                    background: var(--bg-primary);
+                    color: var(--text-secondary);
+                    border-radius: var(--radius-md);
+                    cursor: pointer;
+                    font-size: 0.8rem;
+                    font-weight: 500;
+                    transition: all 0.15s;
+                }
+                .preset-btn:hover {
+                    border-color: var(--primary-500);
+                    color: var(--primary-500);
+                }
+                .preset-btn.active {
+                    background: var(--primary-500);
+                    color: white;
+                    border-color: var(--primary-500);
+                }
+                .date-filter-inputs {
+                    display: flex;
+                    align-items: center;
+                    gap: var(--spacing-sm);
+                }
+                .date-input-group {
+                    display: flex;
+                    align-items: center;
+                    gap: var(--spacing-xs);
+                    background: var(--bg-primary);
+                    border: 1px solid var(--border-color);
+                    border-radius: var(--radius-md);
+                    padding: 4px 10px;
+                }
+                .date-input {
+                    border: none;
+                    background: transparent;
+                    color: var(--text-primary);
+                    font-size: 0.85rem;
+                    outline: none;
+                    width: 130px;
+                }
+                .date-separator {
+                    color: var(--text-muted);
+                    font-size: 0.8rem;
+                }
+                @media (max-width: 768px) {
+                    .date-filter-bar {
+                        flex-direction: column;
+                        align-items: stretch;
+                    }
+                    .date-filter-presets {
+                        flex-wrap: wrap;
+                    }
+                    .date-input-group {
+                        flex-wrap: wrap;
+                    }
+                    .date-input {
+                        width: 100%;
+                    }
                 }
 
                 .panel-stats {

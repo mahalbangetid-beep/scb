@@ -641,6 +641,14 @@ class BotMessageHandler {
                         }
                     } catch (creditErr) {
                         console.error('[BotHandler] Keyword response credit error:', creditErr.message);
+                        // Block reply if charge failed — prevent free replies
+                        return {
+                            handled: true,
+                            type: 'keyword_response',
+                            response: `⚠️ Unable to process message credits. Please try again later.`,
+                            creditCharged: false,
+                            reason: 'credit_error'
+                        };
                     }
                 }
 
@@ -830,9 +838,9 @@ class BotMessageHandler {
         // Check if user has sufficient balance based on billing mode
         if (user.role !== 'MASTER_ADMIN' && user.role !== 'ADMIN') {
             if (isCreditsMode) {
-                // CREDITS MODE: Check message credits
+                // CREDITS MODE: Check support credits (bot replies use support category)
                 const creditsPerMessage = user.customCreditRate || 1;
-                const userCredits = user.supportCredits || user.messageCredits || 0;
+                const userCredits = user.supportCredits ?? 0;
 
                 if (userCredits < creditsPerMessage) {
                     console.log(`[BotHandler] Insufficient message credits for ${userId} (has: ${userCredits}, needs: ${creditsPerMessage})`);
@@ -901,7 +909,15 @@ class BotMessageHandler {
                     creditResult = await creditService.chargeMessage(userId, platform, isGroup, user);
                 }
             } catch (error) {
-                console.error(`[BotHandler] Charge error:`, error);
+                console.error(`[BotHandler] Async bulk charge error:`, error);
+                // Block processing if charge failed — prevent free processing
+                return {
+                    handled: true,
+                    type: 'smm_command',
+                    response: `⚠️ Unable to process message credits. Please try again later.`,
+                    creditCharged: false,
+                    reason: 'credit_error'
+                };
             }
 
             // Process in background (fire-and-forget)
@@ -1003,7 +1019,15 @@ class BotMessageHandler {
                 creditResult = await creditService.chargeMessage(userId, platform, isGroup, user);
             }
         } catch (error) {
-            console.error(`[BotHandler] Charge error:`, error);
+            console.error(`[BotHandler] Sync command charge error:`, error);
+            // Block reply if charge failed — prevent free replies
+            return {
+                handled: true,
+                type: 'smm_command',
+                response: `⚠️ Unable to process message credits. Please try again later.`,
+                creditCharged: false,
+                reason: 'credit_error'
+            };
         }
 
         // Log the message
@@ -1088,6 +1112,14 @@ class BotMessageHandler {
                         }
                     } catch (error) {
                         console.error(`[BotHandler] Auto-reply credit error:`, error);
+                        // Block reply if charge failed — prevent free replies
+                        return {
+                            handled: true,
+                            type: 'auto_reply',
+                            response: `⚠️ Unable to process message credits. Please try again later.`,
+                            creditCharged: false,
+                            reason: 'credit_error'
+                        };
                     }
                 }
 

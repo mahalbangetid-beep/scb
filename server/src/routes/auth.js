@@ -144,8 +144,22 @@ router.post('/register', authLimiter, async (req, res, next) => {
             }
         }
 
-        // Get default credit from env
-        const defaultCredit = parseFloat(process.env.DEFAULT_USER_CREDIT) || 0;
+        // Get default credit from admin config (DB) first, fallback to env
+        let defaultCredit = 0;
+        try {
+            const dbConfig = await prisma.systemConfig.findUnique({
+                where: { key: 'default_user_credit' }
+            });
+            if (dbConfig && dbConfig.value !== null && dbConfig.value !== undefined) {
+                defaultCredit = parseFloat(JSON.parse(dbConfig.value)) || 0;
+            } else {
+                // No admin config set — fallback to env (legacy behavior)
+                defaultCredit = parseFloat(process.env.DEFAULT_USER_CREDIT) || 0;
+            }
+        } catch (configErr) {
+            // DB read failed — fallback to env
+            defaultCredit = parseFloat(process.env.DEFAULT_USER_CREDIT) || 0;
+        }
 
         // Create user
         const user = await prisma.user.create({
