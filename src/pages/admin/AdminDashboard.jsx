@@ -3,7 +3,7 @@ import {
     LayoutDashboard, Users, Smartphone, Globe, Package, MessageSquare,
     DollarSign, Activity, Clock, Server, Cpu, HardDrive,
     RefreshCw, AlertTriangle, UserPlus,
-    SendHorizontal, BarChart3, Shield, Wallet
+    SendHorizontal, BarChart3, Shield, Wallet, Search, ExternalLink, CheckCircle, XCircle
 } from 'lucide-react';
 import api from '../../services/api';
 
@@ -13,13 +13,30 @@ const AdminDashboard = () => {
     const [error, setError] = useState('');
     const [lastRefresh, setLastRefresh] = useState(null);
     const intervalRef = useRef(null);
+    const [panelData, setPanelData] = useState(null);
+    const [panelSearch, setPanelSearch] = useState('');
+    const [panelLoading, setPanelLoading] = useState(false);
 
     useEffect(() => {
         fetchStats();
+        fetchPanels();
         // Auto-refresh every 30 seconds
         intervalRef.current = setInterval(fetchStats, 30000);
         return () => clearInterval(intervalRef.current);
     }, []);
+
+    const fetchPanels = async (search = '') => {
+        try {
+            setPanelLoading(true);
+            const params = search ? { search } : {};
+            const res = await api.get('/admin/panels', { params });
+            setPanelData(res.data);
+        } catch (err) {
+            console.error('Failed to load panels:', err);
+        } finally {
+            setPanelLoading(false);
+        }
+    };
 
     const fetchStats = async () => {
         try {
@@ -323,6 +340,87 @@ const AdminDashboard = () => {
                 </div>
             </div>
 
+            {/* ── PROVIDER PANELS OVERVIEW (Section 10) ── */}
+            <div className="card ad-card">
+                <div className="ad-card-header">
+                    <h3><Globe size={18} /> Provider Panels Overview</h3>
+                    <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                        <div style={{ position: 'relative' }}>
+                            <Search size={14} style={{ position: 'absolute', left: '8px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none' }} />
+                            <input
+                                type="text"
+                                placeholder="Search panels..."
+                                value={panelSearch}
+                                onChange={(e) => {
+                                    setPanelSearch(e.target.value);
+                                    clearTimeout(window._panelSearchTimer);
+                                    window._panelSearchTimer = setTimeout(() => fetchPanels(e.target.value), 400);
+                                }}
+                                style={{ padding: '6px 10px 6px 28px', fontSize: '0.8rem', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', color: 'var(--text-primary)', width: '180px' }}
+                            />
+                        </div>
+                        <span className="badge" style={{ background: 'rgba(139,92,246,0.12)', color: '#8b5cf6' }}>{panelData?.total || 0} panels</span>
+                    </div>
+                </div>
+                {panelLoading ? (
+                    <div className="ad-empty">Loading panels...</div>
+                ) : !panelData?.panels?.length ? (
+                    <div className="ad-empty">No panels found</div>
+                ) : (
+                    <div style={{ overflowX: 'auto' }}>
+                        <table className="ad-panel-table">
+                            <thead>
+                                <tr>
+                                    <th>Panel</th>
+                                    <th>Domain</th>
+                                    <th>Owner</th>
+                                    <th>Type</th>
+                                    <th>Admin API</th>
+                                    <th>Balance</th>
+                                    <th>Orders</th>
+                                    <th>Providers</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {panelData.panels.map(p => (
+                                    <tr key={p.id}>
+                                        <td>
+                                            <div style={{ fontWeight: 600, fontSize: '0.85rem' }}>{p.alias}</div>
+                                            <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{p.name}</div>
+                                        </td>
+                                        <td>
+                                            <a href={p.url} target="_blank" rel="noreferrer" style={{ color: 'var(--primary-500)', fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: '4px', textDecoration: 'none' }}>
+                                                {p.domain} <ExternalLink size={10} />
+                                            </a>
+                                        </td>
+                                        <td style={{ fontSize: '0.82rem' }}>{p.owner?.username || '—'}</td>
+                                        <td>
+                                            <span className="badge" style={{ fontSize: '0.7rem', padding: '2px 6px', background: p.panelType === 'RENTAL' ? 'rgba(245,158,11,0.12)' : p.panelType === 'PERFECT_PANEL' ? 'rgba(99,102,241,0.12)' : 'rgba(107,114,128,0.12)', color: p.panelType === 'RENTAL' ? '#f59e0b' : p.panelType === 'PERFECT_PANEL' ? '#6366f1' : '#6b7280' }}>
+                                                {p.panelType}
+                                            </span>
+                                        </td>
+                                        <td style={{ textAlign: 'center' }}>
+                                            {p.hasAdminApi ? <CheckCircle size={14} style={{ color: '#10b981' }} /> : <XCircle size={14} style={{ color: 'var(--text-muted)', opacity: 0.4 }} />}
+                                        </td>
+                                        <td style={{ fontSize: '0.82rem', fontFamily: 'monospace' }}>
+                                            {p.balance != null ? `${p.currency} ${p.balance.toFixed(2)}` : '—'}
+                                        </td>
+                                        <td style={{ fontSize: '0.82rem', textAlign: 'center' }}>{p.stats.orders.toLocaleString()}</td>
+                                        <td style={{ fontSize: '0.82rem', textAlign: 'center' }}>{p.stats.providerGroups}</td>
+                                        <td>
+                                            <span className={`badge ${p.isActive ? 'badge-success' : 'badge-error'}`} style={{ fontSize: '0.7rem' }}>
+                                                {p.isActive ? 'Active' : 'Inactive'}
+                                            </span>
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                )}
+            </div>
+
             <style>{`
                 .ad-stats-grid {
                     display: grid;
@@ -583,6 +681,33 @@ const AdminDashboard = () => {
                     font-weight: 700;
                     font-size: 0.95rem;
                     flex-shrink: 0;
+                }
+                .ad-panel-table {
+                    width: 100%;
+                    border-collapse: collapse;
+                    font-size: 0.85rem;
+                }
+                .ad-panel-table th {
+                    text-align: left;
+                    padding: 0.6rem 0.75rem;
+                    font-size: 0.75rem;
+                    font-weight: 600;
+                    color: var(--text-secondary);
+                    text-transform: uppercase;
+                    letter-spacing: 0.03em;
+                    border-bottom: 1px solid var(--border-color);
+                    white-space: nowrap;
+                }
+                .ad-panel-table td {
+                    padding: 0.65rem 0.75rem;
+                    border-bottom: 1px solid var(--border-color);
+                    vertical-align: middle;
+                }
+                .ad-panel-table tbody tr:hover {
+                    background: var(--bg-secondary);
+                }
+                .ad-panel-table tbody tr:last-child td {
+                    border-bottom: none;
                 }
                 .ad-empty {
                     text-align: center;

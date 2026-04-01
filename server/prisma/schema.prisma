@@ -807,6 +807,9 @@ model Broadcast {
   // Section 6.5: Charge category tracking
   chargeCategory  String    @default("own_device") // own_device, system_bot, telegram
 
+  // Auto Padding: adds invisible zero-width chars to make each message unique (anti-spam)
+  autoPadding     Boolean   @default(false)
+
   device        Device?              @relation(fields: [deviceId], references: [id], onDelete: Cascade)
   telegramBot   TelegramBot?         @relation(fields: [telegramBotId], references: [id], onDelete: Cascade)
   recipients    BroadcastRecipient[]
@@ -2154,4 +2157,27 @@ model SeoSetting {
   isVisible       Boolean  @default(true) // Page visibility status
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
+}
+
+// ==================== CUSTOM PAYMENT METHODS ====================
+
+model CustomPaymentMethod {
+  id                   String   @id @default(cuid())
+  name                 String   // Display name (e.g., "Western Union", "Wise")
+  description          String?  // Short description
+  icon                 String?  // Emoji or icon identifier
+  instructions         String?  // Payment instructions shown to users (supports multi-line)
+  currency             String   @default("USD")
+  minAmount            Float    @default(5)
+  maxAmount            Float    @default(10000)
+  bonusPercent         Float    @default(0)
+  taxPercent           Float    @default(0)
+  countries            String   @default("*") // Comma-separated ISO codes or * for all
+  disallowedCountries  String?  // Comma-separated ISO codes to block
+  enabled              Boolean  @default(true)
+  sortOrder            Int      @default(0) // Display order (lower = first)
+  requiresProof        Boolean  @default(true) // Requires payment proof upload
+  processingTime       String?  @default("1-24 hours")
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
 }

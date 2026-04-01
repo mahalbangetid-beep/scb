@@ -161,15 +161,42 @@ class ManualPaymentService {
                 }
             });
 
+            // Get bonus/tax config
+            let bonusPercent = 0, taxPercent = 0;
+            try {
+                const bonusTaxConfigs = await prisma.systemConfig.findMany({
+                    where: { key: { in: ['manual_bonus', 'manual_tax'] } }
+                });
+                for (const c of bonusTaxConfigs) {
+                    if (c.key === 'manual_bonus') bonusPercent = parseFloat(c.value) || 0;
+                    if (c.key === 'manual_tax') taxPercent = parseFloat(c.value) || 0;
+                }
+            } catch (e) { /* use defaults */ }
+
+            const baseAmount = transaction.amount;
+            const taxAmount = (baseAmount * taxPercent) / 100;
+            const amountAfterTax = baseAmount - taxAmount;
+            const bonusAmount = (amountAfterTax * bonusPercent) / 100;
+            const totalCredit = amountAfterTax + bonusAmount;
+
             // Credit user wallet
             await prisma.user.update({
                 where: { id: transaction.userId },
                 data: {
                     creditBalance: {
-                        increment: transaction.amount
+                        increment: totalCredit
                     }
                 }
             });
+
+            // Build description
+            let creditDesc = `Manual payment +$${totalCredit.toFixed(2)}`;
+            if (bonusAmount > 0 || taxAmount > 0) {
+                const parts = [];
+                if (taxAmount > 0) parts.push(`tax -$${taxAmount.toFixed(2)}`);
+                if (bonusAmount > 0) parts.push(`bonus +$${bonusAmount.toFixed(2)}`);
+                creditDesc += ` (${parts.join(', ')})`;
+            }
 
             // Log admin activity
             await prisma.activityLog.create({
@@ -180,25 +207,28 @@ class ManualPaymentService {
                     description: `Approved payment ${transactionId}`,
                     metadata: JSON.stringify({
                         transactionId,
-                        amount: transaction.amount,
+                        amount: baseAmount,
+                        totalCredit,
+                        bonusAmount,
+                        taxAmount,
                         targetUserId: transaction.userId
                     }),
                     ipAddress: 'system'
                 }
             });
 
-            console.log(`[ManualPayment] Approved: ${transactionId}, credited ${transaction.amount} to ${transaction.userId}`);
+            console.log(`[ManualPayment] Approved: ${transactionId}, credited ${totalCredit} to ${transaction.userId} (base: ${baseAmount}, tax: ${taxAmount}, bonus: ${bonusAmount})`);
 
             // Auto-generate invoice
             try {
                 const invoiceService = require('../invoiceService');
                 await invoiceService.createFromPayment({
                     userId: transaction.userId,
-                    amount: transaction.amount,
+                    amount: totalCredit,
                     currency: 'USD',
                     method: 'MANUAL',
-                    description: `Credit Top-Up via Manual Payment`,
-                    metadata: { gateway: 'manual', approvedBy: adminId }
+                    description: `Credit Top-Up via Manual Payment${bonusAmount > 0 ? ` (includes $${bonusAmount.toFixed(2)} bonus)` : ''}`,
+                    metadata: { gateway: 'manual', approvedBy: adminId, bonusAmount, taxAmount }
                 });
             } catch (invoiceError) {
                 console.error('[ManualPayment] Invoice generation failed:', invoiceError.message);
@@ -207,7 +237,7 @@ class ManualPaymentService {
             return {
                 success: true,
                 transactionId,
-                amount: transaction.amount,
+                amount: totalCredit,
                 userId: transaction.userId
             };
         } catch (error) {
@@ -332,9 +362,12 @@ class ManualPaymentService {
         let isEnabled = false;
         let countries = ['*']; // default: all countries
         let disallowedCountries = [];
+        let customInstructions = '';
+        let bonusPercent = 0;
+        let taxPercent = 0;
         try {
             const configs = await prisma.systemConfig.findMany({
-                where: { key: { in: ['manual_enabled', 'manual_countries', 'manual_disallowed_countries'] } }
+                where: { key: { in: ['manual_enabled', 'manual_countries', 'manual_disallowed_countries', 'manual_instructions', 'manual_bonus', 'manual_tax'] } }
             });
             for (const c of configs) {
                 if (c.key === 'manual_enabled') {
@@ -345,6 +378,15 @@ class ManualPaymentService {
                 }
                 if (c.key === 'manual_disallowed_countries' && c.value && c.value.trim()) {
                     disallowedCountries = c.value.split(',').map(cc => cc.trim().toUpperCase()).filter(Boolean);
+                }
+                if (c.key === 'manual_instructions') {
+                    customInstructions = c.value || '';
+                }
+                if (c.key === 'manual_bonus') {
+                    bonusPercent = parseFloat(c.value) || 0;
+                }
+                if (c.key === 'manual_tax') {
+                    taxPercent = parseFloat(c.value) || 0;
                 }
             }
         } catch (e) {
@@ -363,7 +405,10 @@ class ManualPaymentService {
             requiresProof: true,
             processingTime: '1-24 hours',
             countries,
-            disallowedCountries
+            disallowedCountries,
+            instructions: customInstructions,
+            bonusPercent,
+            taxPercent
         };
     }
 }

@@ -702,36 +702,60 @@ class MessageCreditService {
             };
         }
 
-        // Get per-type rate from shared creditService config
+        // Check if this message type is enabled (from shared creditService config)
         const creditService = require('./creditService');
-        const { rate, enabled } = await creditService.getMessageTypeRate(messageType, platform, isGroup);
+        const { enabled } = await creditService.getMessageTypeRate(messageType, platform, isGroup);
 
-        // If disabled or zero rate, skip
-        if (!enabled || rate <= 0) {
+        // If type is disabled, skip charging
+        if (!enabled) {
             return {
                 charged: false,
                 amount: 0,
                 balance: user?.supportCredits || user?.messageCredits || 0,
-                reason: enabled ? 'zero_rate' : 'type_disabled'
+                reason: 'type_disabled'
+            };
+        }
+
+        // In credits mode, use creditsPerMessage (not dollar rate) for deduction amount
+        const config = await this.getConfig();
+        const creditsToDeduct = user?.customCreditRate || config.creditsPerMessage;
+
+        if (creditsToDeduct <= 0) {
+            return {
+                charged: false,
+                amount: 0,
+                balance: user?.supportCredits || user?.messageCredits || 0,
+                reason: 'zero_rate'
             };
         }
 
         // Deduct from support category
-        const result = await this.deductCredits(
-            userId,
-            rate,
-            `${platform} ${messageType.replace(/_/g, ' ')}`,
-            `MSG_${Date.now()}`,
-            'support'
-        );
+        try {
+            const result = await this.deductCredits(
+                userId,
+                creditsToDeduct,
+                `${platform} ${messageType.replace(/_/g, ' ')}`,
+                `MSG_${Date.now()}`,
+                'support'
+            );
 
-        return {
-            charged: result.charged,
-            amount: rate,
-            balance: result.balance,
-            reason: result.reason,
-            messageType
-        };
+            return {
+                charged: result.charged,
+                amount: creditsToDeduct,
+                balance: result.balance,
+                reason: result.reason,
+                messageType
+            };
+        } catch (error) {
+            console.error(`[MessageCreditService] chargeMessageByType error:`, error.message);
+            return {
+                charged: false,
+                amount: creditsToDeduct,
+                balance: user?.supportCredits || user?.messageCredits || 0,
+                reason: 'deduction_error',
+                messageType
+            };
+        }
     }
 }
 

@@ -46,7 +46,8 @@ class EsewaService {
                             'esewa_enabled', 'esewa_merchant_code', 'esewa_secret_key', 'esewa_sandbox',
                             'esewa_exchange_rate', 'esewa_exchange_mode',
                             'esewa_min_amount', 'esewa_max_amount',
-                            'esewa_bonus', 'esewa_tax'
+                            'esewa_bonus', 'esewa_tax',
+                            'esewa_instructions'
                         ]
                     }
                 }
@@ -76,6 +77,7 @@ class EsewaService {
                 maxAmount: parseFloat(configMap.esewa_max_amount) || 100000, // Max NPR
                 bonusPercent: parseFloat(configMap.esewa_bonus) || 0, // Bonus %
                 taxPercent: parseFloat(configMap.esewa_tax) || 0, // Tax %
+                instructions: configMap.esewa_instructions || '',
             };
         } catch (error) {
             console.error('[Esewa] Failed to get config:', error.message);
@@ -93,6 +95,7 @@ class EsewaService {
                 maxAmount: 100000,
                 bonusPercent: 0,
                 taxPercent: 0,
+                instructions: '',
             };
         }
     }
@@ -547,6 +550,7 @@ class EsewaService {
             isSandbox: config.isSandbox,
             countries,
             disallowedCountries,
+            instructions: config.instructions || '',
             testCredentials: config.isSandbox ? {
                 esewaIds: '9806800001 - 9806800005',
                 password: 'Nepal@123',

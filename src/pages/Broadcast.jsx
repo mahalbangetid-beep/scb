@@ -22,7 +22,10 @@ import {
     BarChart3,
     Users,
     CheckSquare,
-    Contact
+    Contact,
+    Copy,
+    Trash2,
+    Edit3
 } from 'lucide-react'
 import api from '../services/api'
 import { formatDistanceToNow, format } from 'date-fns'
@@ -45,6 +48,7 @@ export default function Broadcast() {
     const [availableGroups, setAvailableGroups] = useState([])
     const [groupsLoading, setGroupsLoading] = useState(false)
     const [retrievingContacts, setRetrievingContacts] = useState(false)
+    const [editingCampaignId, setEditingCampaignId] = useState(null)
 
 
     // Form state
@@ -64,7 +68,8 @@ export default function Broadcast() {
         broadcastType: 'number', // 'number', 'group', 'both'
         selectedGroups: [], // array of groupJid
         scheduleEnabled: false,
-        scheduledAt: ''
+        scheduledAt: '',
+        autoPadding: false
     })
 
     const fileInputRef = useRef(null)
@@ -264,6 +269,46 @@ export default function Broadcast() {
                 ? new Date(formData.scheduledAt).toISOString()
                 : undefined
 
+            // If editing an existing campaign, use PUT
+            if (editingCampaignId) {
+                const updatePayload = {
+                    name: formData.name,
+                    message: formData.message,
+                    broadcastType: formData.broadcastType,
+                    watermarkText: formData.watermarkEnabled ? (formData.watermarkText || '') : ''
+                }
+                if (scheduledAt) updatePayload.scheduledAt = scheduledAt
+
+                if (formData.mediaFile) {
+                    const fd = new FormData()
+                    Object.entries(updatePayload).forEach(([k, v]) => fd.append(k, v))
+                    fd.append('media', formData.mediaFile)
+                    await api.put(`/broadcast/${editingCampaignId}`, fd, {
+                        headers: { 'Content-Type': 'multipart/form-data' }
+                    })
+                } else {
+                    await api.put(`/broadcast/${editingCampaignId}`, updatePayload)
+                }
+
+                alert('Campaign updated successfully!')
+                setEditingCampaignId(null)
+                setActiveTab('campaigns')
+                fetchCampaigns()
+                setFormData({
+                    name: '', platform: 'WHATSAPP', deviceId: '', telegramBotId: '', message: '', recipients: '',
+                    mediaFile: null, mediaPreview: null,
+                    autoIdEnabled: marketingConfig?.autoIdEnabled !== false,
+                    autoIdPrefix: marketingConfig?.autoIdPrefix || '',
+                    watermarkEnabled: marketingConfig?.watermarkEnabled || false,
+                    watermarkText: marketingConfig?.defaultWatermark || '',
+                    broadcastType: 'number', selectedGroups: [],
+                    scheduleEnabled: false, scheduledAt: ''
+                })
+                setSubmitting(false)
+                return
+            }
+
+            // --- New campaign creation (POST) ---
             if (formData.mediaFile) {
                 const payload = new FormData()
                 payload.append('name', formData.name)
@@ -281,6 +326,7 @@ export default function Broadcast() {
                 payload.append('media', formData.mediaFile)
                 payload.append('autoIdEnabled', formData.autoIdEnabled)
                 payload.append('watermarkText', formData.watermarkEnabled ? (formData.watermarkText || '') : '')
+                payload.append('autoPadding', formData.autoPadding)
                 if (scheduledAt) payload.append('scheduledAt', scheduledAt)
 
                 await api.post('/broadcast', payload, {
@@ -295,7 +341,8 @@ export default function Broadcast() {
                     recipients: needsRecipients ? recipientList : [],
                     targetGroups: needsGroups ? formData.selectedGroups : undefined,
                     autoIdEnabled: formData.autoIdEnabled,
-                    watermarkText: formData.watermarkEnabled ? (formData.watermarkText || '') : ''
+                    watermarkText: formData.watermarkEnabled ? (formData.watermarkText || '') : '',
+                    autoPadding: formData.autoPadding
                 }
                 if (isWA) payload.deviceId = formData.deviceId
                 if (!isWA) payload.telegramBotId = formData.telegramBotId
@@ -428,9 +475,26 @@ export default function Broadcast() {
                     <div className="card">
                         <div className="card-header">
                             <div>
-                                <h3 className="card-title">Compose Message</h3>
-                                <p className="card-subtitle">Create your broadcast message</p>
+                                <h3 className="card-title">{editingCampaignId ? '✏️ Editing Campaign' : 'Compose Message'}</h3>
+                                <p className="card-subtitle">{editingCampaignId ? 'Update your campaign and save changes' : 'Create your broadcast message'}</p>
                             </div>
+                            {editingCampaignId && (
+                                <button className="btn btn-secondary btn-sm" onClick={() => {
+                                    setEditingCampaignId(null)
+                                    setFormData({
+                                        name: '', platform: 'WHATSAPP', deviceId: '', telegramBotId: '', message: '', recipients: '',
+                                        mediaFile: null, mediaPreview: null,
+                                        autoIdEnabled: marketingConfig?.autoIdEnabled !== false,
+                                        autoIdPrefix: marketingConfig?.autoIdPrefix || '',
+                                        watermarkEnabled: marketingConfig?.watermarkEnabled || false,
+                                        watermarkText: marketingConfig?.defaultWatermark || '',
+                                        broadcastType: 'number', selectedGroups: [],
+                                        scheduleEnabled: false, scheduledAt: ''
+                                    })
+                                }}>
+                                    <X size={14} /> Cancel Edit
+                                </button>
+                            )}
                         </div>
 
                         <div className="form-group">
@@ -955,6 +1019,38 @@ export default function Broadcast() {
                             )}
                         </div>
 
+                        {/* Auto Padding Toggle (anti-spam) */}
+                        <div className="form-group" style={{
+                            padding: 'var(--spacing-md)',
+                            borderRadius: 'var(--radius-md)',
+                            border: '1px solid var(--border-color)',
+                            background: formData.autoPadding ? 'rgba(251,191,36,0.03)' : 'transparent',
+                            transition: 'background 0.2s ease'
+                        }}>
+                            <label style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: 'var(--spacing-sm)',
+                                cursor: 'pointer'
+                            }}>
+                                <input
+                                    type="checkbox"
+                                    checked={formData.autoPadding}
+                                    onChange={(e) => setFormData(prev => ({
+                                        ...prev,
+                                        autoPadding: e.target.checked
+                                    }))}
+                                />
+                                <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>Auto Padding</span>
+                                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>(anti-spam)</span>
+                            </label>
+                            {formData.autoPadding && (
+                                <p style={{ margin: '8px 0 0', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                                    Invisible characters will be added to each message, making every message unique to avoid spam detection.
+                                </p>
+                            )}
+                        </div>
+
                         {/* Schedule Toggle */}
                         <div className="form-group" style={{
                             padding: 'var(--spacing-md)',
@@ -1014,16 +1110,16 @@ export default function Broadcast() {
                         </div>
 
                         {/* Action Buttons */}
-                        <div style={{ display: 'flex', gap: 'var(--spacing-md)', marginTop: 'var(--spacing-lg)', paddingTop: 'var(--spacing-lg)', borderTop: '1px solid var(--border-color)' }}>
+                        <div style={{ display: 'flex', gap: 'var(--spacing-md)', marginTop: 'var(--spacing-lg)', paddingTop: 'var(--spacing-lg)', paddingBottom: 'var(--spacing-md)', borderTop: '1px solid var(--border-color)', position: 'sticky', bottom: 0, background: 'var(--bg-primary)', zIndex: 10 }}>
                             {formData.scheduleEnabled && formData.scheduledAt ? (
                                 <button className="btn btn-primary" style={{ flex: 1 }} onClick={handleSendNow} disabled={submitting}>
                                     {submitting ? <Loader2 className="animate-spin" size={16} /> : <Calendar size={16} />}
-                                    Schedule Broadcast
+                                    {editingCampaignId ? 'Update & Schedule' : 'Schedule Broadcast'}
                                 </button>
                             ) : (
                                 <button className="btn btn-primary" style={{ flex: 1 }} onClick={handleSendNow} disabled={submitting}>
                                     {submitting ? <Loader2 className="animate-spin" size={16} /> : <Send size={16} />}
-                                    Send Now
+                                    {editingCampaignId ? 'Update Campaign' : 'Send Now'}
                                 </button>
                             )}
                         </div>
@@ -1111,6 +1207,7 @@ export default function Broadcast() {
                         const successRate = total > 0 ? ((sent / total) * 100).toFixed(1) : '0.0'
                         const isExpanded = expandedCampaign === campaign.id
                         const isActive = ['processing'].includes(campaign.status)
+                        const isEditable = ['draft', 'scheduled', 'paused', 'cancelled'].includes(campaign.status)
 
                         return (
                             <div key={campaign.id} style={{
@@ -1327,6 +1424,69 @@ export default function Broadcast() {
                                                     }}
                                                 >
                                                     <Download size={12} /> Export Failed ({failed})
+                                                </button>
+                                            )}
+                                            {/* Edit Campaign (editable statuses only) */}
+                                            {isEditable && (
+                                                <button
+                                                    className="btn btn-secondary btn-sm"
+                                                    onClick={async (e) => {
+                                                        e.stopPropagation()
+                                                        // Load campaign data into compose form
+                                                        setEditingCampaignId(campaign.id)
+                                                        setFormData(prev => ({
+                                                            ...prev,
+                                                            name: campaign.name || '',
+                                                            platform: campaign.platform || 'WHATSAPP',
+                                                            deviceId: campaign.deviceId || '',
+                                                            telegramBotId: campaign.telegramBotId || '',
+                                                            message: campaign.message || '',
+                                                            recipients: (campaign.recipients || []).join('\n'),
+                                                            broadcastType: campaign.broadcastType || 'number',
+                                                            selectedGroups: campaign.targetGroups || [],
+                                                            watermarkEnabled: !!campaign.watermarkText,
+                                                            watermarkText: campaign.watermarkText || '',
+                                                            scheduleEnabled: !!campaign.scheduledAt,
+                                                            scheduledAt: campaign.scheduledAt ? new Date(campaign.scheduledAt).toISOString().slice(0, 16) : ''
+                                                        }))
+                                                        setActiveTab('new')
+                                                    }}
+                                                >
+                                                    <Edit3 size={12} /> Edit
+                                                </button>
+                                            )}
+                                            {/* Duplicate Campaign */}
+                                            <button
+                                                className="btn btn-secondary btn-sm"
+                                                onClick={async (e) => {
+                                                    e.stopPropagation()
+                                                    try {
+                                                        await api.post(`/broadcast/${campaign.id}/duplicate`)
+                                                        fetchCampaigns()
+                                                    } catch (err) {
+                                                        alert('Failed to duplicate: ' + (err.message || 'Unknown error'))
+                                                    }
+                                                }}
+                                            >
+                                                <Copy size={12} /> Duplicate
+                                            </button>
+                                            {/* Delete Campaign (non-active only) */}
+                                            {!isActive && (
+                                                <button
+                                                    className="btn btn-secondary btn-sm"
+                                                    style={{ color: '#ef4444' }}
+                                                    onClick={async (e) => {
+                                                        e.stopPropagation()
+                                                        if (!confirm('Delete this campaign permanently?')) return
+                                                        try {
+                                                            await api.delete(`/broadcast/${campaign.id}`)
+                                                            fetchCampaigns()
+                                                        } catch (err) {
+                                                            alert('Failed to delete: ' + (err.message || 'Unknown error'))
+                                                        }
+                                                    }}
+                                                >
+                                                    <Trash2 size={12} /> Delete
                                                 </button>
                                             )}
                                             {isActive && (

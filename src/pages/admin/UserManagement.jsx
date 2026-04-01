@@ -280,6 +280,7 @@ export default function UserManagement() {
                             <tr>
                                 <th>User</th>
                                 <th>Contact</th>
+                                <th>Panels</th>
                                 <th>Role</th>
                                 <th>Status</th>
                                 <th>Balance</th>
@@ -290,7 +291,7 @@ export default function UserManagement() {
                         <tbody>
                             {users.length === 0 ? (
                                 <tr>
-                                    <td colSpan="7" className="empty-cell">No users found</td>
+                                    <td colSpan="8" className="empty-cell">No users found</td>
                                 </tr>
                             ) : (
                                 users.map(user => (
@@ -313,6 +314,25 @@ export default function UserManagement() {
                                                     <span><Phone size={14} /> {user.whatsappNumber}</span>
                                                 )}
                                             </div>
+                                        </td>
+                                        <td>
+                                            {user.smmPanels && user.smmPanels.length > 0 ? (
+                                                <div className="panels-info">
+                                                    {user.smmPanels.map(p => {
+                                                        let domain = p.url
+                                                        try { domain = new URL(p.url).hostname } catch(e) {}
+                                                        return (
+                                                            <div key={p.id} className="panel-info-row" style={{ fontSize: '0.78rem', marginBottom: '3px', display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap' }}>
+                                                                <span style={{ color: p.isActive ? 'var(--text-primary)' : 'var(--text-muted)', textDecoration: p.isActive ? 'none' : 'line-through' }} title={p.url}>{domain}</span>
+                                                                {p.alias && <span style={{ background: 'rgba(168,85,247,0.1)', color: '#a855f7', padding: '1px 6px', borderRadius: '4px', fontSize: '0.7rem' }}>{p.alias}</span>}
+                                                                {p.supportsAdminApi && <span style={{ background: 'rgba(34,197,94,0.1)', color: '#22c55e', padding: '1px 6px', borderRadius: '4px', fontSize: '0.7rem' }}>API</span>}
+                                                            </div>
+                                                        )
+                                                    })}
+                                                </div>
+                                            ) : (
+                                                <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>—</span>
+                                            )}
                                         </td>
                                         <td>{getRoleBadge(user.role)}</td>
                                         <td>{getStatusBadge(user.status)}</td>

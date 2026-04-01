@@ -989,6 +989,21 @@ class BotMessageHandler {
                         console.log(`[BotHandler] Async bulk results sent for ${orderCount} orders`);
                     }
 
+                    // Charge for forwarded messages in async mode
+                    try {
+                        const hasForwarded = result.responses?.some(r => r.details?.forwarded === true);
+                        if (hasForwarded) {
+                            const fwdMessageType = platform === 'TELEGRAM' ? 'tg_forward' : 'wa_forward_message';
+                            if (isCreditsMode) {
+                                await messageCreditService.chargeMessageByType(userId, fwdMessageType, platform, isGroup, user);
+                            } else {
+                                await creditService.chargeMessageByType(userId, fwdMessageType, platform, isGroup, user);
+                            }
+                        }
+                    } catch (fwdChargeErr) {
+                        console.warn(`[BotHandler] Async forward charge failed:`, fwdChargeErr.message);
+                    }
+
                     // Log the message
                     await this.logMessage({
                         deviceId, userId, senderNumber,
@@ -1085,6 +1100,23 @@ class BotMessageHandler {
                 creditCharged: false,
                 reason: 'credit_error'
             };
+        }
+
+        // Charge additional credit for forwarded messages (wa_forward_message rate)
+        // This is separate from the reply charge — forwarding sends a REAL message to provider group
+        try {
+            const hasForwarded = result.responses?.some(r => r.details?.forwarded === true);
+            if (hasForwarded) {
+                const fwdMessageType = platform === 'TELEGRAM' ? 'tg_forward' : 'wa_forward_message';
+                if (isCreditsMode) {
+                    await messageCreditService.chargeMessageByType(userId, fwdMessageType, platform, isGroup, user);
+                } else {
+                    await creditService.chargeMessageByType(userId, fwdMessageType, platform, isGroup, user);
+                }
+            }
+        } catch (fwdChargeErr) {
+            // Non-critical: don't block command response for forward billing errors
+            console.warn(`[BotHandler] Forward message charge failed:`, fwdChargeErr.message);
         }
 
         // Log the message
@@ -1353,6 +1385,20 @@ class BotMessageHandler {
                 await this.sendResponse(deviceId, groupJid, marketingInterval.message);
             }
             console.log(`[MarketingInterval] Marketing message sent to group ${groupJid} (trigger #${marketingInterval.triggerCount + 1})`);
+
+            // Charge credit for marketing interval message
+            try {
+                const messageCreditService = require('./messageCreditService');
+                await messageCreditService.deductCredits(
+                    userId, 1,
+                    `Marketing Interval: group ${groupJid}`,
+                    `MKTG_INTERVAL_${marketingInterval.id}_${Date.now()}`,
+                    'whatsapp_marketing'
+                );
+            } catch (chargeErr) {
+                // Non-critical: don't block marketing message for billing errors
+                console.warn(`[MarketingInterval] Failed to charge credit:`, chargeErr.message);
+            }
         } catch (sendErr) {
             console.error(`[MarketingInterval] Failed to send marketing message:`, sendErr.message);
         }
@@ -1522,6 +1568,38 @@ class BotMessageHandler {
         if (wasDisabled || wasTracked) {
             console.log(`[BotHandler] Admin unban: cleared spam state for ${senderNumber} (owner: ${userId})`);
         }
+        return wasDisabled || wasTracked;
+    }
+
+    /**
+     * Get list of currently disabled/banned users (admin use)
+     */
+    getDisabledUsers() {
+        const now = Date.now();
+        const result = [];
+        for (const [key, disabledUntil] of this._disabledUsers.entries()) {
+            if (disabledUntil > now) {
+                const [userId, senderNumber] = key.split(':');
+                result.push({
+                    userId,
+                    senderNumber,
+                    disabledUntil: new Date(disabledUntil).toISOString(),
+                    remainingMinutes: Math.ceil((disabledUntil - now) / 60000)
+                });
+            }
+        }
+        return result;
+    }
+
+    /**
+     * Clear all spam bans (admin use)
+     */
+    clearAllBans() {
+        const count = this._disabledUsers.size;
+        this._disabledUsers.clear();
+        this._spamTracker.clear();
+        console.log(`[BotHandler] Admin cleared all bans (${count} entries)`);
+        return count;
     }
 }
 

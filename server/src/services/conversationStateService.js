@@ -474,6 +474,29 @@ john123
                     };
                 }
 
+                // Username exists from Telegram registration (has telegramId but no WA numbers) — auto-link WA number
+                // This is the mirror of TG auto-link logic above (line 421-444)
+                if (existingNumbers.length === 0 && existingMapping.telegramId) {
+                    try {
+                        await userMappingService.addPhone(existingMapping.id, userId, normalizedSender);
+                        await this.completeConversation(conversation.id);
+                        console.log(`[Registration] ✅ Linked WhatsApp number ${normalizedSender} to existing TG mapping "${normalizedUsername}" (id: ${existingMapping.id})`);
+                        const responseTemplateService = require('./responseTemplateService');
+                        const templateSuccess = await responseTemplateService.getResponse(userId, 'REGISTRATION_SUCCESS', { username: normalizedUsername });
+                        return {
+                            success: true,
+                            message: templateSuccess || `✅ Registration successful!\n\nYour username *${normalizedUsername}* is now linked with your WhatsApp number.\n\nYou can now use bot commands.`
+                        };
+                    } catch (linkErr) {
+                        console.error(`[Registration] Failed to link WhatsApp to existing TG mapping:`, linkErr.message);
+                        await this.completeConversation(conversation.id);
+                        return {
+                            success: false,
+                            message: '❌ Failed to link WhatsApp number. Please try again or contact support.'
+                        };
+                    }
+                }
+
                 // Linked to another number — only block if SAME panel (cross-panel is allowed)
                 const targetPanelIds = context.panelIds || [];
                 const existingPanelId = existingMapping.panelId;

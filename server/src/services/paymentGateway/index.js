@@ -25,8 +25,42 @@ class PaymentGatewayService {
      * @returns {Array} Gateway info list
      */
     async getAvailableGateways() {
+        const prisma = require('../../utils/prisma');
         const gatewayPromises = Object.values(this.gateways).map(gateway => gateway.getGatewayInfo());
-        return Promise.all(gatewayPromises);
+        const builtInGateways = await Promise.all(gatewayPromises);
+
+        // Also load custom payment methods from DB
+        try {
+            const customMethods = await prisma.customPaymentMethod.findMany({
+                where: { enabled: true },
+                orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }]
+            });
+
+            const customGateways = customMethods.map(m => ({
+                id: `custom_${m.id}`,
+                name: m.name,
+                description: m.description || '',
+                icon: m.icon || '💳',
+                currency: m.currency || 'USD',
+                minAmount: m.minAmount,
+                maxAmount: m.maxAmount,
+                isAvailable: true,
+                requiresProof: m.requiresProof,
+                processingTime: m.processingTime || '1-24 hours',
+                countries: m.countries ? m.countries.split(',').map(c => c.trim().toUpperCase()).filter(Boolean) : ['*'],
+                disallowedCountries: m.disallowedCountries ? m.disallowedCountries.split(',').map(c => c.trim().toUpperCase()).filter(Boolean) : [],
+                instructions: m.instructions || '',
+                bonusPercent: m.bonusPercent || 0,
+                taxPercent: m.taxPercent || 0,
+                isCustom: true
+            }));
+
+            return [...builtInGateways, ...customGateways];
+        } catch (e) {
+            // If custom methods table doesn't exist yet, just return built-in
+            console.warn('[PaymentGateway] Could not load custom methods:', e.message);
+            return builtInGateways;
+        }
     }
 
     /**

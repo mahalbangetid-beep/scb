@@ -29,7 +29,7 @@ class CryptomusService {
             const configs = await prisma.systemConfig.findMany({
                 where: {
                     key: {
-                        in: ['cryptomus_enabled', 'cryptomus_merchant_id', 'cryptomus_api_key']
+                        in: ['cryptomus_enabled', 'cryptomus_merchant_id', 'cryptomus_api_key', 'cryptomus_instructions', 'cryptomus_bonus', 'cryptomus_tax']
                     }
                 }
             });
@@ -48,7 +48,10 @@ class CryptomusService {
                 enabled: isEnabled,
                 merchantId,
                 apiKey,
-                isConfigured: !!(merchantId && apiKey)
+                isConfigured: !!(merchantId && apiKey),
+                instructions: configMap.cryptomus_instructions || '',
+                bonusPercent: parseFloat(configMap.cryptomus_bonus) || 0,
+                taxPercent: parseFloat(configMap.cryptomus_tax) || 0
             };
         } catch (error) {
             console.error('[Cryptomus] Failed to get config:', error.message);
@@ -59,7 +62,10 @@ class CryptomusService {
                 enabled: false,
                 merchantId,
                 apiKey,
-                isConfigured: !!(merchantId && apiKey)
+                isConfigured: !!(merchantId && apiKey),
+                instructions: '',
+                bonusPercent: 0,
+                taxPercent: 0
             };
         }
     }
@@ -304,6 +310,16 @@ class CryptomusService {
 
             // Credit wallet only if this is the first completion
             if (shouldCredit) {
+                // Get bonus/tax config
+                const config = await this.getConfig();
+                const taxPercent = config.taxPercent || 0;
+                const bonusPercent = config.bonusPercent || 0;
+                const baseAmount = transaction.amount;
+                const taxAmount = (baseAmount * taxPercent) / 100;
+                const amountAfterTax = baseAmount - taxAmount;
+                const bonusAmount = (amountAfterTax * bonusPercent) / 100;
+                const totalCredit = amountAfterTax + bonusAmount;
+
                 // Fetch current balance INSIDE transaction for accurate audit trail
                 const currentUser = await tx.user.findUnique({
                     where: { id: transaction.userId },
@@ -315,26 +331,35 @@ class CryptomusService {
                     where: { id: transaction.userId },
                     data: {
                         creditBalance: {
-                            increment: transaction.amount
+                            increment: totalCredit
                         }
                     }
                 });
+
+                // Build description with bonus/tax info
+                let desc = `Cryptomus payment +$${totalCredit.toFixed(2)}`;
+                if (bonusAmount > 0 || taxAmount > 0) {
+                    const parts = [];
+                    if (taxAmount > 0) parts.push(`tax -$${taxAmount.toFixed(2)}`);
+                    if (bonusAmount > 0) parts.push(`bonus +$${bonusAmount.toFixed(2)}`);
+                    desc += ` (${parts.join(', ')})`;
+                }
 
                 // Create credit transaction record
                 await tx.creditTransaction.create({
                     data: {
                         userId: transaction.userId,
                         type: 'CREDIT',
-                        amount: transaction.amount,
+                        amount: totalCredit,
                         balanceBefore,
-                        balanceAfter: balanceBefore + transaction.amount,
-                        description: `Cryptomus payment +$${transaction.amount.toFixed(2)}`,
+                        balanceAfter: balanceBefore + totalCredit,
+                        description: desc,
                         reference: transaction.gatewayRef
                     }
                 });
 
-                console.log(`[Cryptomus] Credited ${transaction.amount} to user ${transaction.userId}`);
-                return { credited: true, amount: transaction.amount, userId: transaction.userId };
+                console.log(`[Cryptomus] Credited ${totalCredit} to user ${transaction.userId} (base: ${baseAmount}, tax: ${taxAmount}, bonus: ${bonusAmount})`);
+                return { credited: true, amount: totalCredit, userId: transaction.userId, bonusAmount };
             }
 
             return { credited: false };
@@ -349,7 +374,7 @@ class CryptomusService {
                     amount: result.amount,
                     currency: 'USD',
                     method: 'CRYPTOMUS',
-                    description: `Credit Top-Up via Cryptomus`,
+                    description: `Credit Top-Up via Cryptomus${result.bonusAmount > 0 ? ` (includes $${result.bonusAmount.toFixed(2)} bonus)` : ''}`,
                     metadata: { gateway: 'cryptomus', uuid }
                 });
             } catch (invoiceError) {
@@ -440,7 +465,10 @@ class CryptomusService {
             isSandbox: false,
             supportedCrypto: ['BTC', 'ETH', 'USDT', 'LTC', 'TRX', 'BNB', 'DOGE', 'SOL'],
             countries,
-            disallowedCountries
+            disallowedCountries,
+            instructions: config.instructions || '',
+            bonusPercent: config.bonusPercent,
+            taxPercent: config.taxPercent
         };
     }
 }

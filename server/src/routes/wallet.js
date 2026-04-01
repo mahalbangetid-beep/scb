@@ -292,19 +292,28 @@ router.get('/binance/info', async (req, res, next) => {
             });
         }
 
+        // Build instructions — prefer admin-configured, fallback to defaults
+        const defaultInstructions = [
+            '1. Scan the QR code with your Binance app',
+            '2. Transfer the exact amount in ' + config.binanceCurrency,
+            '3. Copy the Transaction ID after payment',
+            '4. Paste the Transaction ID below and click Verify'
+        ];
+        let instructions = defaultInstructions;
+        if (config.binanceInstructions && config.binanceInstructions.trim()) {
+            instructions = config.binanceInstructions.split('\n').filter(line => line.trim());
+        }
+
         successResponse(res, {
             available: true,
             name: config.binanceName || 'Binance',
+            binanceId: config.binanceId || '',
             qrUrl: config.binanceQrUrl,
             minAmount: config.binanceMinAmount,
             bonus: config.binanceBonus,
+            tax: config.binanceTax || 0,
             currency: config.binanceCurrency,
-            instructions: [
-                '1. Scan the QR code with your Binance app',
-                '2. Transfer the exact amount in ' + config.binanceCurrency,
-                '3. Copy the Transaction ID after payment',
-                '4. Paste the Transaction ID below and click Verify'
-            ]
+            instructions
         });
     } catch (error) {
         next(error);

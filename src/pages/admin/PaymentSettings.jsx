@@ -15,7 +15,12 @@ import {
     X,
     Smartphone,
     Coins,
-    Building2
+    Building2,
+    Plus,
+    Edit3,
+    Trash2,
+    ToggleLeft,
+    ToggleRight
 } from 'lucide-react';
 import api from '../../services/api';
 
@@ -26,6 +31,7 @@ const paymentTabs = [
     { id: 'cryptomus', label: 'Cryptomus', icon: Coins },
     { id: 'binance', label: 'Binance', icon: CreditCard },
     { id: 'manual', label: 'Manual', icon: Building2 },
+    { id: 'custom', label: 'Custom', icon: Plus },
 ];
 
 const PaymentSettings = () => {
@@ -35,6 +41,18 @@ const PaymentSettings = () => {
     const [gateways, setGateways] = useState([]);
     const [error, setError] = useState(null);
     const [success, setSuccess] = useState(null);
+    // Custom payment methods state
+    const [customMethods, setCustomMethods] = useState([]);
+    const [customLoading, setCustomLoading] = useState(false);
+    const [editingCustom, setEditingCustom] = useState(null);
+    const [customForm, setCustomForm] = useState({
+        name: '', description: '', icon: '💳', instructions: '',
+        currency: 'USD', minAmount: 5, maxAmount: 10000,
+        bonusPercent: 0, taxPercent: 0, countries: '*',
+        disallowedCountries: '', enabled: true, sortOrder: 0,
+        requiresProof: true, processingTime: '1-24 hours'
+    });
+
     const [settings, setSettings] = useState({
         // Esewa
         esewa_enabled: false,
@@ -57,6 +75,9 @@ const PaymentSettings = () => {
         cryptomus_head_code: '',
         cryptomus_countries: '*',
         cryptomus_disallowed_countries: '',
+        cryptomus_bonus: 0,
+        cryptomus_tax: 0,
+        cryptomus_instructions: '',
 
         // Binance Pay
         binance_enabled: false,
@@ -70,6 +91,8 @@ const PaymentSettings = () => {
         binance_currency: 'USDT',
         binance_countries: '*',
         binance_disallowed_countries: '',
+        binance_tax: 0,
+        binance_instructions: '',
 
         // Manual Payment
         manual_enabled: true,
@@ -80,6 +103,8 @@ const PaymentSettings = () => {
         manual_instructions: '',
         manual_countries: '*',
         manual_disallowed_countries: '',
+        manual_bonus: 0,
+        manual_tax: 0,
 
         // General
         min_deposit: 5,
@@ -89,6 +114,7 @@ const PaymentSettings = () => {
 
     useEffect(() => {
         fetchData();
+        fetchCustomMethods();
     }, []);
 
     const fetchData = async () => {
@@ -161,6 +187,62 @@ const PaymentSettings = () => {
     const getGatewayStatus = (gatewayId) => {
         const gateway = gateways.find(g => g.id === gatewayId);
         return gateway?.isAvailable || false;
+    };
+
+    // ========== Custom Payment Methods Handlers ==========
+    const fetchCustomMethods = async () => {
+        try {
+            const res = await api.get('/admin/custom-payments');
+            setCustomMethods(res.data || []);
+        } catch (err) {
+            console.warn('Could not fetch custom payment methods:', err.message);
+        }
+    };
+
+    const handleSaveCustom = async () => {
+        if (!customForm.name?.trim()) {
+            setError('Payment method name is required');
+            return;
+        }
+        setCustomLoading(true);
+        setError(null);
+        try {
+            if (editingCustom === 'new') {
+                await api.post('/admin/custom-payments', customForm);
+                setSuccess('Custom payment method created!');
+            } else {
+                await api.put(`/admin/custom-payments/${editingCustom}`, customForm);
+                setSuccess('Custom payment method updated!');
+            }
+            setEditingCustom(null);
+            await fetchCustomMethods();
+            setTimeout(() => setSuccess(null), 3000);
+        } catch (err) {
+            setError(err.error?.message || err.message || 'Failed to save custom payment method');
+        } finally {
+            setCustomLoading(false);
+        }
+    };
+
+    const handleDeleteCustom = async (id, name) => {
+        if (!window.confirm(`Delete payment method "${name}"? This cannot be undone.`)) return;
+        try {
+            await api.delete(`/admin/custom-payments/${id}`);
+            setSuccess(`Deleted "${name}"`);
+            await fetchCustomMethods();
+            setTimeout(() => setSuccess(null), 3000);
+        } catch (err) {
+            setError(err.error?.message || err.message || 'Failed to delete');
+        }
+    };
+
+    const handleToggleCustom = async (id) => {
+        try {
+            await api.patch(`/admin/custom-payments/${id}/toggle`);
+            await fetchCustomMethods();
+        } catch (err) {
+            setError(err.error?.message || err.message || 'Failed to toggle');
+        }
     };
 
     if (loading) {
@@ -546,6 +628,48 @@ const PaymentSettings = () => {
                                 Paste the full HTML tag here. It will automatically be injected into your site.
                             </small>
                         </div>
+
+                        {/* Bonus & Tax */}
+                        <div className="settings-grid" style={{ marginTop: 'var(--spacing-lg)' }}>
+                            <div className="form-group">
+                                <label>Bonus Percentage (%)</label>
+                                <input
+                                    type="number"
+                                    step="0.5"
+                                    min="0"
+                                    max="100"
+                                    value={settings.cryptomus_bonus || 0}
+                                    onChange={(e) => handleChange('cryptomus_bonus', e.target.value)}
+                                    placeholder="0"
+                                />
+                                <small className="form-hint">Extra credit given to customers (added after tax deduction)</small>
+                            </div>
+                            <div className="form-group">
+                                <label>Tax Percentage (%)</label>
+                                <input
+                                    type="number"
+                                    step="0.5"
+                                    min="0"
+                                    max="100"
+                                    value={settings.cryptomus_tax || 0}
+                                    onChange={(e) => handleChange('cryptomus_tax', e.target.value)}
+                                    placeholder="0"
+                                />
+                                <small className="form-hint">Tax deducted from payment amount before crediting wallet</small>
+                            </div>
+                        </div>
+
+                        {/* Instructions */}
+                        <div className="form-group full-width" style={{ marginTop: 'var(--spacing-lg)' }}>
+                            <label>Payment Instructions</label>
+                            <textarea
+                                rows={3}
+                                value={settings.cryptomus_instructions || ''}
+                                onChange={(e) => handleChange('cryptomus_instructions', e.target.value)}
+                                placeholder="Instructions shown to customers during Cryptomus checkout..."
+                            />
+                            <small className="form-hint">Shown to users on the payment page</small>
+                        </div>
                     </div>
                 )}
 
@@ -699,6 +823,30 @@ const PaymentSettings = () => {
                                 />
                                 <small className="form-hint">Extra credit given to customers (e.g., 5 = +5%)</small>
                             </div>
+                            <div className="form-group">
+                                <label>Tax Percentage (%)</label>
+                                <input
+                                    type="number"
+                                    min="0"
+                                    max="100"
+                                    step="0.5"
+                                    value={settings.binance_tax || 0}
+                                    onChange={(e) => handleChange('binance_tax', e.target.value)}
+                                    placeholder="0"
+                                />
+                                <small className="form-hint">Tax deducted from payment amount before bonus is applied</small>
+                            </div>
+                        </div>
+
+                        {/* Binance Instructions */}
+                        <div className="form-group full-width" style={{ marginTop: 'var(--spacing-md)' }}>
+                            <label>Payment Instructions (shown to customers)</label>
+                            <textarea
+                                rows={3}
+                                value={settings.binance_instructions || ''}
+                                onChange={(e) => handleChange('binance_instructions', e.target.value)}
+                                placeholder="Instructions shown to customers during Binance checkout..."
+                            />
                         </div>
 
                         <div className="form-group">
@@ -816,6 +964,274 @@ const PaymentSettings = () => {
                             />
                             <small className="form-hint">Comma-separated ISO codes. These countries will be BLOCKED even if in allowed list.</small>
                         </div>
+
+                        {/* Bonus & Tax */}
+                        <div className="settings-grid" style={{ marginTop: 'var(--spacing-lg)' }}>
+                            <div className="form-group">
+                                <label>Bonus Percentage (%)</label>
+                                <input
+                                    type="number"
+                                    step="0.5"
+                                    min="0"
+                                    max="100"
+                                    value={settings.manual_bonus || 0}
+                                    onChange={(e) => handleChange('manual_bonus', e.target.value)}
+                                    placeholder="0"
+                                />
+                                <small className="form-hint">Extra credit given to customers (added after tax deduction)</small>
+                            </div>
+                            <div className="form-group">
+                                <label>Tax Percentage (%)</label>
+                                <input
+                                    type="number"
+                                    step="0.5"
+                                    min="0"
+                                    max="100"
+                                    value={settings.manual_tax || 0}
+                                    onChange={(e) => handleChange('manual_tax', e.target.value)}
+                                    placeholder="0"
+                                />
+                                <small className="form-hint">Tax deducted from approved amount before crediting wallet</small>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* Custom Payment Methods Tab */}
+                {activeTab === 'custom' && (
+                    <div className="settings-section">
+                        <div className="section-header-content">
+                            <div>
+                                <h2>🎨 Custom Payment Methods</h2>
+                                <p className="section-subtitle">Create unlimited payment gateways with custom names & instructions</p>
+                            </div>
+                            <button className="btn btn-primary btn-sm" onClick={() => {
+                                setEditingCustom('new');
+                                setCustomForm({
+                                    name: '', description: '', icon: '💳', instructions: '',
+                                    currency: 'USD', minAmount: 5, maxAmount: 10000,
+                                    bonusPercent: 0, taxPercent: 0, countries: '*',
+                                    disallowedCountries: '', enabled: true, sortOrder: 0,
+                                    requiresProof: true, processingTime: '1-24 hours'
+                                });
+                            }}>
+                                <Plus size={16} /> Add Method
+                            </button>
+                        </div>
+
+                        {/* Create/Edit Form */}
+                        {editingCustom && (
+                            <div style={{
+                                margin: 'var(--spacing-lg) 0',
+                                padding: 'var(--spacing-lg)',
+                                background: 'var(--bg-tertiary)',
+                                borderRadius: 'var(--radius-lg)',
+                                border: '1px solid var(--border-color)'
+                            }}>
+                                <h3 style={{ marginBottom: 'var(--spacing-md)' }}>
+                                    {editingCustom === 'new' ? '➕ New Payment Method' : `✏️ Editing: ${customForm.name}`}
+                                </h3>
+                                <div className="settings-grid">
+                                    <div className="form-group">
+                                        <label>Name *</label>
+                                        <input
+                                            type="text"
+                                            value={customForm.name}
+                                            onChange={(e) => setCustomForm(f => ({ ...f, name: e.target.value }))}
+                                            placeholder="e.g., Western Union"
+                                        />
+                                    </div>
+                                    <div className="form-group">
+                                        <label>Icon (emoji)</label>
+                                        <input
+                                            type="text"
+                                            value={customForm.icon}
+                                            onChange={(e) => setCustomForm(f => ({ ...f, icon: e.target.value }))}
+                                            placeholder="💳"
+                                            style={{ width: '80px' }}
+                                        />
+                                    </div>
+                                    <div className="form-group">
+                                        <label>Currency</label>
+                                        <input
+                                            type="text"
+                                            value={customForm.currency}
+                                            onChange={(e) => setCustomForm(f => ({ ...f, currency: e.target.value }))}
+                                            placeholder="USD"
+                                        />
+                                    </div>
+                                    <div className="form-group">
+                                        <label>Sort Order</label>
+                                        <input
+                                            type="number"
+                                            value={customForm.sortOrder}
+                                            onChange={(e) => setCustomForm(f => ({ ...f, sortOrder: parseInt(e.target.value) || 0 }))}
+                                        />
+                                    </div>
+                                    <div className="form-group">
+                                        <label>Min Amount</label>
+                                        <input
+                                            type="number"
+                                            step="0.01"
+                                            value={customForm.minAmount}
+                                            onChange={(e) => setCustomForm(f => ({ ...f, minAmount: parseFloat(e.target.value) || 0 }))}
+                                        />
+                                    </div>
+                                    <div className="form-group">
+                                        <label>Max Amount</label>
+                                        <input
+                                            type="number"
+                                            step="0.01"
+                                            value={customForm.maxAmount}
+                                            onChange={(e) => setCustomForm(f => ({ ...f, maxAmount: parseFloat(e.target.value) || 0 }))}
+                                        />
+                                    </div>
+                                    <div className="form-group">
+                                        <label>Bonus %</label>
+                                        <input
+                                            type="number"
+                                            step="0.5"
+                                            min="0"
+                                            max="100"
+                                            value={customForm.bonusPercent}
+                                            onChange={(e) => setCustomForm(f => ({ ...f, bonusPercent: parseFloat(e.target.value) || 0 }))}
+                                        />
+                                    </div>
+                                    <div className="form-group">
+                                        <label>Tax %</label>
+                                        <input
+                                            type="number"
+                                            step="0.5"
+                                            min="0"
+                                            max="100"
+                                            value={customForm.taxPercent}
+                                            onChange={(e) => setCustomForm(f => ({ ...f, taxPercent: parseFloat(e.target.value) || 0 }))}
+                                        />
+                                    </div>
+                                    <div className="form-group">
+                                        <label>Allowed Countries</label>
+                                        <input
+                                            type="text"
+                                            value={customForm.countries}
+                                            onChange={(e) => setCustomForm(f => ({ ...f, countries: e.target.value }))}
+                                            placeholder="* (all)"
+                                        />
+                                    </div>
+                                    <div className="form-group">
+                                        <label>Processing Time</label>
+                                        <input
+                                            type="text"
+                                            value={customForm.processingTime}
+                                            onChange={(e) => setCustomForm(f => ({ ...f, processingTime: e.target.value }))}
+                                            placeholder="1-24 hours"
+                                        />
+                                    </div>
+                                </div>
+                                <div className="form-group" style={{ marginTop: 'var(--spacing-md)' }}>
+                                    <label>Description</label>
+                                    <input
+                                        type="text"
+                                        value={customForm.description}
+                                        onChange={(e) => setCustomForm(f => ({ ...f, description: e.target.value }))}
+                                        placeholder="Short description for users"
+                                    />
+                                </div>
+                                <div className="form-group" style={{ marginTop: 'var(--spacing-md)' }}>
+                                    <label>Payment Instructions</label>
+                                    <textarea
+                                        rows={4}
+                                        value={customForm.instructions}
+                                        onChange={(e) => setCustomForm(f => ({ ...f, instructions: e.target.value }))}
+                                        placeholder="Instructions shown to users when they select this payment method..."
+                                    />
+                                </div>
+                                <div style={{ display: 'flex', gap: 'var(--spacing-md)', marginTop: 'var(--spacing-lg)' }}>
+                                    <button className="btn btn-primary" onClick={handleSaveCustom} disabled={customLoading}>
+                                        <Save size={16} /> {editingCustom === 'new' ? 'Create' : 'Update'}
+                                    </button>
+                                    <button className="btn btn-secondary" onClick={() => setEditingCustom(null)}>Cancel</button>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Methods List */}
+                        {customMethods.length === 0 && !editingCustom ? (
+                            <div style={{
+                                textAlign: 'center',
+                                padding: 'var(--spacing-3xl)',
+                                color: 'var(--text-secondary)'
+                            }}>
+                                <Plus size={48} style={{ opacity: 0.3, marginBottom: 'var(--spacing-md)' }} />
+                                <p>No custom payment methods yet.</p>
+                                <p style={{ fontSize: '0.85rem' }}>Click "Add Method" to create one.</p>
+                            </div>
+                        ) : (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-md)', marginTop: 'var(--spacing-lg)' }}>
+                                {customMethods.map(m => (
+                                    <div key={m.id} style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: 'var(--spacing-md)',
+                                        padding: 'var(--spacing-md) var(--spacing-lg)',
+                                        background: 'var(--bg-secondary)',
+                                        border: '1px solid var(--border-color)',
+                                        borderRadius: 'var(--radius-md)',
+                                        opacity: m.enabled ? 1 : 0.6
+                                    }}>
+                                        <span style={{ fontSize: '1.5rem' }}>{m.icon || '💳'}</span>
+                                        <div style={{ flex: 1 }}>
+                                            <div style={{ fontWeight: 600 }}>{m.name}</div>
+                                            <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                                                {m.currency} | Min: {m.minAmount} | Max: {m.maxAmount}
+                                                {m.bonusPercent > 0 && ` | Bonus: ${m.bonusPercent}%`}
+                                                {m.taxPercent > 0 && ` | Tax: ${m.taxPercent}%`}
+                                            </div>
+                                        </div>
+                                        <button
+                                            className="btn btn-ghost btn-sm"
+                                            onClick={() => handleToggleCustom(m.id)}
+                                            title={m.enabled ? 'Disable' : 'Enable'}
+                                        >
+                                            {m.enabled ? <ToggleRight size={20} style={{ color: '#22c55e' }} /> : <ToggleLeft size={20} />}
+                                        </button>
+                                        <button
+                                            className="btn btn-ghost btn-sm"
+                                            onClick={() => {
+                                                setEditingCustom(m.id);
+                                                setCustomForm({
+                                                    name: m.name || '',
+                                                    description: m.description || '',
+                                                    icon: m.icon || '💳',
+                                                    instructions: m.instructions || '',
+                                                    currency: m.currency || 'USD',
+                                                    minAmount: m.minAmount || 5,
+                                                    maxAmount: m.maxAmount || 10000,
+                                                    bonusPercent: m.bonusPercent || 0,
+                                                    taxPercent: m.taxPercent || 0,
+                                                    countries: m.countries || '*',
+                                                    disallowedCountries: m.disallowedCountries || '',
+                                                    enabled: m.enabled !== false,
+                                                    sortOrder: m.sortOrder || 0,
+                                                    requiresProof: m.requiresProof !== false,
+                                                    processingTime: m.processingTime || '1-24 hours'
+                                                });
+                                            }}
+                                            title="Edit"
+                                        >
+                                            <Edit3 size={16} />
+                                        </button>
+                                        <button
+                                            className="btn btn-ghost btn-sm"
+                                            onClick={() => handleDeleteCustom(m.id, m.name)}
+                                            title="Delete"
+                                            style={{ color: 'var(--danger-500)' }}
+                                        >
+                                            <Trash2 size={16} />
+                                        </button>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
                     </div>
                 )}
             </div>

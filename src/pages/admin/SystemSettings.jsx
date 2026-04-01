@@ -20,7 +20,7 @@ export default function SystemSettings() {
         creditPerGroupMessage: 0.02,
         waLoginFee: 5.00,
         tgLoginFee: 3.00,
-        defaultUserCredit: 0,
+        default_user_credit: 0,
 
         // Platform
         platformName: 'SMMChatBot',
@@ -87,7 +87,7 @@ export default function SystemSettings() {
                 creditPerGroupMessage: mapConfig('pricing', 'creditPerGroupMessage', 0.02),
                 waLoginFee: mapConfig('pricing', 'waLoginFee', 5.00),
                 tgLoginFee: mapConfig('pricing', 'tgLoginFee', 3.00),
-                defaultUserCredit: mapConfig('pricing', 'defaultUserCredit', 0),
+                default_user_credit: mapConfig('pricing', 'default_user_credit', 0),
                 platformName: mapConfig('platform', 'platformName', 'SMMChatBot'),
                 supportEmail: mapConfig('platform', 'supportEmail', ''),
                 supportWhatsapp: mapConfig('platform', 'supportWhatsapp', ''),
@@ -137,7 +137,7 @@ export default function SystemSettings() {
                 { key: 'creditPerGroupMessage', value: settings.creditPerGroupMessage, category: 'pricing' },
                 { key: 'waLoginFee', value: settings.waLoginFee, category: 'pricing' },
                 { key: 'tgLoginFee', value: settings.tgLoginFee, category: 'pricing' },
-                { key: 'defaultUserCredit', value: settings.defaultUserCredit, category: 'pricing' },
+                { key: 'default_user_credit', value: settings.default_user_credit, category: 'pricing' },
                 { key: 'platformName', value: settings.platformName, category: 'platform' },
                 { key: 'supportEmail', value: settings.supportEmail, category: 'platform' },
                 { key: 'supportWhatsapp', value: settings.supportWhatsapp, category: 'platform' },
@@ -520,8 +520,8 @@ export default function SystemSettings() {
                                         <span className="prefix">$</span>
                                         <input
                                             type="number"
-                                            value={settings.defaultUserCredit}
-                                            onChange={(e) => updateSetting('defaultUserCredit', parseFloat(e.target.value))}
+                                            value={settings.default_user_credit}
+                                            onChange={(e) => updateSetting('default_user_credit', parseFloat(e.target.value))}
                                             step="0.01"
                                             min="0"
                                             placeholder="0.00"

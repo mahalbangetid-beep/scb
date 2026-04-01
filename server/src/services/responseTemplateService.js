@@ -27,9 +27,9 @@ class ResponseTemplateService {
         this.defaultTemplates = {
             // ==================== STATUS RESPONSES ====================
             'STATUS_SUCCESS': {
-                template: `✅ *Order #{order_id}*\n\n📦 Service: {service}\n📊 Status: {status}\n🔢 Quantity: {quantity}\n📍 Start Count: {start_count}\n📉 Remains: {remains}\n💰 Charge: ${'{charge}'}\n🔗 Link: {link}`,
+                template: `✅ *Order #{order_id}*\n\n📦 Service: {service}\n📊 Status: {status}\n🔢 Quantity: {quantity}\n📍 Start Count: {start_count}\n📉 Remains: {remains}\n📈 Final Quantity: {final_quantity}\n💰 Charge: ${'{charge}'}\n🔗 Link: {link}`,
                 description: 'Successful status check response',
-                variables: ['order_id', 'service', 'status', 'quantity', 'start_count', 'remains', 'charge', 'link']
+                variables: ['order_id', 'service', 'status', 'quantity', 'start_count', 'remains', 'final_quantity', 'charge', 'link']
             },
             'STATUS_NOT_FOUND': {
                 template: `❌ Order #{order_id} not found in this panel.\n\nPlease check the order ID and try again.`,

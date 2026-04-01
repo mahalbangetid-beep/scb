@@ -56,19 +56,7 @@ export default function WalletPage() {
                 api.get('/credit-packages').catch(() => ({ data: [] })),
                 api.get('/message-credits/balance').catch(() => ({ data: null })),
                 api.get('/billing-mode').catch(() => ({ data: { mode: 'CREDITS' } })),
-                api.get('/payments/gateways', {
-                    params: {
-                        country: (() => {
-                            try {
-                                // Detect country from browser locale
-                                const locale = navigator.language || '';
-                                // Extract country code from locale (e.g., 'en-US' -> 'US', 'ne-NP' -> 'NP')
-                                const parts = locale.split('-');
-                                return parts.length > 1 ? parts[parts.length - 1].toUpperCase() : undefined;
-                            } catch (e) { return undefined; }
-                        })()
-                    }
-                }).catch(() => ({ data: { gateways: [] } }))
+                api.get('/payments/gateways').catch(() => ({ data: { gateways: [] } }))
             ])
             // API interceptor unwraps axios response.data, so res = { success, data, message }
             setWalletInfo(walletRes.data || walletRes)
@@ -175,15 +163,23 @@ export default function WalletPage() {
             return
         }
 
-        // Manual or other payment methods — submit as manual payment for admin approval
+        // Manual or custom payment methods — submit as manual payment for admin approval
         setFormLoading(true)
         setError(null)
 
         try {
+            // Find the gateway name for better description
+            const selectedGw = availableGateways.find(g => {
+                const methodMap = { esewa: 'ESEWA', cryptomus: 'CRYPTOMUS', binance_pay: 'BINANCE', binance: 'BINANCE', manual: 'MANUAL' }
+                const mapped = methodMap[g.id] || g.id?.toUpperCase()
+                return mapped === topUpForm.method
+            })
+            const gwName = selectedGw?.name || topUpForm.method
+
             await api.post('/payments/manual/submit', {
                 amount: parseFloat(topUpForm.amount),
                 paymentMethod: topUpForm.method,
-                notes: `Wallet top-up via ${topUpForm.method}`
+                notes: `Wallet top-up via ${gwName}`
             })
             setSuccess('Payment request submitted! Admin will review and approve your top-up.')
             setShowTopUpModal(false)
@@ -768,17 +764,62 @@ export default function WalletPage() {
                             <form onSubmit={handleTopUp}>
                                 <div className="modal-body">
                                     <div className="form-group">
-                                        <label className="form-label">Amount ($)</label>
+                                        <label className="form-label">
+                                            {topUpForm.method === 'ESEWA' ? 'Amount (NPR)' : 'Amount ($)'}
+                                        </label>
                                         <input
                                             type="number"
                                             className="form-input"
-                                            placeholder="Enter amount"
+                                            placeholder={topUpForm.method === 'ESEWA' ? 'Enter amount in NPR' : 'Enter amount'}
                                             value={topUpForm.amount}
                                             onChange={(e) => setTopUpForm({ ...topUpForm, amount: e.target.value })}
-                                            min="1"
-                                            step="0.01"
+                                            min={topUpForm.method === 'ESEWA' ? '10' : '1'}
+                                            step={topUpForm.method === 'ESEWA' ? '1' : '0.01'}
                                             required
                                         />
+                                        {/* eSewa NPR → USD conversion preview */}
+                                        {topUpForm.method === 'ESEWA' && topUpForm.amount && (() => {
+                                            const esewaGw = availableGateways.find(g => g.id === 'esewa')
+                                            const rate = esewaGw?.exchangeRate || 133.50
+                                            const nprVal = parseFloat(topUpForm.amount) || 0
+                                            const usdVal = nprVal / rate
+                                            const taxPct = esewaGw?.taxPercent || 0
+                                            const bonusPct = esewaGw?.bonusPercent || 0
+                                            const taxAmt = usdVal * (taxPct / 100)
+                                            const bonusAmt = usdVal * (bonusPct / 100)
+                                            const finalUsd = Math.max(0, usdVal - taxAmt + bonusAmt)
+                                            const minAmt = esewaGw?.minAmount || 10
+                                            const maxAmt = esewaGw?.maxAmount || 100000
+                                            return (
+                                                <div style={{ marginTop: '8px', padding: '10px 14px', background: 'var(--bg-tertiary)', borderRadius: '8px', fontSize: '0.85rem' }}>
+                                                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                                                        <span style={{ color: 'var(--text-muted)' }}>Exchange Rate:</span>
+                                                        <span>1 USD = {rate} NPR</span>
+                                                    </div>
+                                                    {taxPct > 0 && (
+                                                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                                                            <span style={{ color: 'var(--text-muted)' }}>Tax ({taxPct}%):</span>
+                                                            <span style={{ color: 'var(--error)' }}>-${taxAmt.toFixed(4)}</span>
+                                                        </div>
+                                                    )}
+                                                    {bonusPct > 0 && (
+                                                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                                                            <span style={{ color: 'var(--text-muted)' }}>Bonus ({bonusPct}%):</span>
+                                                            <span style={{ color: 'var(--success)' }}>+${bonusAmt.toFixed(4)}</span>
+                                                        </div>
+                                                    )}
+                                                    <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 600, borderTop: '1px solid var(--border-color)', paddingTop: '6px', marginTop: '4px' }}>
+                                                        <span>You will receive:</span>
+                                                        <span style={{ color: 'var(--success)' }}>${finalUsd.toFixed(4)} USD</span>
+                                                    </div>
+                                                    {nprVal > 0 && (nprVal < minAmt || nprVal > maxAmt) && (
+                                                        <div style={{ marginTop: '6px', color: 'var(--error)', fontSize: '0.8rem' }}>
+                                                            ⚠️ Amount must be between {minAmt} - {maxAmt.toLocaleString()} NPR
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            )
+                                        })()}
                                     </div>
                                     <div className="form-group">
                                         <label className="form-label">Payment Method</label>
@@ -802,8 +843,11 @@ export default function WalletPage() {
                                                         manual: { value: 'MANUAL', label: 'Manual Payment' }
                                                     }
                                                     const mapping = methodMap[gw.id] || { value: gw.id?.toUpperCase(), label: gw.name || gw.id }
+                                                    // Show country restriction in label if not global
+                                                    const hasCountryRestriction = gw.countries && gw.countries.length > 0 && !gw.countries.includes('*')
+                                                    const countryLabel = hasCountryRestriction ? ` — ${gw.countries.join(', ')}` : ''
                                                     return (
-                                                        <option key={gw.id} value={mapping.value}>{mapping.label}</option>
+                                                        <option key={gw.id} value={mapping.value}>{mapping.label}{countryLabel}</option>
                                                     )
                                                 })
                                             ) : (
@@ -811,19 +855,105 @@ export default function WalletPage() {
                                                 <option value="" disabled>No payment methods available</option>
                                             )}
                                         </select>
+                                        {/* Country availability info */}
+                                        {(() => {
+                                            const restrictedGateways = availableGateways.filter(gw =>
+                                                gw.countries && gw.countries.length > 0 && !gw.countries.includes('*')
+                                            )
+                                            if (restrictedGateways.length === 0) return null
+                                            return (
+                                                <div style={{ marginTop: '6px', fontSize: '0.78rem', color: 'var(--text-muted)', lineHeight: '1.4' }}>
+                                                    <span style={{ marginRight: '4px' }}>🌍</span>
+                                                    {restrictedGateways.map((gw, i) => {
+                                                        const name = gw.name || gw.id
+                                                        const countries = gw.countries.join(', ')
+                                                        return (
+                                                            <span key={gw.id}>
+                                                                <strong>{name}</strong>: {countries}
+                                                                {i < restrictedGateways.length - 1 ? ' · ' : ''}
+                                                            </span>
+                                                        )
+                                                    })}
+                                                </div>
+                                            )
+                                        })()}
                                     </div>
                                     <div className="quick-amounts">
-                                        {[10, 25, 50, 100].map(amt => (
+                                        {(topUpForm.method === 'ESEWA'
+                                            ? [500, 1000, 2000, 5000]
+                                            : [10, 25, 50, 100]
+                                        ).map(amt => (
                                             <button
                                                 key={amt}
                                                 type="button"
                                                 className="quick-amount-btn"
                                                 onClick={() => setTopUpForm({ ...topUpForm, amount: amt.toString() })}
                                             >
-                                                ${amt}
+                                                {topUpForm.method === 'ESEWA' ? `Rs.${amt}` : `$${amt}`}
                                             </button>
                                         ))}
                                     </div>
+                                    {/* Payment Instructions Box */}
+                                    {(() => {
+                                        const methodToGwId = { 'ESEWA': 'esewa', 'CRYPTOMUS': 'cryptomus', 'BINANCE': 'binance_pay', 'MANUAL': 'manual' }
+                                        const gwId = methodToGwId[topUpForm.method]
+                                        const gw = availableGateways.find(g => g.id === gwId || g.id === 'binance')
+                                        const instructions = gw?.instructions
+                                        if (!instructions) return null
+                                        return (
+                                            <div style={{
+                                                marginTop: '12px',
+                                                padding: '12px 16px',
+                                                background: 'rgba(59, 130, 246, 0.08)',
+                                                border: '1px solid rgba(59, 130, 246, 0.2)',
+                                                borderRadius: '8px',
+                                                fontSize: '0.85rem',
+                                                lineHeight: '1.5',
+                                                color: 'var(--text-secondary)'
+                                            }}>
+                                                <div style={{ fontWeight: 600, marginBottom: '4px', color: 'var(--text-primary)' }}>
+                                                    📋 Payment Instructions
+                                                </div>
+                                                <div style={{ whiteSpace: 'pre-line' }}>{instructions}</div>
+                                            </div>
+                                        )
+                                    })()}
+                                    {/* Bonus/Tax Preview for non-eSewa gateways */}
+                                    {topUpForm.method && topUpForm.method !== 'ESEWA' && topUpForm.amount && (() => {
+                                        const methodToGwId2 = { 'CRYPTOMUS': 'cryptomus', 'BINANCE': 'binance_pay', 'MANUAL': 'manual' }
+                                        const gwId2 = methodToGwId2[topUpForm.method]
+                                        const gw2 = availableGateways.find(g => g.id === gwId2 || g.id === 'binance')
+                                        const bonusPct = gw2?.bonusPercent || 0
+                                        const taxPct = gw2?.taxPercent || 0
+                                        if (bonusPct <= 0 && taxPct <= 0) return null
+                                        const amt = parseFloat(topUpForm.amount) || 0
+                                        if (amt <= 0) return null
+                                        const taxAmt = amt * (taxPct / 100)
+                                        const afterTax = amt - taxAmt
+                                        const bonusAmt = afterTax * (bonusPct / 100)
+                                        const finalAmt = afterTax + bonusAmt
+                                        return (
+                                            <div style={{ marginTop: '12px', padding: '10px 14px', background: 'var(--bg-tertiary)', borderRadius: '8px', fontSize: '0.85rem' }}>
+                                                <div style={{ fontWeight: 600, marginBottom: '6px', fontSize: '0.8rem', color: 'var(--text-muted)' }}>💰 Credit Preview</div>
+                                                {taxPct > 0 && (
+                                                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                                                        <span style={{ color: 'var(--text-muted)' }}>Tax ({taxPct}%):</span>
+                                                        <span style={{ color: 'var(--error)' }}>-${taxAmt.toFixed(2)}</span>
+                                                    </div>
+                                                )}
+                                                {bonusPct > 0 && (
+                                                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                                                        <span style={{ color: 'var(--text-muted)' }}>Bonus ({bonusPct}%):</span>
+                                                        <span style={{ color: 'var(--success)' }}>+${bonusAmt.toFixed(2)}</span>
+                                                    </div>
+                                                )}
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 600, borderTop: '1px solid var(--border-color)', paddingTop: '6px', marginTop: '4px' }}>
+                                                    <span>You will receive:</span>
+                                                    <span style={{ color: 'var(--success)' }}>${finalAmt.toFixed(2)} USD</span>
+                                                </div>
+                                            </div>
+                                        )
+                                    })()}
                                 </div>
                                 <div className="modal-footer">
                                     <button type="button" className="btn btn-secondary" onClick={() => setShowTopUpModal(false)}>
@@ -1045,6 +1175,22 @@ export default function WalletPage() {
                                                 <span>Send exactly:</span>
                                                 <strong>{binancePayment.amount} {binancePayment.currency}</strong>
                                             </div>
+                                            {binanceInfo.binanceId && (
+                                                <div className="binance-id-display" style={{
+                                                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                                                    padding: '10px 14px', background: 'rgba(243, 186, 47, 0.08)',
+                                                    border: '1px solid rgba(243, 186, 47, 0.2)', borderRadius: '8px',
+                                                    marginBottom: '12px', fontSize: '0.85rem'
+                                                }}>
+                                                    <div>
+                                                        <span style={{ color: 'var(--text-muted)' }}>Binance ID: </span>
+                                                        <strong>{binanceInfo.binanceId}</strong>
+                                                    </div>
+                                                    <button type="button" className="copy-btn" onClick={() => copyToClipboard(binanceInfo.binanceId)}>
+                                                        <Copy size={14} />
+                                                    </button>
+                                                </div>
+                                            )}
                                             <div className="binance-instructions">
                                                 {binanceInfo.instructions?.map((inst, i) => (
                                                     <p key={i}>{inst}</p>
@@ -1134,10 +1280,35 @@ export default function WalletPage() {
                 }
 
                 .balance-card {
-                    background: linear-gradient(135deg, var(--primary-500), var(--primary-600));
+                    background: linear-gradient(135deg, var(--primary-500), var(--primary-600), #4f46e5);
                     border-radius: var(--radius-lg);
                     padding: var(--spacing-xl);
                     color: white;
+                    position: relative;
+                    overflow: hidden;
+                    box-shadow: 0 8px 32px rgba(99, 102, 241, 0.25);
+                }
+
+                .balance-card::before {
+                    content: '';
+                    position: absolute;
+                    top: -50%;
+                    right: -20%;
+                    width: 200px;
+                    height: 200px;
+                    background: rgba(255,255,255,0.05);
+                    border-radius: 50%;
+                }
+
+                .balance-card::after {
+                    content: '';
+                    position: absolute;
+                    bottom: -30%;
+                    left: -10%;
+                    width: 150px;
+                    height: 150px;
+                    background: rgba(255,255,255,0.04);
+                    border-radius: 50%;
                 }
 
                 .balance-header {
@@ -1152,6 +1323,8 @@ export default function WalletPage() {
                     font-size: 2.5rem;
                     font-weight: 700;
                     margin-bottom: var(--spacing-md);
+                    letter-spacing: -0.02em;
+                    text-shadow: 0 2px 4px rgba(0,0,0,0.1);
                 }
 
                 .discount-badge {
@@ -1453,6 +1626,15 @@ export default function WalletPage() {
                     display: flex;
                     align-items: center;
                     gap: var(--spacing-md);
+                    transition: all 0.25s ease;
+                    position: relative;
+                    overflow: hidden;
+                }
+
+                .stat-card:hover {
+                    transform: translateY(-2px);
+                    box-shadow: 0 4px 16px rgba(0,0,0,0.06);
+                    border-color: var(--primary-500);
                 }
 
                 .stat-icon {
@@ -1478,7 +1660,8 @@ export default function WalletPage() {
 
                 .stat-value {
                     font-size: 1.25rem;
-                    font-weight: 600;
+                    font-weight: 700;
+                    letter-spacing: -0.01em;
                 }
 
                 .rates-card {
@@ -1541,6 +1724,7 @@ export default function WalletPage() {
                 .tab.active {
                     color: var(--primary-500);
                     border-bottom-color: var(--primary-500);
+                    font-weight: 600;
                 }
 
                 .section h3 {
@@ -1561,6 +1745,12 @@ export default function WalletPage() {
                     background: var(--bg-secondary);
                     border: 1px solid var(--border-color);
                     border-radius: var(--radius-md);
+                    transition: all 0.2s ease;
+                }
+
+                .transaction-item:hover, .payment-item:hover {
+                    border-color: rgba(99, 102, 241, 0.25);
+                    background: var(--bg-tertiary);
                 }
 
                 .tx-icon, .payment-icon {

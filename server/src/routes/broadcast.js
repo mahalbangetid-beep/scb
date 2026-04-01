@@ -133,7 +133,7 @@ router.get('/:id', async (req, res, next) => {
 router.post('/', upload.single('media'), async (req, res, next) => {
     try {
         const { name, deviceId, telegramBotId, message, scheduledAt } = req.body;
-        let { recipients, mediaUrl, broadcastType, targetGroups, watermarkText, autoIdEnabled, chargeCategory } = req.body;
+        let { recipients, mediaUrl, broadcastType, targetGroups, watermarkText, autoIdEnabled, chargeCategory, autoPadding } = req.body;
         const platform = req.body.platform || 'WHATSAPP'; // Bug 5.1: Unified Telegram + WhatsApp
 
         // Section 6.4: Determine broadcast type
@@ -285,7 +285,9 @@ router.post('/', upload.single('media'), async (req, res, next) => {
                 broadcastType,
                 targetGroups: targetGroups || null,
                 // Section 6.5
-                chargeCategory: effectiveChargeCategory2
+                chargeCategory: effectiveChargeCategory2,
+                // Auto Padding
+                autoPadding: autoPadding === true || autoPadding === 'true'
             }
         });
 
@@ -698,6 +700,167 @@ router.get('/:id/failed-export', async (req, res, next) => {
         res.setHeader('Content-Type', 'text/csv');
         res.setHeader('Content-Disposition', `attachment; filename="failed-${campaign.name}-${campaign.id}.csv"`);
         res.send(csvRows.join('\n'));
+    } catch (error) {
+        next(error);
+    }
+});
+
+// PUT /api/broadcast/:id - Edit campaign (draft/scheduled/paused/cancelled only)
+router.put('/:id', upload.single('media'), async (req, res, next) => {
+    try {
+        const campaign = await prisma.broadcast.findFirst({
+            where: {
+                id: req.params.id,
+                OR: [
+                    { device: { userId: req.effectiveUserId } },
+                    { telegramBot: { userId: req.effectiveUserId } }
+                ]
+            }
+        });
+
+        if (!campaign) {
+            throw new AppError('Campaign not found', 404);
+        }
+
+        // Only allow editing non-active campaigns
+        const editableStatuses = ['draft', 'scheduled', 'paused', 'cancelled'];
+        if (!editableStatuses.includes(campaign.status)) {
+            throw new AppError(`Cannot edit campaign with status "${campaign.status}". Only ${editableStatuses.join(', ')} campaigns can be edited.`, 400);
+        }
+
+        const { name, message, scheduledAt, watermarkText, broadcastType } = req.body;
+        let { mediaUrl } = req.body;
+
+        // If file was uploaded via multer, use its path
+        if (req.file && !mediaUrl) {
+            mediaUrl = req.file.path;
+        }
+
+        // Build update data — only set fields that were provided
+        const updateData = {};
+        if (name !== undefined) updateData.name = name;
+        if (message !== undefined) updateData.message = message;
+        if (mediaUrl !== undefined) updateData.mediaUrl = mediaUrl || null;
+        if (watermarkText !== undefined) updateData.watermarkText = watermarkText || null;
+        if (broadcastType !== undefined) updateData.broadcastType = broadcastType;
+        if (scheduledAt !== undefined) {
+            updateData.scheduledAt = scheduledAt ? new Date(scheduledAt) : null;
+            // If schedule changed and campaign was scheduled, update status
+            if (scheduledAt && campaign.status !== 'scheduled') {
+                updateData.status = 'scheduled';
+            }
+        }
+
+        const updated = await prisma.broadcast.update({
+            where: { id: req.params.id },
+            data: updateData
+        });
+
+        successResponse(res, updated, 'Campaign updated successfully');
+    } catch (error) {
+        next(error);
+    }
+});
+
+// POST /api/broadcast/:id/duplicate - Duplicate campaign as draft
+router.post('/:id/duplicate', async (req, res, next) => {
+    try {
+        const campaign = await prisma.broadcast.findFirst({
+            where: {
+                id: req.params.id,
+                OR: [
+                    { device: { userId: req.effectiveUserId } },
+                    { telegramBot: { userId: req.effectiveUserId } }
+                ]
+            },
+            include: {
+                recipients: {
+                    select: { phone: true, name: true }
+                }
+            }
+        });
+
+        if (!campaign) {
+            throw new AppError('Campaign not found', 404);
+        }
+
+        // Create duplicate as draft
+        const duplicated = await prisma.broadcast.create({
+            data: {
+                name: `${campaign.name} (Copy)`,
+                deviceId: campaign.deviceId,
+                telegramBotId: campaign.telegramBotId,
+                platform: campaign.platform,
+                message: campaign.message,
+                mediaUrl: campaign.mediaUrl,
+                status: 'draft',
+                totalRecipients: campaign.recipients.length,
+                autoIdEnabled: campaign.autoIdEnabled,
+                autoIdPrefix: campaign.autoIdPrefix,
+                watermarkText: campaign.watermarkText,
+                broadcastType: campaign.broadcastType,
+                targetGroups: campaign.targetGroups,
+                chargeCategory: campaign.chargeCategory
+            }
+        });
+
+        // Duplicate recipients
+        if (campaign.recipients.length > 0) {
+            await prisma.broadcastRecipient.createMany({
+                data: campaign.recipients.map(r => ({
+                    broadcastId: duplicated.id,
+                    phone: r.phone,
+                    name: r.name,
+                    status: 'pending'
+                }))
+            });
+        }
+
+        successResponse(res, duplicated, 'Campaign duplicated as draft', 201);
+    } catch (error) {
+        next(error);
+    }
+});
+
+// DELETE /api/broadcast/:id - Delete a campaign (non-active only)
+router.delete('/:id', async (req, res, next) => {
+    try {
+        const campaign = await prisma.broadcast.findFirst({
+            where: {
+                id: req.params.id,
+                device: { userId: req.effectiveUserId }
+            }
+        });
+
+        // Also check Telegram broadcasts
+        let tgCampaign = null;
+        if (!campaign) {
+            tgCampaign = await prisma.broadcast.findFirst({
+                where: {
+                    id: req.params.id,
+                    telegramBot: { userId: req.effectiveUserId }
+                }
+            });
+        }
+
+        const found = campaign || tgCampaign;
+        if (!found) {
+            throw new AppError('Campaign not found', 404);
+        }
+
+        // Prevent deleting active campaigns
+        const activeStatuses = ['processing', 'scheduled'];
+        if (activeStatuses.includes(found.status)) {
+            throw new AppError(`Cannot delete campaign with status "${found.status}". Cancel it first.`, 400);
+        }
+
+        // Delete in transaction: recipients first, then broadcast
+        await prisma.$transaction([
+            prisma.broadcastRecipient.deleteMany({ where: { broadcastId: found.id } }),
+            prisma.broadcast.delete({ where: { id: found.id } })
+        ]);
+
+        successResponse(res, null, 'Campaign deleted');
     } catch (error) {
         next(error);
     }

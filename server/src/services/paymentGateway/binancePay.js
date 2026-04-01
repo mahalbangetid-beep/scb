@@ -42,7 +42,8 @@ class BinancePayService {
                         in: [
                             'binance_enabled', 'binance_id', 'binance_api_key', 'binance_secret',
                             'binance_qr_url', 'binance_min_amount', 'binance_bonus',
-                            'binance_name', 'binance_currency'
+                            'binance_name', 'binance_currency',
+                            'binance_instructions', 'binance_tax'
                         ]
                     }
                 }
@@ -66,7 +67,9 @@ class BinancePayService {
                 binanceBonus: parseFloat(configMap.binance_bonus) || 0,
                 binanceName: configMap.binance_name || 'Binance',
                 binanceCurrency: configMap.binance_currency || 'USDT',
-                isConfigured: !!(configMap.binance_api_key && configMap.binance_secret)
+                isConfigured: !!(configMap.binance_api_key && configMap.binance_secret),
+                instructions: configMap.binance_instructions || '',
+                binanceTax: parseFloat(configMap.binance_tax) || 0
             };
         } catch (error) {
             console.error('[BinancePay] Failed to get config:', error.message);
@@ -80,7 +83,9 @@ class BinancePayService {
                 binanceBonus: 0,
                 binanceName: 'Binance',
                 binanceCurrency: 'USDT',
-                isConfigured: false
+                isConfigured: false,
+                instructions: '',
+                binanceTax: 0
             };
         }
     }
@@ -103,7 +108,9 @@ class BinancePayService {
                 binanceName: systemConfig.binanceName,
                 binanceCurrency: systemConfig.binanceCurrency,
                 hasApiKey: !!systemConfig.binanceApiKey,
-                hasSecret: !!systemConfig.binanceSecret
+                hasSecret: !!systemConfig.binanceSecret,
+                binanceInstructions: systemConfig.instructions || '',
+                binanceTax: systemConfig.binanceTax || 0
             };
         }
 
@@ -409,8 +416,11 @@ class BinancePayService {
         // Get bonus percentage from SystemConfig (admin settings)
         const config = await this.getConfig();
         const bonusPercent = config.binanceBonus || 0;
-        const bonusAmount = (verificationResult.amount * bonusPercent) / 100;
-        const totalCredit = verificationResult.amount + bonusAmount;
+        const taxPercent = config.binanceTax || 0;
+        const taxAmount = (verificationResult.amount * taxPercent) / 100;
+        const amountAfterTax = verificationResult.amount - taxAmount;
+        const bonusAmount = (amountAfterTax * bonusPercent) / 100;
+        const totalCredit = amountAfterTax + bonusAmount;
 
         // Use transaction to prevent double credit
         const result = await prisma.$transaction(async (tx) => {
@@ -451,7 +461,7 @@ class BinancePayService {
                     amount: totalCredit,
                     balanceBefore: payment.user.creditBalance,
                     balanceAfter: payment.user.creditBalance + totalCredit,
-                    description: `Binance payment +$${verificationResult.amount.toFixed(2)}${bonusAmount > 0 ? ` (+$${bonusAmount.toFixed(2)} bonus)` : ''}`,
+                    description: `Binance payment +$${totalCredit.toFixed(2)}${taxAmount > 0 ? ` (tax -$${taxAmount.toFixed(2)})` : ''}${bonusAmount > 0 ? ` (bonus +$${bonusAmount.toFixed(2)})` : ''}`,
                     reference: payment.reference
                 }
             });
@@ -525,7 +535,10 @@ class BinancePayService {
             requiresVerification: true,
             supportedCrypto: ['USDT', 'USDC', 'BUSD'],
             countries,
-            disallowedCountries
+            disallowedCountries,
+            instructions: config.instructions || '',
+            bonusPercent: config.binanceBonus,
+            taxPercent: config.binanceTax
         };
     }
 }

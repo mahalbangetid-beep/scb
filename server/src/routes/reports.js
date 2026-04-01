@@ -118,7 +118,11 @@ router.get('/orders', async (req, res, next) => {
 
         if (startDate || endDate) {
             where.createdAt = {};
-            if (startDate) where.createdAt.gte = new Date(startDate);
+            if (startDate) {
+                const start = new Date(startDate);
+                start.setHours(0, 0, 0, 0);
+                where.createdAt.gte = start;
+            }
             if (endDate) {
                 const end = new Date(endDate);
                 end.setHours(23, 59, 59, 999);
@@ -210,7 +214,11 @@ router.get('/commands', async (req, res, next) => {
 
         if (startDate || endDate) {
             where.createdAt = {};
-            if (startDate) where.createdAt.gte = new Date(startDate);
+            if (startDate) {
+                const start = new Date(startDate);
+                start.setHours(0, 0, 0, 0);
+                where.createdAt.gte = start;
+            }
             if (endDate) {
                 const end = new Date(endDate);
                 end.setHours(23, 59, 59, 999);
@@ -282,7 +290,11 @@ router.get('/credits', async (req, res, next) => {
 
         if (startDate || endDate) {
             where.createdAt = {};
-            if (startDate) where.createdAt.gte = new Date(startDate);
+            if (startDate) {
+                const start = new Date(startDate);
+                start.setHours(0, 0, 0, 0);
+                where.createdAt.gte = start;
+            }
             if (endDate) {
                 const end = new Date(endDate);
                 end.setHours(23, 59, 59, 999);
@@ -355,7 +367,11 @@ router.get('/messages', async (req, res, next) => {
 
         if (startDate || endDate) {
             where.createdAt = {};
-            if (startDate) where.createdAt.gte = new Date(startDate);
+            if (startDate) {
+                const start = new Date(startDate);
+                start.setHours(0, 0, 0, 0);
+                where.createdAt.gte = start;
+            }
             if (endDate) {
                 const end = new Date(endDate);
                 end.setHours(23, 59, 59, 999);

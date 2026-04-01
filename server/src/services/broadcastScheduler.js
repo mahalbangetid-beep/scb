@@ -84,9 +84,20 @@ async function processBroadcast(broadcastId) {
 
     // BUG #12 fix: use prefix from broadcast record (snapshot at create time)
     const autoIdPrefix = broadcast.autoIdPrefix || '';
+    const autoPadding = broadcast.autoPadding;
+
+    // Zero-width characters for invisible padding (anti-spam)
+    const ZWC_CHARS = ['\u200B', '\u200C', '\u200D', '\u2060', '\uFEFF'];
+    function generatePadding() {
+        const len = 3 + Math.floor(Math.random() * 4); // 3-6 chars
+        return Array.from({ length: len }, () => ZWC_CHARS[Math.floor(Math.random() * ZWC_CHARS.length)]).join('');
+    }
 
     function composeFinalText(baseMessage) {
         let text = baseMessage;
+        if (autoPadding) {
+            text = text + generatePadding();
+        }
         if (visibleWatermark) {
             text = `${text}\n\n${visibleWatermark}`;
         }
@@ -247,9 +258,19 @@ async function processScheduledTelegramBroadcast(broadcast) {
     const autoIdPrefix = broadcast.autoIdPrefix || '';
     const broadcastUserId = broadcast.telegramBot?.userId || null;
     const tgDelay = await getUserBroadcastDelay(broadcastUserId, 'TELEGRAM');
+    const autoPadding = broadcast.autoPadding;
+
+    const ZWC_CHARS = ['\u200B', '\u200C', '\u200D', '\u2060', '\uFEFF'];
+    function generatePadding() {
+        const len = 3 + Math.floor(Math.random() * 4);
+        return Array.from({ length: len }, () => ZWC_CHARS[Math.floor(Math.random() * ZWC_CHARS.length)]).join('');
+    }
 
     function composeFinalText(baseMessage) {
         let text = baseMessage;
+        if (autoPadding) {
+            text = text + generatePadding();
+        }
         if (visibleWatermark) text = `${text}\n\n${visibleWatermark}`;
         if (autoIdEnabled) {
             text = `${text}\nID: ${autoIdPrefix}${autoIdCounter}`;

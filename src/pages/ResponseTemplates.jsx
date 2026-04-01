@@ -40,7 +40,7 @@ const TEMPLATE_CATEGORIES = {
     bulk: {
         label: 'Bulk Orders (Multiple Orders)',
         icon: '📦',
-        templates: ['BULK_HEADER', 'BULK_SUCCESS_ITEM', 'BULK_FAILED_ITEM', 'BULK_SUCCESS_LABEL', 'BULK_ALREADY_CANCELLED', 'BULK_ALREADY_COMPLETED', 'BULK_PARTIAL_REFUND', 'BULK_COOLDOWN', 'BULK_COOLDOWN_HINT', 'BULK_NOT_FOUND', 'BULK_OTHER_ERRORS', 'BULK_SUMMARY']
+        templates: ['BULK_HEADER', 'BULK_SUCCESS_ITEM', 'BULK_FAILED_ITEM', 'BULK_SUCCESS_LABEL', 'BULK_ALREADY_CANCELLED', 'BULK_ALREADY_COMPLETED', 'BULK_PARTIAL_REFUND', 'BULK_COOLDOWN', 'BULK_COOLDOWN_HINT', 'BULK_NOT_FOUND', 'BULK_OTHER_ERRORS', 'BULK_GUARANTEE_EXPIRED', 'BULK_NO_GUARANTEE', 'BULK_VERIFY_FAILED', 'BULK_SUMMARY']
     },
     general: {
         label: 'General Responses',
@@ -55,7 +55,7 @@ const TEMPLATE_CATEGORIES = {
     system: {
         label: 'System Messages',
         icon: '⚙️',
-        templates: ['FALLBACK_MESSAGE', 'MULTI_PANEL_WARNING', 'DM_COMMANDS_DISABLED', 'INSUFFICIENT_CREDITS', 'INSUFFICIENT_BALANCE', 'ASYNC_BULK_ACK', 'LOW_CREDITS_KEYWORD', 'LOW_CREDITS_AUTOREPLY', 'USAGE_LIMIT_REACHED', 'SPAM_WARNING', 'SPAM_DISABLED']
+        templates: ['FALLBACK_MESSAGE', 'MULTI_PANEL_WARNING', 'DM_COMMANDS_DISABLED', 'INSUFFICIENT_CREDITS', 'INSUFFICIENT_BALANCE', 'ASYNC_BULK_ACK', 'LOW_CREDITS_KEYWORD', 'LOW_CREDITS_AUTOREPLY', 'LOW_CREDIT_NOTIFICATION', 'USAGE_LIMIT_REACHED', 'SPAM_WARNING', 'SPAM_DISABLED']
     },
     commands: {
         label: 'Command Access',
@@ -143,7 +143,7 @@ export default function ResponseTemplates() {
 
     const handleEdit = (template) => {
         setEditingTemplate(template.command)
-        setEditValue(template.template)
+        setEditValue(template.template || template.defaultTemplate || '')
         setPreviewData(null)
     }
 
@@ -245,8 +245,8 @@ export default function ResponseTemplates() {
 
             {/* Edit Modal */}
             {editingTemplate && (
-                <div className="modal-overlay open" onClick={() => setEditingTemplate(null)}>
-                    <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '700px' }}>
+                <div className="modal-overlay open" onClick={(e) => { if (e.target === e.currentTarget) setEditingTemplate(null) }}>
+                    <div className="modal" onClick={e => e.stopPropagation()} onMouseDown={e => e.stopPropagation()} style={{ maxWidth: '700px' }}>
                         <div className="modal-header">
                             <h3>Edit Template: {editingTemplate}</h3>
                             <button className="modal-close" onClick={() => setEditingTemplate(null)}>&times;</button>
@@ -259,6 +259,7 @@ export default function ResponseTemplates() {
                                     rows={6}
                                     value={editValue}
                                     onChange={e => setEditValue(e.target.value)}
+                                    autoFocus
                                     style={{ fontFamily: 'monospace', fontSize: '0.9rem' }}
                                 />
                                 <p className="form-hint">

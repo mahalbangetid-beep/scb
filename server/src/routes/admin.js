@@ -72,6 +72,17 @@ router.get('/users', async (req, res, next) => {
                             smmPanels: true,
                             orders: true
                         }
+                    },
+                    smmPanels: {
+                        select: {
+                            id: true,
+                            name: true,
+                            alias: true,
+                            url: true,
+                            panelType: true,
+                            supportsAdminApi: true,
+                            isActive: true
+                        }
                     }
                 },
                 orderBy: { createdAt: 'desc' },
@@ -1925,6 +1936,125 @@ router.delete('/activity-logs/cleanup', requireMasterAdmin, async (req, res, nex
         const daysToKeep = parseInt(req.query.daysToKeep || req.body?.daysToKeep || 30);
         const deletedCount = await activityLogService.cleanOldLogs(daysToKeep);
         successResponse(res, { deletedCount }, `Cleaned ${deletedCount} old log entries`);
+    } catch (error) {
+        next(error);
+    }
+});
+
+// ==================== SPAM BAN MANAGEMENT ====================
+
+// GET /api/admin/spam-bans - List active spam bans
+router.get('/spam-bans', async (req, res, next) => {
+    try {
+        const botMessageHandler = require('../services/botMessageHandler');
+        const bans = botMessageHandler.getDisabledUsers();
+        successResponse(res, { bans, total: bans.length });
+    } catch (error) {
+        next(error);
+    }
+});
+
+// DELETE /api/admin/spam-bans/:userId/:senderNumber - Unban specific user
+router.delete('/spam-bans/:userId/:senderNumber', async (req, res, next) => {
+    try {
+        const botMessageHandler = require('../services/botMessageHandler');
+        const { userId, senderNumber } = req.params;
+        const wasRemoved = botMessageHandler.unbanUser(userId, senderNumber);
+        successResponse(res, { removed: wasRemoved }, wasRemoved ? 'User unbanned' : 'User was not banned');
+    } catch (error) {
+        next(error);
+    }
+});
+
+// DELETE /api/admin/spam-bans - Clear all spam bans
+router.delete('/spam-bans', async (req, res, next) => {
+    try {
+        const botMessageHandler = require('../services/botMessageHandler');
+        const count = botMessageHandler.clearAllBans();
+        successResponse(res, { cleared: count }, `Cleared ${count} spam bans`);
+    } catch (error) {
+        next(error);
+    }
+});
+
+// ==================== PROVIDER PANEL OVERVIEW (Section 10) ====================
+
+// GET /api/admin/panels - List all SMM panels across all users (Master Admin)
+router.get('/panels', requireMasterAdmin, async (req, res, next) => {
+    try {
+        const { search } = req.query;
+
+        const where = {};
+        if (search) {
+            where.OR = [
+                { alias: { contains: search, mode: 'insensitive' } },
+                { name: { contains: search, mode: 'insensitive' } },
+                { url: { contains: search, mode: 'insensitive' } }
+            ];
+        }
+
+        const panels = await prisma.smmPanel.findMany({
+            where,
+            orderBy: { createdAt: 'desc' },
+            select: {
+                id: true,
+                alias: true,
+                name: true,
+                url: true,
+                panelType: true,
+                apiFormat: true,
+                supportsAdminApi: true,
+                balance: true,
+                currency: true,
+                isActive: true,
+                isPrimary: true,
+                lastSyncAt: true,
+                capabilities: true,
+                createdAt: true,
+                user: { select: { id: true, username: true, email: true } },
+                _count: {
+                    select: {
+                        orders: true,
+                        providerGroups: true,
+                        devices: true
+                    }
+                }
+            }
+        });
+
+        // Extract domain from URL for display (never expose full API keys)
+        const panelList = panels.map(p => {
+            let domain = p.url;
+            try {
+                domain = new URL(p.url).hostname;
+            } catch { /* use raw url */ }
+
+            return {
+                id: p.id,
+                alias: p.alias,
+                name: p.name,
+                domain,
+                url: p.url,
+                panelType: p.panelType,
+                apiFormat: p.apiFormat,
+                hasAdminApi: p.supportsAdminApi,
+                balance: p.balance,
+                currency: p.currency,
+                isActive: p.isActive,
+                isPrimary: p.isPrimary,
+                lastSyncAt: p.lastSyncAt,
+                capabilities: p.capabilities,
+                createdAt: p.createdAt,
+                owner: p.user,
+                stats: {
+                    orders: p._count.orders,
+                    providerGroups: p._count.providerGroups,
+                    devices: p._count.devices
+                }
+            };
+        });
+
+        successResponse(res, { panels: panelList, total: panelList.length });
     } catch (error) {
         next(error);
     }

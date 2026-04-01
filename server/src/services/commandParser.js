@@ -13,7 +13,7 @@ class CommandParserService {
         // Order-related commands (require order IDs)
         this.commands = {
             refill: ['refill', 'rf', 'isi', 'reff', 'refil'],
-            cancel: ['cancel', 'cancelled', 'cancelll', 'batal', 'cn', 'batalkan', 'refund', 'refunded', 'firta paisa'],
+            cancel: ['cancel', 'cancelled', 'cancelll', 'batal', 'cn', 'batalkan', 'refund', 'refunded', 'return', 'firta paisa'],
             speedup: ['speedup', 'speed-up', 'speed up', 'speed', 'cepat', 'sp', 'fast'],
             status: ['status', 'cek', 'check', 'st', 'info']
         };

@@ -1450,11 +1450,24 @@ class CommandHandlerService {
                     : '-',
                 remains: status.remains?.toString() || order.remains?.toString() || '0',
                 finalQuantity: (() => {
+                    const orderStatus = (status.status || order.status || '').toUpperCase();
                     const sc = parseInt(status.startCount ?? order.startCount);
                     const qty = parseInt(order.quantity);
                     const rem = parseInt(status.remains ?? order.remains);
-                    if (!isNaN(sc) && !isNaN(qty) && !isNaN(rem)) {
-                        return (sc + qty - rem).toString();
+                    // Cancelled: Final Quantity = Start Count
+                    if (orderStatus === 'CANCELLED' || orderStatus === 'REFUNDED') {
+                        return !isNaN(sc) ? sc.toString() : '0';
+                    }
+                    // Completed / Partial: Final Quantity = Start Count + Quantity - Remaining
+                    if (orderStatus === 'COMPLETED' || orderStatus === 'PARTIAL') {
+                        if (!isNaN(sc) && !isNaN(qty) && !isNaN(rem)) {
+                            return Math.max(0, sc + qty - rem).toString();
+                        }
+                        return '-';
+                    }
+                    // In Progress / Process / Pending / Error: Final Quantity = Start Count + Quantity
+                    if (!isNaN(sc) && !isNaN(qty)) {
+                        return (sc + qty).toString();
                     }
                     return '-';
                 })(),

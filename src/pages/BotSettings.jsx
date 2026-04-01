@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Settings, Shield, Zap, MessageSquare, AlertTriangle, RotateCcw, Save, ChevronDown, ChevronRight, Bell, Package, Users, Search, Phone, ShieldAlert, Plus, Trash2, UserCheck } from 'lucide-react';
 import api from '../services/api';
 import ScopeSelector from '../components/ScopeSelector';
@@ -51,9 +51,9 @@ const BotSettings = () => {
         }
     };
 
-    const handleToggle = (key, value) => {
+    const handleToggle = useCallback((key, value) => {
         setToggles(prev => ({ ...prev, [key]: value }));
-    };
+    }, []);
 
     const handleSave = async () => {
         try {
