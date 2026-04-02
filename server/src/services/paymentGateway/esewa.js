@@ -215,6 +215,15 @@ class EsewaService {
 
         // Return form data for client-side redirect
         // eSewa form uses NPR amount (checkout currency)
+        //
+        // CRITICAL: success_url and failure_url MUST point to the BACKEND
+        // so the server can verify the payment, convert NPR→USD, and credit
+        // the user's wallet. The backend then redirects to the frontend.
+        // Previously these pointed to FRONTEND_URL which completely bypassed
+        // backend verification — money was deducted from eSewa but never credited.
+        const backendUrl = process.env.BACKEND_URL
+            || `http://localhost:${process.env.PORT || 3001}`;
+        
         const formData = {
             amount: nprAmount.toString(),
             tax_amount: '0',
@@ -223,8 +232,8 @@ class EsewaService {
             product_code: config.merchantCode,
             product_service_charge: '0',
             product_delivery_charge: '0',
-            success_url: `${process.env.FRONTEND_URL || 'http://localhost:5173'}/wallet?payment=success`,
-            failure_url: `${process.env.FRONTEND_URL || 'http://localhost:5173'}/wallet?payment=failed`,
+            success_url: `${backendUrl}/api/payments/esewa/return`,
+            failure_url: `${backendUrl}/api/payments/esewa/return`,
             signed_field_names: 'total_amount,transaction_uuid,product_code',
             signature
         };
