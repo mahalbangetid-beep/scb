@@ -1253,6 +1253,8 @@ export default function WalletPage() {
             }
 
             <style>{`
+                /* ═══════ WALLET PAGE — PREMIUM REDESIGN ═══════ */
+
                 .balance-section {
                     display: grid;
                     grid-template-columns: 1fr 1fr;
@@ -1262,51 +1264,49 @@ export default function WalletPage() {
 
                 .balance-section.single-card {
                     grid-template-columns: 1fr;
-                    max-width: 500px;
+                    max-width: 600px;
                 }
 
                 @media (max-width: 768px) {
-                    .balance-section {
-                        grid-template-columns: 1fr;
-                    }
-                    .balance-section.single-card {
-                        max-width: 100%;
-                    }
+                    .balance-section { grid-template-columns: 1fr; }
+                    .balance-section.single-card { max-width: 100%; }
                 }
 
                 .balance-info {
-                    opacity: 0.8;
+                    opacity: 0.85;
                     margin-bottom: var(--spacing-md);
+                    font-size: 0.875rem;
                 }
 
+                /* ── Main Balance Card (DOLLARS mode) ── */
                 .balance-card {
-                    background: linear-gradient(135deg, var(--primary-500), var(--primary-600), #4f46e5);
-                    border-radius: var(--radius-lg);
-                    padding: var(--spacing-xl);
+                    background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 50%, #a855f7 100%);
+                    border-radius: 20px;
+                    padding: 32px;
                     color: white;
                     position: relative;
                     overflow: hidden;
-                    box-shadow: 0 8px 32px rgba(99, 102, 241, 0.25);
+                    box-shadow: 0 12px 40px rgba(99, 102, 241, 0.35), 0 4px 12px rgba(139, 92, 246, 0.2);
                 }
 
                 .balance-card::before {
                     content: '';
                     position: absolute;
-                    top: -50%;
-                    right: -20%;
-                    width: 200px;
-                    height: 200px;
-                    background: rgba(255,255,255,0.05);
+                    top: -60%;
+                    right: -25%;
+                    width: 260px;
+                    height: 260px;
+                    background: rgba(255,255,255,0.06);
                     border-radius: 50%;
                 }
 
                 .balance-card::after {
                     content: '';
                     position: absolute;
-                    bottom: -30%;
-                    left: -10%;
-                    width: 150px;
-                    height: 150px;
+                    bottom: -40%;
+                    left: -15%;
+                    width: 200px;
+                    height: 200px;
                     background: rgba(255,255,255,0.04);
                     border-radius: 50%;
                 }
@@ -1314,118 +1314,84 @@ export default function WalletPage() {
                 .balance-header {
                     display: flex;
                     align-items: center;
-                    gap: var(--spacing-sm);
-                    margin-bottom: var(--spacing-md);
+                    gap: 10px;
+                    margin-bottom: 16px;
                     opacity: 0.9;
+                    font-size: 0.95rem;
+                    font-weight: 500;
                 }
 
                 .balance-amount {
-                    font-size: 2.5rem;
-                    font-weight: 700;
-                    margin-bottom: var(--spacing-md);
-                    letter-spacing: -0.02em;
-                    text-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                    font-size: 3rem;
+                    font-weight: 800;
+                    margin-bottom: 8px;
+                    letter-spacing: -0.03em;
+                    text-shadow: 0 2px 8px rgba(0,0,0,0.15);
+                    position: relative;
+                    z-index: 1;
                 }
 
                 .discount-badge {
                     display: inline-block;
                     background: rgba(255, 255, 255, 0.2);
-                    padding: 4px 12px;
-                    border-radius: var(--radius-md);
-                    font-size: 0.875rem;
-                    margin-bottom: var(--spacing-lg);
+                    backdrop-filter: blur(8px);
+                    padding: 4px 14px;
+                    border-radius: 20px;
+                    font-size: 0.82rem;
+                    margin-bottom: 20px;
+                    border: 1px solid rgba(255,255,255,0.15);
                 }
 
                 .balance-actions {
                     display: flex;
-                    gap: var(--spacing-sm);
+                    gap: 10px;
+                    position: relative;
+                    z-index: 1;
                 }
 
-                .balance-actions .btn {
-                    flex: 1;
-                }
+                .balance-actions .btn { flex: 1; border-radius: 12px; font-weight: 600; padding: 10px 16px; }
 
                 .balance-actions .btn-primary {
                     background: white;
-                    color: var(--primary-600);
+                    color: #6366f1;
                     border: none;
-                    font-weight: 600;
+                    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
                 }
-
                 .balance-actions .btn-primary:hover {
-                    background: rgba(255, 255, 255, 0.9);
+                    background: rgba(255,255,255,0.92);
                     transform: translateY(-2px);
+                    box-shadow: 0 6px 20px rgba(0,0,0,0.15);
                 }
 
                 .balance-actions .btn-secondary {
-                    background: rgba(255, 255, 255, 0.2);
+                    background: rgba(255,255,255,0.15);
                     color: white;
-                    border: 1px solid rgba(255, 255, 255, 0.3);
+                    border: 1px solid rgba(255,255,255,0.2);
+                    backdrop-filter: blur(4px);
                 }
-
                 .balance-actions .btn-secondary:hover {
-                    background: rgba(255, 255, 255, 0.3);
+                    background: rgba(255,255,255,0.25);
                 }
 
-                /* Message Credits Card */
-                .message-credits-card {
-                    background: linear-gradient(135deg, #10b981, #059669);
-                }
-
-                .credits-icon {
-                    color: #fbbf24;
-                    margin-left: auto;
-                }
-
-                .credits-amount {
-                    display: flex;
-                    align-items: baseline;
-                    gap: var(--spacing-sm);
-                }
-
-                .credits-label {
-                    font-size: 1rem;
-                    opacity: 0.8;
-                }
-
-                .credits-info {
-                    opacity: 0.8;
-                    margin-bottom: var(--spacing-md);
-                }
-
-                .credits-estimate {
-                    margin-top: var(--spacing-md);
-                    padding: var(--spacing-sm) var(--spacing-md);
-                    background: rgba(255, 255, 255, 0.15);
-                    border-radius: var(--radius-md);
-                    font-size: 0.875rem;
-                    text-align: center;
-                }
-
-                /* ===== 3-Card Category Credits Layout ===== */
+                /* ── 3-Card Credit Category Cards ── */
                 .credit-category-cards {
                     display: grid;
                     grid-template-columns: repeat(3, 1fr);
-                    gap: var(--spacing-md);
-                    margin-bottom: var(--spacing-lg);
+                    gap: 16px;
+                    margin-bottom: 16px;
                 }
-
-                @media (max-width: 768px) {
-                    .credit-category-cards {
-                        grid-template-columns: 1fr;
-                    }
-                }
+                @media (max-width: 768px) { .credit-category-cards { grid-template-columns: 1fr; } }
 
                 .credit-category-card {
-                    background: var(--bg-secondary);
+                    background: var(--bg-card, var(--bg-secondary));
                     border: 1px solid var(--border-color);
-                    border-radius: var(--radius-lg);
-                    padding: var(--spacing-xl);
+                    border-radius: 16px;
+                    padding: 24px;
                     display: flex;
                     flex-direction: column;
                     align-items: center;
                     text-align: center;
-                    transition: all 0.2s ease;
+                    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
                     position: relative;
                     overflow: hidden;
                 }
@@ -1433,86 +1399,72 @@ export default function WalletPage() {
                 .credit-category-card::before {
                     content: '';
                     position: absolute;
-                    top: 0;
-                    left: 0;
-                    right: 0;
+                    top: 0; left: 0; right: 0;
                     height: 4px;
+                    border-radius: 16px 16px 0 0;
                 }
 
                 .credit-category-card:hover {
-                    transform: translateY(-2px);
-                    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+                    transform: translateY(-4px);
+                    box-shadow: 0 12px 32px rgba(0,0,0,0.1);
                 }
 
-                /* Support card */
-                .credit-card-support { border-top: 3px solid #3b82f6; }
-                .credit-card-support:hover { border-color: #2563eb; }
+                .credit-card-support::before { background: linear-gradient(90deg, #3b82f6, #60a5fa); }
+                .credit-card-whatsapp::before { background: linear-gradient(90deg, #22c55e, #4ade80); }
+                .credit-card-telegram::before { background: linear-gradient(90deg, #0088cc, #38bdf8); }
 
-                /* WhatsApp card */
-                .credit-card-whatsapp { border-top: 3px solid #22c55e; }
-                .credit-card-whatsapp:hover { border-color: #16a34a; }
-
-                /* Telegram card */
-                .credit-card-telegram { border-top: 3px solid #0088cc; }
-                .credit-card-telegram:hover { border-color: #006fa3; }
+                .credit-card-support:hover { border-color: rgba(59, 130, 246, 0.4); box-shadow: 0 12px 32px rgba(59, 130, 246, 0.12); }
+                .credit-card-whatsapp:hover { border-color: rgba(34, 197, 94, 0.4); box-shadow: 0 12px 32px rgba(34, 197, 94, 0.12); }
+                .credit-card-telegram:hover { border-color: rgba(0, 136, 204, 0.4); box-shadow: 0 12px 32px rgba(0, 136, 204, 0.12); }
 
                 .credit-cat-header {
                     display: flex;
                     align-items: center;
-                    gap: var(--spacing-sm);
-                    margin-bottom: var(--spacing-md);
+                    gap: 10px;
+                    margin-bottom: 16px;
                 }
 
                 .credit-cat-icon {
-                    width: 40px;
-                    height: 40px;
-                    border-radius: var(--radius-md);
+                    width: 44px;
+                    height: 44px;
+                    border-radius: 12px;
                     display: flex;
                     align-items: center;
                     justify-content: center;
                 }
 
-                .credit-cat-icon-support {
-                    background: rgba(59, 130, 246, 0.1);
-                    color: #3b82f6;
-                }
-
-                .credit-cat-icon-whatsapp {
-                    background: rgba(34, 197, 94, 0.1);
-                    color: #22c55e;
-                }
-
-                .credit-cat-icon-telegram {
-                    background: rgba(0, 136, 204, 0.1);
-                    color: #0088cc;
-                }
+                .credit-cat-icon-support { background: linear-gradient(135deg, rgba(59, 130, 246, 0.15), rgba(59, 130, 246, 0.05)); color: #3b82f6; }
+                .credit-cat-icon-whatsapp { background: linear-gradient(135deg, rgba(34, 197, 94, 0.15), rgba(34, 197, 94, 0.05)); color: #22c55e; }
+                .credit-cat-icon-telegram { background: linear-gradient(135deg, rgba(0, 136, 204, 0.15), rgba(0, 136, 204, 0.05)); color: #0088cc; }
 
                 .credit-cat-title {
-                    font-size: 0.875rem;
-                    font-weight: 600;
+                    font-size: 0.8rem;
+                    font-weight: 700;
                     color: var(--text-secondary);
                     text-transform: uppercase;
-                    letter-spacing: 0.5px;
+                    letter-spacing: 0.8px;
                 }
 
                 .credit-cat-amount {
-                    font-size: 2.25rem;
-                    font-weight: 700;
+                    font-size: 2.5rem;
+                    font-weight: 800;
                     color: var(--text-primary);
                     line-height: 1;
-                    margin-bottom: 2px;
+                    margin-bottom: 4px;
+                    letter-spacing: -0.02em;
                 }
 
                 .credit-cat-label {
-                    font-size: 0.8rem;
+                    font-size: 0.78rem;
                     color: var(--text-muted);
-                    margin-bottom: var(--spacing-xs);
+                    margin-bottom: 4px;
+                    font-weight: 500;
                 }
 
                 .credit-cat-desc {
-                    font-size: 0.75rem;
+                    font-size: 0.72rem;
                     color: var(--text-muted);
-                    margin-bottom: var(--spacing-md);
+                    margin-bottom: 16px;
                 }
 
                 .credit-cat-btn {
@@ -1521,63 +1473,29 @@ export default function WalletPage() {
                     align-items: center;
                     justify-content: center;
                     gap: 6px;
-                    padding: 8px 16px;
-                    font-size: 0.8rem;
+                    padding: 10px 16px;
+                    font-size: 0.82rem;
                     font-weight: 600;
-                    border-radius: var(--radius-md);
+                    border-radius: 10px;
                     border: none;
                     cursor: pointer;
-                    transition: all 0.2s ease;
+                    transition: all 0.25s ease;
                 }
 
-                .credit-cat-btn-support {
-                    background: rgba(59, 130, 246, 0.1);
-                    color: #3b82f6;
-                }
+                .credit-cat-btn-support { background: rgba(59, 130, 246, 0.1); color: #3b82f6; }
+                .credit-cat-btn-support:hover { background: #3b82f6; color: white; box-shadow: 0 4px 14px rgba(59, 130, 246, 0.3); }
+                .credit-cat-btn-whatsapp { background: rgba(34, 197, 94, 0.1); color: #22c55e; }
+                .credit-cat-btn-whatsapp:hover { background: #22c55e; color: white; box-shadow: 0 4px 14px rgba(34, 197, 94, 0.3); }
+                .credit-cat-btn-telegram { background: rgba(0, 136, 204, 0.1); color: #0088cc; }
+                .credit-cat-btn-telegram:hover { background: #0088cc; color: white; box-shadow: 0 4px 14px rgba(0, 136, 204, 0.3); }
 
-                .credit-cat-btn-support:hover {
-                    background: #3b82f6;
-                    color: white;
-                }
-
-                .credit-cat-btn-whatsapp {
-                    background: rgba(34, 197, 94, 0.1);
-                    color: #22c55e;
-                }
-
-                .credit-cat-btn-whatsapp:hover {
-                    background: #22c55e;
-                    color: white;
-                }
-
-                .credit-cat-btn-telegram {
-                    background: rgba(0, 136, 204, 0.1);
-                    color: #0088cc;
-                }
-
-                .credit-cat-btn-telegram:hover {
-                    background: #0088cc;
-                    color: white;
-                }
-
-                /* Global actions row (Top Up + Voucher) */
-                .credit-global-actions {
-                    display: flex;
-                    gap: var(--spacing-sm);
-                    margin-bottom: var(--spacing-lg);
-                }
-
-                .credit-global-actions .btn {
-                    flex: 1;
-                }
-
-                /* Wallet balance indicator in CREDITS mode */
+                /* ── Wallet Balance in CREDITS mode ── */
                 .credit-wallet-balance {
-                    background: var(--bg-secondary);
-                    border: 1px solid var(--border-color);
-                    border-radius: var(--radius-md);
-                    padding: var(--spacing-md) var(--spacing-lg);
-                    margin-bottom: var(--spacing-md);
+                    background: linear-gradient(135deg, rgba(99, 102, 241, 0.06), rgba(139, 92, 246, 0.04));
+                    border: 1px solid rgba(99, 102, 241, 0.15);
+                    border-radius: 14px;
+                    padding: 18px 24px;
+                    margin-bottom: 12px;
                 }
 
                 .credit-wallet-row {
@@ -1587,15 +1505,18 @@ export default function WalletPage() {
                 }
 
                 .credit-wallet-label {
-                    font-size: 0.875rem;
+                    font-size: 0.9rem;
                     color: var(--text-secondary);
                     font-weight: 500;
                 }
 
                 .credit-wallet-amount {
-                    font-size: 1.25rem;
-                    font-weight: 700;
-                    color: var(--primary-500);
+                    font-size: 1.5rem;
+                    font-weight: 800;
+                    background: linear-gradient(135deg, #6366f1, #a855f7);
+                    -webkit-background-clip: text;
+                    -webkit-text-fill-color: transparent;
+                    background-clip: text;
                 }
 
                 .credit-wallet-hint {
@@ -1605,258 +1526,267 @@ export default function WalletPage() {
                     font-style: italic;
                 }
 
+                /* ── Global Actions (Top Up + Voucher) ── */
+                .credit-global-actions {
+                    display: flex;
+                    gap: 10px;
+                    margin-bottom: 24px;
+                }
+
+                .credit-global-actions .btn {
+                    flex: 1;
+                    border-radius: 12px;
+                    padding: 12px 20px;
+                    font-weight: 600;
+                }
+
+                /* ── Stats Cards ── */
                 .stats-cards {
                     display: grid;
                     grid-template-columns: repeat(3, 1fr);
-                    gap: var(--spacing-md);
-                    margin-bottom: var(--spacing-lg);
+                    gap: 16px;
+                    margin-bottom: 24px;
                 }
-
-                @media (max-width: 768px) {
-                    .stats-cards {
-                        grid-template-columns: 1fr;
-                    }
-                }
+                @media (max-width: 768px) { .stats-cards { grid-template-columns: 1fr; } }
 
                 .stat-card {
-                    background: var(--bg-secondary);
+                    background: var(--bg-card, var(--bg-secondary));
                     border: 1px solid var(--border-color);
-                    border-radius: var(--radius-lg);
-                    padding: var(--spacing-lg);
+                    border-radius: 14px;
+                    padding: 20px;
                     display: flex;
                     align-items: center;
-                    gap: var(--spacing-md);
-                    transition: all 0.25s ease;
-                    position: relative;
-                    overflow: hidden;
+                    gap: 16px;
+                    transition: all 0.3s ease;
                 }
 
                 .stat-card:hover {
                     transform: translateY(-2px);
-                    box-shadow: 0 4px 16px rgba(0,0,0,0.06);
-                    border-color: var(--primary-500);
+                    box-shadow: 0 6px 20px rgba(0,0,0,0.06);
+                    border-color: rgba(99, 102, 241, 0.3);
                 }
 
                 .stat-icon {
                     width: 48px;
                     height: 48px;
-                    background: rgba(37, 211, 102, 0.1);
-                    border-radius: var(--radius-md);
+                    background: linear-gradient(135deg, rgba(99, 102, 241, 0.1), rgba(139, 92, 246, 0.06));
+                    border-radius: 12px;
                     display: flex;
                     align-items: center;
                     justify-content: center;
-                    color: var(--primary-500);
+                    color: #6366f1;
+                    flex-shrink: 0;
                 }
 
-                .stat-content {
-                    display: flex;
-                    flex-direction: column;
-                }
+                .stat-content { display: flex; flex-direction: column; }
+                .stat-label { color: var(--text-secondary); font-size: 0.82rem; font-weight: 500; margin-bottom: 2px; }
+                .stat-value { font-size: 1.35rem; font-weight: 700; letter-spacing: -0.01em; }
 
-                .stat-label {
-                    color: var(--text-secondary);
-                    font-size: 0.875rem;
-                }
-
-                .stat-value {
-                    font-size: 1.25rem;
-                    font-weight: 700;
-                    letter-spacing: -0.01em;
-                }
-
+                /* ── Rates Card ── */
                 .rates-card {
-                    background: var(--bg-secondary);
+                    background: var(--bg-card, var(--bg-secondary));
                     border: 1px solid var(--border-color);
-                    border-radius: var(--radius-lg);
-                    padding: var(--spacing-lg);
-                    margin-bottom: var(--spacing-xl);
+                    border-radius: 14px;
+                    padding: 24px;
+                    margin-bottom: 28px;
                 }
-
-                .rates-card h3 {
-                    margin-bottom: var(--spacing-md);
-                }
+                .rates-card h3 { margin-bottom: 16px; font-size: 1rem; }
 
                 .rates-grid {
                     display: grid;
                     grid-template-columns: repeat(3, 1fr);
-                    gap: var(--spacing-md);
+                    gap: 16px;
                 }
-
-                @media (max-width: 768px) {
-                    .rates-grid {
-                        grid-template-columns: 1fr;
-                    }
-                }
+                @media (max-width: 768px) { .rates-grid { grid-template-columns: 1fr; } }
 
                 .rate-item {
                     display: flex;
                     justify-content: space-between;
-                    padding: var(--spacing-sm) 0;
+                    padding: 10px 0;
                     border-bottom: 1px solid var(--border-color);
+                    font-size: 0.9rem;
                 }
 
                 .rate-value {
-                    font-weight: 600;
-                    color: var(--primary-500);
+                    font-weight: 700;
+                    color: #6366f1;
                 }
 
+                /* ── Tabs ── */
                 .tabs {
                     display: flex;
-                    gap: var(--spacing-sm);
-                    margin-bottom: var(--spacing-lg);
-                    border-bottom: 1px solid var(--border-color);
+                    gap: 4px;
+                    margin-bottom: 24px;
+                    background: var(--bg-tertiary, rgba(0,0,0,0.04));
+                    padding: 4px;
+                    border-radius: 12px;
+                    width: fit-content;
                 }
 
                 .tab {
-                    padding: var(--spacing-md) var(--spacing-lg);
+                    padding: 10px 24px;
                     background: none;
                     border: none;
                     color: var(--text-secondary);
                     cursor: pointer;
-                    border-bottom: 2px solid transparent;
+                    border-radius: 10px;
+                    font-size: 0.875rem;
+                    font-weight: 500;
                     transition: all 0.2s;
                 }
 
                 .tab:hover {
                     color: var(--text-primary);
+                    background: rgba(99, 102, 241, 0.06);
                 }
 
                 .tab.active {
-                    color: var(--primary-500);
-                    border-bottom-color: var(--primary-500);
+                    color: white;
+                    background: #6366f1;
                     font-weight: 600;
+                    box-shadow: 0 2px 8px rgba(99, 102, 241, 0.3);
                 }
 
-                .section h3 {
-                    margin-bottom: var(--spacing-md);
-                }
+                .section h3 { margin-bottom: 16px; font-size: 1rem; font-weight: 600; }
 
+                /* ── Transaction & Payment Lists ── */
                 .transactions-list, .payments-list {
                     display: flex;
                     flex-direction: column;
-                    gap: var(--spacing-sm);
+                    gap: 8px;
                 }
 
                 .transaction-item, .payment-item {
                     display: flex;
                     align-items: center;
-                    gap: var(--spacing-md);
-                    padding: var(--spacing-md);
-                    background: var(--bg-secondary);
+                    gap: 14px;
+                    padding: 14px 18px;
+                    background: var(--bg-card, var(--bg-secondary));
                     border: 1px solid var(--border-color);
-                    border-radius: var(--radius-md);
+                    border-radius: 12px;
                     transition: all 0.2s ease;
                 }
 
                 .transaction-item:hover, .payment-item:hover {
-                    border-color: rgba(99, 102, 241, 0.25);
+                    border-color: rgba(99, 102, 241, 0.2);
                     background: var(--bg-tertiary);
+                    transform: translateX(2px);
                 }
 
                 .tx-icon, .payment-icon {
-                    width: 36px;
-                    height: 36px;
+                    width: 40px;
+                    height: 40px;
                     background: var(--bg-tertiary);
-                    border-radius: var(--radius-md);
+                    border-radius: 10px;
                     display: flex;
                     align-items: center;
                     justify-content: center;
+                    flex-shrink: 0;
                 }
 
                 .tx-info, .payment-info {
                     flex: 1;
                     display: flex;
                     flex-direction: column;
+                    min-width: 0;
                 }
 
                 .tx-description, .payment-ref {
                     font-weight: 500;
+                    font-size: 0.9rem;
+                    white-space: nowrap;
+                    overflow: hidden;
+                    text-overflow: ellipsis;
                 }
 
                 .tx-date, .payment-method {
                     font-size: 0.75rem;
-                    color: var(--text-secondary);
+                    color: var(--text-muted);
+                    margin-top: 2px;
                 }
 
-                .tx-amount {
-                    font-weight: 600;
-                }
-
-                .tx-amount.credit {
-                    color: #22c55e;
-                }
-
-                .tx-amount.debit {
-                    color: #ef4444;
-                }
-
-                .payment-amount {
-                    font-weight: 600;
-                }
+                .tx-amount { font-weight: 700; font-size: 0.95rem; white-space: nowrap; }
+                .tx-amount.credit { color: #22c55e; }
+                .tx-amount.debit { color: #ef4444; }
+                .payment-amount { font-weight: 700; font-size: 0.95rem; white-space: nowrap; }
 
                 .status-badge {
                     display: inline-flex;
                     align-items: center;
                     gap: 4px;
-                    padding: 4px 8px;
-                    border-radius: var(--radius-sm);
-                    font-size: 0.75rem;
-                    font-weight: 500;
+                    padding: 4px 10px;
+                    border-radius: 20px;
+                    font-size: 0.72rem;
+                    font-weight: 600;
+                    text-transform: uppercase;
+                    letter-spacing: 0.3px;
                 }
 
                 .empty-state-sm {
-                    padding: var(--spacing-xl);
+                    padding: 48px 24px;
                     text-align: center;
-                    color: var(--text-secondary);
+                    color: var(--text-muted);
+                    font-size: 0.9rem;
                 }
 
+                /* ── Quick Amounts ── */
                 .quick-amounts {
                     display: flex;
-                    gap: var(--spacing-sm);
-                    margin-top: var(--spacing-md);
+                    gap: 8px;
+                    margin-top: 14px;
+                    flex-wrap: wrap;
                 }
 
                 .quick-amount-btn {
                     flex: 1;
-                    padding: var(--spacing-sm) var(--spacing-md);
+                    min-width: 60px;
+                    padding: 10px 14px;
                     background: var(--bg-tertiary);
                     border: 1px solid var(--border-color);
-                    border-radius: var(--radius-md);
+                    border-radius: 10px;
                     cursor: pointer;
                     transition: all 0.2s;
+                    font-weight: 500;
+                    font-size: 0.875rem;
+                    color: var(--text-primary);
                 }
 
                 .quick-amount-btn:hover {
-                    border-color: var(--primary-500);
-                    color: var(--primary-500);
+                    border-color: #6366f1;
+                    color: #6366f1;
+                    background: rgba(99, 102, 241, 0.06);
+                    transform: translateY(-1px);
                 }
 
-                .text-success {
-                    color: #22c55e;
-                }
-
-                .text-danger {
-                    color: #ef4444;
-                }
+                /* ── Utility ── */
+                .text-success { color: #22c55e; }
+                .text-danger { color: #ef4444; }
 
                 .alert {
                     display: flex;
                     align-items: center;
-                    gap: var(--spacing-sm);
-                    padding: var(--spacing-md);
-                    border-radius: var(--radius-md);
-                    margin-bottom: var(--spacing-lg);
+                    gap: 10px;
+                    padding: 14px 18px;
+                    border-radius: 12px;
+                    margin-bottom: 20px;
+                    font-size: 0.875rem;
+                    animation: wlt-slideDown 0.3s ease;
+                }
+
+                @keyframes wlt-slideDown {
+                    from { opacity: 0; transform: translateY(-10px); }
+                    to { opacity: 1; transform: translateY(0); }
                 }
 
                 .alert-error {
-                    background: rgba(239, 68, 68, 0.1);
-                    border: 1px solid rgba(239, 68, 68, 0.3);
+                    background: rgba(239, 68, 68, 0.08);
+                    border: 1px solid rgba(239, 68, 68, 0.2);
                     color: #ef4444;
                 }
 
                 .alert-success {
-                    background: rgba(34, 197, 94, 0.1);
-                    border: 1px solid rgba(34, 197, 94, 0.3);
+                    background: rgba(34, 197, 94, 0.08);
+                    border: 1px solid rgba(34, 197, 94, 0.2);
                     color: #22c55e;
                 }
 
@@ -1866,22 +1796,28 @@ export default function WalletPage() {
                     border: none;
                     cursor: pointer;
                     color: inherit;
+                    opacity: 0.7;
+                    transition: opacity 0.2s;
                 }
+                .alert button:hover { opacity: 1; }
 
                 .loading-container {
                     display: flex;
                     flex-direction: column;
                     align-items: center;
                     justify-content: center;
-                    padding: var(--spacing-3xl);
+                    padding: 80px;
                     color: var(--text-secondary);
+                    gap: 12px;
                 }
 
                 .header-actions {
                     display: flex;
-                    gap: var(--spacing-md);
+                    gap: 12px;
+                    align-items: center;
                 }
 
+                /* ── Packages Modal ── */
                 .packages-modal {
                     max-width: 800px;
                     width: 92%;
@@ -1889,203 +1825,163 @@ export default function WalletPage() {
 
                 .modal-subtitle {
                     color: var(--text-secondary);
-                    margin-bottom: var(--spacing-lg);
+                    margin-bottom: 20px;
                 }
 
                 .pkg-category-tabs {
                     display: flex;
-                    gap: var(--spacing-xs);
-                    margin-bottom: var(--spacing-md);
-                    border-bottom: 1px solid var(--border-color);
-                    padding-bottom: var(--spacing-sm);
+                    gap: 4px;
+                    margin-bottom: 16px;
+                    background: var(--bg-tertiary, rgba(0,0,0,0.04));
+                    padding: 4px;
+                    border-radius: 10px;
                 }
 
                 .pkg-cat-tab {
-                    padding: var(--spacing-sm) var(--spacing-md);
+                    padding: 8px 16px;
                     background: none;
                     border: none;
                     color: var(--text-secondary);
                     cursor: pointer;
-                    border-bottom: 2px solid transparent;
                     transition: all 0.2s;
-                    font-size: 0.85rem;
+                    font-size: 0.82rem;
                     white-space: nowrap;
-                    border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+                    border-radius: 8px;
+                    font-weight: 500;
                 }
 
                 .pkg-cat-tab:hover {
                     color: var(--text-primary);
-                    background: var(--bg-tertiary);
+                    background: rgba(99, 102, 241, 0.06);
                 }
 
                 .pkg-cat-tab.active {
-                    color: var(--primary-500);
-                    border-bottom-color: var(--primary-500);
+                    color: white;
+                    background: #6366f1;
                     font-weight: 600;
+                    box-shadow: 0 2px 6px rgba(99, 102, 241, 0.25);
                 }
 
                 .pkg-notice {
                     display: flex;
                     align-items: center;
-                    gap: var(--spacing-sm);
-                    padding: var(--spacing-sm) var(--spacing-md);
-                    background: rgba(59, 130, 246, 0.08);
-                    border: 1px solid rgba(59, 130, 246, 0.2);
-                    border-radius: var(--radius-md);
-                    margin-bottom: var(--spacing-md);
-                    font-size: 0.825rem;
+                    gap: 10px;
+                    padding: 10px 16px;
+                    background: rgba(59, 130, 246, 0.06);
+                    border: 1px solid rgba(59, 130, 246, 0.15);
+                    border-radius: 10px;
+                    margin-bottom: 16px;
+                    font-size: 0.82rem;
                     color: #3b82f6;
                     line-height: 1.4;
                 }
 
                 .pkg-notice-green {
-                    background: rgba(34, 197, 94, 0.08);
-                    border-color: rgba(34, 197, 94, 0.2);
+                    background: rgba(34, 197, 94, 0.06);
+                    border-color: rgba(34, 197, 94, 0.15);
                     color: #22c55e;
                 }
 
                 .pkg-notice-blue {
-                    background: rgba(0, 136, 204, 0.08);
-                    border-color: rgba(0, 136, 204, 0.2);
+                    background: rgba(0, 136, 204, 0.06);
+                    border-color: rgba(0, 136, 204, 0.15);
                     color: #0088cc;
                 }
 
                 @media (max-width: 600px) {
-                    .pkg-category-tabs {
-                        flex-wrap: wrap;
-                    }
-                    .pkg-cat-tab {
-                        font-size: 0.75rem;
-                        padding: var(--spacing-xs) var(--spacing-sm);
-                    }
+                    .pkg-category-tabs { flex-wrap: wrap; }
+                    .pkg-cat-tab { font-size: 0.72rem; padding: 6px 10px; }
                 }
 
                 .packages-grid-modal {
                     display: grid;
                     grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-                    gap: var(--spacing-md);
+                    gap: 14px;
                 }
 
                 .package-card-modal {
-                    background: var(--bg-tertiary);
-                    border: 2px solid var(--border-color);
-                    border-radius: var(--radius-lg);
-                    padding: var(--spacing-lg);
+                    background: var(--bg-card, var(--bg-tertiary));
+                    border: 1px solid var(--border-color);
+                    border-radius: 14px;
+                    padding: 24px 20px;
                     position: relative;
                     text-align: center;
-                    transition: all 0.2s;
+                    transition: all 0.3s ease;
                 }
 
                 .package-card-modal:hover {
-                    border-color: var(--primary-500);
+                    border-color: rgba(99, 102, 241, 0.3);
+                    transform: translateY(-3px);
+                    box-shadow: 0 8px 24px rgba(0,0,0,0.08);
                 }
 
                 .package-card-modal.featured {
-                    border-color: #f59e0b;
-                    background: linear-gradient(135deg, rgba(245, 158, 11, 0.05), transparent);
+                    border-color: rgba(245, 158, 11, 0.4);
+                    background: linear-gradient(135deg, rgba(245, 158, 11, 0.04), transparent);
                 }
 
                 .featured-ribbon {
                     position: absolute;
                     top: -8px;
-                    right: 10px;
+                    right: 12px;
                     background: linear-gradient(135deg, #f59e0b, #d97706);
                     color: white;
-                    padding: 2px 8px;
-                    border-radius: 10px;
-                    font-size: 0.7rem;
+                    padding: 3px 10px;
+                    border-radius: 12px;
+                    font-size: 0.68rem;
+                    font-weight: 700;
                     display: flex;
                     align-items: center;
                     gap: 4px;
+                    box-shadow: 0 2px 8px rgba(245, 158, 11, 0.3);
                 }
 
-                .pkg-name {
-                    font-weight: 600;
-                    font-size: 1rem;
-                    margin-bottom: var(--spacing-xs);
-                }
+                .pkg-name { font-weight: 600; font-size: 1rem; margin-bottom: 6px; }
+                .pkg-price { font-size: 1.75rem; font-weight: 800; color: #6366f1; margin-bottom: 6px; letter-spacing: -0.02em; }
+                .pkg-credits { font-size: 0.88rem; margin-bottom: 8px; }
+                .pkg-bonus { display: block; color: #22c55e; font-size: 0.78rem; font-weight: 600; }
+                .pkg-desc { font-size: 0.78rem; color: var(--text-muted); margin-bottom: 14px; line-height: 1.4; }
+                .btn-block { width: 100%; border-radius: 10px; }
 
-                .pkg-price {
-                    font-size: 1.75rem;
-                    font-weight: 700;
-                    color: var(--primary-500);
-                    margin-bottom: var(--spacing-xs);
-                }
-
-                .pkg-credits {
-                    font-size: 0.9rem;
-                    margin-bottom: var(--spacing-sm);
-                }
-
-                .pkg-bonus {
-                    display: block;
-                    color: #22c55e;
-                    font-size: 0.8rem;
-                }
-
-                .pkg-desc {
-                    font-size: 0.8rem;
-                    color: var(--text-secondary);
-                    margin-bottom: var(--spacing-md);
-                }
-
-                .btn-block {
-                    width: 100%;
-                }
-
-                /* Binance Modal Styles */
-                .binance-modal {
-                    max-width: 480px;
-                }
+                /* ── Binance Modal ── */
+                .binance-modal { max-width: 480px; }
 
                 .binance-header {
                     background: linear-gradient(135deg, #F0B90B, #d4a00a);
                     color: #1E2026;
+                    border-radius: 16px 16px 0 0;
                 }
 
-                .binance-title {
-                    display: flex;
-                    align-items: center;
-                    gap: var(--spacing-sm);
-                }
+                .binance-title { display: flex; align-items: center; gap: 10px; }
+                .binance-icon { font-size: 1.5rem; }
+                .binance-title h2 { margin: 0; color: #1E2026; }
 
-                .binance-icon {
-                    font-size: 1.5rem;
-                }
-
-                .binance-title h2 {
-                    margin: 0;
-                    color: #1E2026;
-                }
-
-                .binance-step {
-                    text-align: center;
-                }
+                .binance-step { text-align: center; }
 
                 .binance-bonus-badge {
-                    background: linear-gradient(135deg, rgba(34, 197, 94, 0.1), rgba(34, 197, 94, 0.05));
-                    border: 1px solid rgba(34, 197, 94, 0.3);
+                    background: linear-gradient(135deg, rgba(34, 197, 94, 0.08), rgba(34, 197, 94, 0.04));
+                    border: 1px solid rgba(34, 197, 94, 0.2);
                     color: #22c55e;
-                    padding: var(--spacing-sm) var(--spacing-md);
-                    border-radius: var(--radius-md);
-                    margin: var(--spacing-md) 0;
-                    font-weight: 500;
+                    padding: 10px 16px;
+                    border-radius: 10px;
+                    margin: 14px 0;
+                    font-weight: 600;
+                    font-size: 0.9rem;
                 }
 
-                .binance-pay-step {
-                    text-align: left;
-                }
+                .binance-pay-step { text-align: left; }
 
                 .binance-qr-section {
                     display: flex;
                     justify-content: center;
-                    margin-bottom: var(--spacing-lg);
+                    margin-bottom: 20px;
                 }
 
                 .binance-qr-image {
                     max-width: 200px;
-                    border-radius: var(--radius-md);
+                    border-radius: 12px;
                     border: 3px solid #F0B90B;
+                    box-shadow: 0 4px 16px rgba(240, 185, 11, 0.2);
                 }
 
                 .binance-qr-placeholder {
@@ -2097,24 +1993,25 @@ export default function WalletPage() {
                     justify-content: center;
                     background: var(--bg-tertiary);
                     border: 2px dashed var(--border-color);
-                    border-radius: var(--radius-md);
-                    color: var(--text-secondary);
+                    border-radius: 12px;
+                    color: var(--text-muted);
+                    gap: 8px;
                 }
 
                 .binance-pay-info {
                     background: var(--bg-tertiary);
-                    border-radius: var(--radius-md);
-                    padding: var(--spacing-md);
-                    margin-bottom: var(--spacing-md);
+                    border-radius: 12px;
+                    padding: 16px;
+                    margin-bottom: 14px;
                 }
 
                 .binance-amount-display {
                     display: flex;
                     justify-content: space-between;
                     align-items: center;
-                    padding: var(--spacing-sm) 0;
+                    padding: 8px 0;
                     border-bottom: 1px solid var(--border-color);
-                    margin-bottom: var(--spacing-sm);
+                    margin-bottom: 10px;
                 }
 
                 .binance-amount-display strong {
@@ -2125,50 +2022,80 @@ export default function WalletPage() {
                 .binance-instructions {
                     font-size: 0.875rem;
                     color: var(--text-secondary);
+                    line-height: 1.5;
                 }
-
-                .binance-instructions p {
-                    margin: var(--spacing-xs) 0;
-                }
+                .binance-instructions p { margin: 4px 0; }
 
                 .binance-ref {
                     display: flex;
                     align-items: center;
-                    gap: var(--spacing-sm);
-                    margin-top: var(--spacing-sm);
-                    padding-top: var(--spacing-sm);
+                    gap: 8px;
+                    margin-top: 10px;
+                    padding-top: 10px;
                     border-top: 1px solid var(--border-color);
-                    font-size: 0.875rem;
+                    font-size: 0.85rem;
                 }
 
                 .binance-ref code {
                     background: var(--bg-secondary);
-                    padding: 2px 8px;
-                    border-radius: var(--radius-sm);
-                    font-family: monospace;
+                    padding: 3px 10px;
+                    border-radius: 6px;
+                    font-family: 'SF Mono', 'Fira Code', monospace;
                     flex: 1;
+                    font-size: 0.82rem;
                 }
 
                 .copy-btn {
                     background: none;
                     border: none;
-                    color: var(--primary-500);
+                    color: #6366f1;
                     cursor: pointer;
                     padding: 4px;
-                    transition: transform 0.2s;
+                    transition: all 0.2s;
+                    border-radius: 6px;
                 }
-
                 .copy-btn:hover {
+                    background: rgba(99, 102, 241, 0.08);
                     transform: scale(1.1);
                 }
 
                 .form-hint {
                     display: block;
-                    margin-top: var(--spacing-xs);
+                    margin-top: 6px;
                     font-size: 0.75rem;
-                    color: var(--text-secondary);
+                    color: var(--text-muted);
+                }
+
+                /* ── Message Credits (legacy) ── */
+                .message-credits-card { background: linear-gradient(135deg, #10b981, #059669); }
+                .credits-icon { color: #fbbf24; margin-left: auto; }
+                .credits-amount { display: flex; align-items: baseline; gap: 8px; }
+                .credits-label { font-size: 1rem; opacity: 0.8; }
+                .credits-info { opacity: 0.8; margin-bottom: 16px; }
+                .credits-estimate {
+                    margin-top: 16px;
+                    padding: 8px 16px;
+                    background: rgba(255,255,255,0.15);
+                    border-radius: 10px;
+                    font-size: 0.875rem;
+                    text-align: center;
+                }
+
+                /* ── Responsive ── */
+                @media (max-width: 600px) {
+                    .balance-amount { font-size: 2.25rem; }
+                    .balance-card { padding: 24px; border-radius: 16px; }
+                    .balance-actions { flex-direction: column; }
+                    .credit-cat-amount { font-size: 2rem; }
+                    .header-actions { flex-wrap: wrap; }
+                    .tabs { width: 100%; }
+                    .tab { flex: 1; text-align: center; padding: 10px 12px; font-size: 0.82rem; }
+                    .transaction-item, .payment-item { padding: 12px; }
+                    .credit-global-actions { flex-direction: column; }
                 }
             `}</style>
+
         </div >
     )
 }
+
