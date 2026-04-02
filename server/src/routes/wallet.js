@@ -702,7 +702,7 @@ router.put('/admin/payments/:id/approve', requireAdmin, async (req, res, next) =
             if (payUser) {
                 userNotificationService.sendPaymentNotification(result.payment.userId, payUser.username, {
                     amount: result.payment.amount, type: 'credit',
-                    method: result.payment.gateway || 'Manual', newBalance: result.balanceAfter, currency: 'USD'
+                    method: result.payment.method || 'Manual', newBalance: result.balanceAfter, currency: 'USD'
                 }).catch(e => console.log('[Wallet] Payment notification failed:', e.message));
             }
         } catch (notifErr) { /* non-critical */ }
