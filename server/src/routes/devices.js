@@ -422,6 +422,50 @@ router.get('/:id/qr', authenticate, async (req, res, next) => {
             throw new AppError('Device is already connected', 400);
         }
 
+        // If no active session exists (disconnected device), create a new session
+        // This is the key fix: when a device is disconnected, there's no socket
+        // in the sessions Map, so getSessionStatus returns { status: 'disconnected', qr: null }.
+        // We need to call createSession() to initiate a new WhatsApp connection
+        // which will generate a fresh QR code.
+        if (status.status === 'disconnected' && !status.qr) {
+            console.log(`[Devices:QR] No active session for ${device.id}, creating new session for reconnect...`);
+            
+            // Check if session auth files exist
+            const fs = require('fs');
+            const path = require('path');
+            const sessionPath = path.join(__dirname, '../../sessions', `session_${device.id}`);
+            const hasSessionFiles = fs.existsSync(sessionPath);
+            
+            // If session files exist but device is 'disconnected' in DB, it could mean:
+            // 1. Temporary disconnect (network issue) → auth might still be valid → try reconnect first
+            // 2. Logged out (401) → deleteSession already removed files, so hasSessionFiles = false
+            // 
+            // If NO session files exist, this was a logout or first-time connect → fresh pairing needed
+            if (hasSessionFiles) {
+                console.log(`[Devices:QR] Found existing session files for ${device.id}, attempting reconnect with saved auth...`);
+            } else {
+                console.log(`[Devices:QR] No session files for ${device.id}, starting fresh pairing...`);
+            }
+            
+            // Create new session (this triggers QR generation via connection.update event)
+            // If auth state is valid, Baileys will auto-connect without QR
+            // If auth state is expired/missing, Baileys will emit a QR code
+            await whatsapp.createSession(device.id);
+            
+            // Update DB status to 'connecting'
+            await prisma.device.update({
+                where: { id: device.id },
+                data: { status: 'connecting' }
+            }).catch(() => {});
+            
+            // Re-check status after session creation (QR might be available immediately)
+            const newStatus = whatsapp.getSessionStatus(device.id);
+            return successResponse(res, {
+                qrCode: newStatus.qr,
+                status: newStatus.status
+            });
+        }
+
         successResponse(res, {
             qrCode: status.qr,
             status: status.status
