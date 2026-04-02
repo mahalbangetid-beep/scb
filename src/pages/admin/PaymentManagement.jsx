@@ -601,6 +601,67 @@ export default function PaymentManagement() {
                                             </span>
                                         </div>
                                     </div>
+
+                                    {/* Payment Memo */}
+                                    {selectedPayment._esewaDetails.memo && (
+                                        <div style={{ marginTop: 14 }}>
+                                            <div style={{
+                                                fontSize: 11, fontWeight: 600,
+                                                color: 'var(--text-secondary)',
+                                                marginBottom: 6, textTransform: 'uppercase',
+                                                letterSpacing: '0.5px'
+                                            }}>Payment Details</div>
+                                            <div style={{
+                                                padding: '10px 14px',
+                                                background: 'var(--bg-secondary)',
+                                                border: '1px solid var(--border-color)',
+                                                borderRadius: 8,
+                                                fontSize: 12,
+                                                lineHeight: 1.6,
+                                                color: 'var(--text-primary)',
+                                                fontFamily: 'monospace',
+                                                wordBreak: 'break-word',
+                                                whiteSpace: 'pre-wrap'
+                                            }}>
+                                                {selectedPayment._esewaDetails.memo}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* Server Response */}
+                                    {selectedPayment._esewaDetails.verificationData && (
+                                        <div style={{ marginTop: 14 }}>
+                                            <div style={{
+                                                fontSize: 11, fontWeight: 600,
+                                                color: 'var(--text-secondary)',
+                                                marginBottom: 6, textTransform: 'uppercase',
+                                                letterSpacing: '0.5px'
+                                            }}>Server Response</div>
+                                            <div style={{
+                                                padding: '10px 14px',
+                                                background: 'var(--bg-secondary)',
+                                                border: '1px solid var(--border-color)',
+                                                borderRadius: 8,
+                                                fontSize: 12,
+                                                lineHeight: 1.6,
+                                                color: 'var(--text-primary)',
+                                                fontFamily: 'monospace',
+                                                wordBreak: 'break-word',
+                                                whiteSpace: 'pre-wrap'
+                                            }}>
+                                                {(() => {
+                                                    const vd = selectedPayment._esewaDetails.verificationData;
+                                                    if (typeof vd === 'string') return vd;
+                                                    if (typeof vd === 'object') {
+                                                        return Object.entries(vd).map(([k, v]) =>
+                                                            `[${k}] => ${v}`
+                                                        ).join('\n');
+                                                    }
+                                                    return JSON.stringify(vd, null, 2);
+                                                })()}
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
                             )}
 
