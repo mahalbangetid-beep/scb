@@ -106,7 +106,7 @@ class ResourceSubscriptionHook {
                 resourceType,
                 resourceId,
                 resourceName || `${resourceType} ${resourceId.slice(-6)}`,
-                true // 1st month free per spec — billing starts on second month
+                false // Upfront charge already handled in route
             );
 
             console.log(`[ResourceHook] Subscription created: ${subscription.id} for ${resourceType}`);

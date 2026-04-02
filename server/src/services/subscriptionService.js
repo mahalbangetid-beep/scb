@@ -19,7 +19,7 @@ class SubscriptionService {
     constructor() {
         // Default subscription fees (can be configured in SystemConfig)
         this.defaultFees = {
-            DEVICE: 5.00,        // $5/month per WhatsApp device
+            DEVICE: 10.00,       // $10/month per WhatsApp device
             TELEGRAM_BOT: 3.00,  // $3/month per Telegram bot
             SMM_PANEL: 2.00      // $2/month per SMM panel
         };

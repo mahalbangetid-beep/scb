@@ -130,12 +130,66 @@ router.post('/', authenticate, async (req, res, next) => {
             }
         }
 
+        // ── CHECK DEVICE SLOT PRICING ──
+        // First device is free, subsequent devices cost $10/month
+        const preCheck = await resourceSubscriptionHook.beforeResourceCreate(effectiveUserId, 'DEVICE');
+
+        if (!preCheck.canCreate) {
+            throw new AppError(preCheck.message || 'Insufficient balance to add a new device', 402);
+        }
+
+        // If NOT free, deduct upfront payment BEFORE creating device
+        let upfrontCharge = null;
+        if (!preCheck.isFree) {
+            const fee = preCheck.requiredBalance;
+
+            // Atomic deduction
+            upfrontCharge = await prisma.$transaction(async (tx) => {
+                const user = await tx.user.findUnique({
+                    where: { id: effectiveUserId },
+                    select: { creditBalance: true }
+                });
+
+                const balanceBefore = user?.creditBalance || 0;
+                if (balanceBefore < fee) {
+                    throw new Error(`Insufficient balance. Required: $${fee.toFixed(2)}, Available: $${balanceBefore.toFixed(2)}`);
+                }
+
+                const balanceAfter = balanceBefore - fee;
+
+                await tx.user.update({
+                    where: { id: effectiveUserId },
+                    data: { creditBalance: balanceAfter }
+                });
+
+                await tx.creditTransaction.create({
+                    data: {
+                        userId: effectiveUserId,
+                        type: 'DEBIT',
+                        amount: fee,
+                        balanceBefore,
+                        balanceAfter,
+                        description: `WhatsApp device slot: ${name}`,
+                        reference: `DEVICE_SLOT_${Date.now()}`
+                    }
+                });
+
+                return { fee, balanceBefore, balanceAfter };
+            }, { isolationLevel: 'Serializable' });
+
+            // Update sidebar credit display
+            try {
+                const io = req.app.get('io');
+                if (io) io.to(effectiveUserId).emit('balance-updated');
+            } catch { /* ignore */ }
+        }
+
         // Create in database with optional panel binding
         const device = await prisma.device.create({
             data: {
                 name,
                 userId: effectiveUserId,
-                panelId: panelId || null,  // Bind to panel if provided
+                panelId: panelId || null,
                 status: 'pending'
             },
             include: {
@@ -153,7 +207,7 @@ router.post('/', authenticate, async (req, res, next) => {
         const whatsapp = req.app.get('whatsapp');
         const session = await whatsapp.createSession(device.id);
 
-        // Auto-create subscription (1st device free, subsequent ones charged monthly)
+        // Auto-create subscription (for monthly renewal tracking)
         let subscriptionInfo = null;
         try {
             subscriptionInfo = await resourceSubscriptionHook.onResourceCreated(
@@ -163,11 +217,37 @@ router.post('/', authenticate, async (req, res, next) => {
             console.error('[Devices] Subscription hook error:', hookErr.message);
         }
 
+        const message = preCheck.isFree
+            ? 'Your first device is free! Scan QR to connect.'
+            : `Device slot purchased for $${upfrontCharge?.fee?.toFixed(2)}/month. Scan QR to connect.`;
+
         successResponse(res, {
             ...device,
             qrCode: session.qr,
-            subscription: subscriptionInfo
-        }, `Device created${panelId ? ' and bound to panel' : ''}${subscriptionInfo?.charged ? `. Monthly subscription: $${subscriptionInfo.subscription?.monthlyFee}` : '. First device is free!'}. Please scan the QR code to connect.`, 201);
+            subscription: subscriptionInfo,
+            slotCharge: upfrontCharge
+        }, message, 201);
+    } catch (error) {
+        next(error);
+    }
+});
+
+// GET /api/devices/slot-pricing - Check pricing for next device slot
+router.get('/slot-pricing', authenticate, async (req, res, next) => {
+    try {
+        const effectiveUserId = await getEffectiveUserId(req);
+        const preCheck = await resourceSubscriptionHook.beforeResourceCreate(effectiveUserId, 'DEVICE');
+        const deviceCount = await prisma.device.count({ where: { userId: effectiveUserId } });
+
+        successResponse(res, {
+            isFree: preCheck.isFree,
+            fee: preCheck.isFree ? 0 : preCheck.requiredBalance,
+            canAfford: preCheck.canCreate,
+            currentBalance: preCheck.currentBalance || 0,
+            currentDevices: deviceCount,
+            freeSlots: 1,
+            message: preCheck.message
+        });
     } catch (error) {
         next(error);
     }

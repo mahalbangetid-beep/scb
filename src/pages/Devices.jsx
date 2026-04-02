@@ -42,6 +42,9 @@ export default function Devices() {
     const [connectionMessage, setConnectionMessage] = useState('')
     const qrPollRef = useRef(null)
 
+    // Slot pricing
+    const [slotPricing, setSlotPricing] = useState(null)
+
     // Action loading states (double-click protection)
     const [deletingDevice, setDeletingDevice] = useState(null)
     const [restartingDevice, setRestartingDevice] = useState(null)
@@ -84,9 +87,17 @@ export default function Devices() {
         }
     }
 
+    const fetchSlotPricing = async () => {
+        try {
+            const res = await api.get('/devices/slot-pricing')
+            setSlotPricing(res.data)
+        } catch { /* ignore */ }
+    }
+
     useEffect(() => {
         fetchDevices()
-        fetchPanels()  // Fetch panels for the dropdown
+        fetchPanels()
+        fetchSlotPricing()
         const interval = setInterval(fetchDevices, 10000)
         return () => clearInterval(interval)
     }, [])
@@ -171,15 +182,25 @@ export default function Devices() {
 
     const handleAddDevice = async () => {
         if (!newDeviceName) return
+
+        // Confirm payment if not free
+        if (slotPricing && !slotPricing.isFree) {
+            if (!slotPricing.canAfford) {
+                alert(`Insufficient balance. Required: $${slotPricing.fee?.toFixed(2)}, Available: $${slotPricing.currentBalance?.toFixed(2)}. Please add funds first.`)
+                return
+            }
+            const confirmed = confirm(`This device slot costs $${slotPricing.fee?.toFixed(2)}/month (auto-renewed). $${slotPricing.fee?.toFixed(2)} will be deducted from your wallet now. Continue?`)
+            if (!confirmed) return
+        }
+
         setAddLoading(true)
         setQrStatus('loading')
         setConnectionMessage('Creating device...')
 
         try {
-            // Send panelId if selected (null/empty means no panel assigned)
             const payload = {
                 name: newDeviceName,
-                panelId: selectedPanelId || null  // Include panel binding
+                panelId: selectedPanelId || null
             }
             const res = await api.post('/devices', payload)
             setCurrentDeviceId(res.data.id)
@@ -196,10 +217,13 @@ export default function Devices() {
             // Start polling for QR updates
             startQRPolling(res.data.id)
             fetchDevices()
+            fetchSlotPricing() // Refresh pricing after add
+            // Trigger sidebar balance refresh
+            window.dispatchEvent(new Event('user-data-updated'))
         } catch (error) {
             console.error('Failed to add device:', error)
             setQrStatus('error')
-            setConnectionMessage(error?.error?.message || 'Failed to create device')
+            setConnectionMessage(error?.error?.message || error?.message || 'Failed to create device')
         } finally {
             setAddLoading(false)
         }
@@ -207,11 +231,20 @@ export default function Devices() {
 
     const handleDeleteDevice = async (id) => {
         if (deletingDevice === id) return
-        if (!confirm('Are you sure you want to delete this device?')) return
+
+        // Check if this is a paid slot (user has more than 1 device = the free one)
+        const isPaidSlot = devices.length > 1
+        const warningMsg = isPaidSlot
+            ? '⚠️ WARNING: If you remove this device slot, your payment will be lost and cannot be recovered.\n\nNo refund will be provided. Are you sure you want to continue?'
+            : 'Are you sure you want to delete this device?'
+
+        if (!confirm(warningMsg)) return
         setDeletingDevice(id)
         try {
             await api.delete(`/devices/${id}`)
             fetchDevices()
+            fetchSlotPricing() // Refresh pricing
+            window.dispatchEvent(new Event('user-data-updated'))
         } catch (error) {
             console.error('Failed to delete device:', error)
         } finally {
@@ -810,6 +843,41 @@ export default function Devices() {
                         {/* Step 1: Enter device name and select panel (only if new device) */}
                         {!currentDeviceId && qrStatus === 'idle' && (
                             <div className="form-group">
+                                {/* Slot Pricing Info */}
+                                {slotPricing && (
+                                    <div style={{
+                                        padding: '14px 16px', borderRadius: 10, marginBottom: 16,
+                                        background: slotPricing.isFree
+                                            ? 'rgba(16, 185, 129, 0.08)'
+                                            : slotPricing.canAfford ? 'rgba(108, 92, 231, 0.08)' : 'rgba(239, 68, 68, 0.08)',
+                                        border: `1px solid ${slotPricing.isFree ? 'rgba(16,185,129,0.25)' : slotPricing.canAfford ? 'rgba(108,92,231,0.25)' : 'rgba(239,68,68,0.25)'}`,
+                                    }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                                            <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>
+                                                {slotPricing.isFree ? '🎉 Free Device Slot' : `💳 Device Slot: $${slotPricing.fee?.toFixed(2)}/month`}
+                                            </span>
+                                            {!slotPricing.isFree && (
+                                                <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                                                    Balance: ${slotPricing.currentBalance?.toFixed(2)}
+                                                </span>
+                                            )}
+                                        </div>
+                                        <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+                                            {slotPricing.isFree
+                                                ? `Your first WhatsApp device is free! (${slotPricing.currentDevices}/${slotPricing.freeSlots} free slots used)`
+                                                : slotPricing.canAfford
+                                                    ? `You have ${slotPricing.currentDevices} device(s). $${slotPricing.fee?.toFixed(2)} will be deducted from your wallet. Slot valid for 30 days, auto-renewed monthly.`
+                                                    : `⚠️ Insufficient balance. You need $${slotPricing.fee?.toFixed(2)} but only have $${slotPricing.currentBalance?.toFixed(2)}. Please add funds first.`
+                                            }
+                                        </div>
+                                        {!slotPricing.isFree && (
+                                            <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 6 }}>
+                                                💡 If a number gets banned, you can replace it in the same slot without paying again.
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+
                                 <label className="form-label">Device Name</label>
                                 <input
                                     type="text"
@@ -849,11 +917,11 @@ export default function Devices() {
                                 <button
                                     className="btn btn-primary w-full"
                                     onClick={handleAddDevice}
-                                    disabled={addLoading || !newDeviceName}
+                                    disabled={addLoading || !newDeviceName || (slotPricing && !slotPricing.isFree && !slotPricing.canAfford)}
                                     style={{ marginTop: 'var(--spacing-lg)' }}
                                 >
                                     {addLoading ? <Loader2 className="animate-spin" size={16} /> : <Plus size={16} />}
-                                    Create & Connect
+                                    {slotPricing?.isFree ? 'Create & Connect (Free)' : `Create & Connect ($${slotPricing?.fee?.toFixed(2) || '10.00'})`}
                                 </button>
                             </div>
                         )}
