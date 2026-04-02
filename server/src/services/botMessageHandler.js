@@ -993,8 +993,11 @@ class BotMessageHandler {
 
                     // Charge for forwarded messages in async mode
                     try {
-                        const hasForwarded = result.responses?.some(r => r.details?.forwarded === true);
-                        if (hasForwarded) {
+                        const hasIndividualForward = result.responses?.some(r => r.details?.forwarded === true);
+                        const hasBatchForward = Array.isArray(result.batchForward) 
+                            ? result.batchForward.some(r => r.success === true)
+                            : result.batchForward?.success === true;
+                        if (hasIndividualForward || hasBatchForward) {
                             const fwdMessageType = platform === 'TELEGRAM' ? 'tg_forward' : 'wa_forward_message';
                             if (isCreditsMode) {
                                 await messageCreditService.chargeMessageByType(userId, fwdMessageType, platform, isGroup, user);
@@ -1107,8 +1110,11 @@ class BotMessageHandler {
         // Charge additional credit for forwarded messages (wa_forward_message rate)
         // This is separate from the reply charge — forwarding sends a REAL message to provider group
         try {
-            const hasForwarded = result.responses?.some(r => r.details?.forwarded === true);
-            if (hasForwarded) {
+            const hasIndividualForward = result.responses?.some(r => r.details?.forwarded === true);
+            const hasBatchForward = Array.isArray(result.batchForward)
+                ? result.batchForward.some(r => r.success === true)
+                : result.batchForward?.success === true;
+            if (hasIndividualForward || hasBatchForward) {
                 const fwdMessageType = platform === 'TELEGRAM' ? 'tg_forward' : 'wa_forward_message';
                 if (isCreditsMode) {
                     await messageCreditService.chargeMessageByType(userId, fwdMessageType, platform, isGroup, user);
