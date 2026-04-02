@@ -92,11 +92,14 @@ export default function PaymentManagement() {
         const q = searchQuery.toLowerCase()
         return payments.filter(p =>
             p.reference?.toLowerCase().includes(q) ||
+            p.transactionId?.toLowerCase().includes(q) ||
             p.user?.name?.toLowerCase().includes(q) ||
             p.user?.username?.toLowerCase().includes(q) ||
             p.user?.email?.toLowerCase().includes(q) ||
             p.method?.toLowerCase().includes(q) ||
-            String(p.amount).includes(q)
+            String(p.amount).includes(q) ||
+            p._esewaDetails?.refId?.toLowerCase().includes(q) ||
+            p._esewaDetails?.transactionCode?.toLowerCase().includes(q)
         )
     }, [payments, searchQuery])
 
@@ -312,7 +315,7 @@ export default function PaymentManagement() {
                     <Search size={16} />
                     <input
                         type="text"
-                        placeholder="Search by reference, user, method..."
+                        placeholder="Search by reference, transaction ID, user, method..."
                         value={searchQuery}
                         onChange={e => setSearchQuery(e.target.value)}
                     />
