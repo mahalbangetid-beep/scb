@@ -60,6 +60,7 @@ import EmailSettings from './pages/admin/EmailSettings'
 import FonepayManagement from './pages/admin/FonepayManagement'
 import DefaultCharges from './pages/admin/DefaultCharges'
 import SeoSettings from './pages/admin/SeoSettings'
+import InvoiceTemplate from './pages/admin/InvoiceTemplate'
 import useSeoMeta from './hooks/useSeoMeta'
 import './index.css'
 
@@ -303,6 +304,7 @@ function AppContent() {
           <Route path="/admin/fonepay" element={<AdminRoute><FonepayManagement /></AdminRoute>} />
           <Route path="/admin/charges" element={<AdminRoute><DefaultCharges /></AdminRoute>} />
           <Route path="/admin/seo-settings" element={<AdminRoute><SeoSettings /></AdminRoute>} />
+          <Route path="/admin/invoice-template" element={<AdminRoute><InvoiceTemplate /></AdminRoute>} />
 
           {/* Catch all */}
           <Route path="*" element={<Navigate to="/" replace />} />

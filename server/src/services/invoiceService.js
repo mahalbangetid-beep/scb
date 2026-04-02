@@ -339,6 +339,9 @@ class InvoiceService {
         const items = Array.isArray(invoice.items) ? invoice.items : this.safeParseJSON(invoice.items, []);
         const user = invoice.user || {};
 
+        // Load template config from DB (cached)
+        const tpl = await this._getTemplateConfig();
+
         // Register fonts once (pdfmake v0.3.x API)
         if (!this._fontsRegistered) {
             const pdfmakeRoot = path.join(path.dirname(require.resolve('pdfmake')), '..');
@@ -364,7 +367,7 @@ class InvoiceService {
             this._fontsRegistered = true;
         }
 
-        const PRIMARY = '#6c5ce7';
+        const PRIMARY = tpl.accentColor || '#6c5ce7';
         const dateStr = new Date(invoice.paidAt).toLocaleDateString('en-US', {
             year: 'numeric', month: 'long', day: 'numeric'
         });
@@ -391,6 +394,17 @@ class InvoiceService {
             ]
         ];
 
+        // Build FROM section details
+        const fromStack = [
+            { text: 'FROM', fontSize: 9, color: '#999', bold: true, margin: [0, 0, 0, 6] },
+            { text: tpl.companyName || 'Company', fontSize: 11, bold: true },
+        ];
+        if (tpl.tagline) fromStack.push({ text: tpl.tagline, fontSize: 10, color: '#666', margin: [0, 2, 0, 0] });
+        if (tpl.address) fromStack.push({ text: tpl.address, fontSize: 10, color: '#666', margin: [0, 2, 0, 0] });
+        if (tpl.email) fromStack.push({ text: tpl.email, fontSize: 10, color: '#666', margin: [0, 2, 0, 0] });
+        if (tpl.phone) fromStack.push({ text: tpl.phone, fontSize: 10, color: '#666', margin: [0, 2, 0, 0] });
+        if (tpl.website) fromStack.push({ text: tpl.website, fontSize: 10, color: '#666', margin: [0, 2, 0, 0] });
+
         const docDefinition = {
             pageSize: 'A4',
             pageMargins: [50, 50, 50, 60],
@@ -401,8 +415,8 @@ class InvoiceService {
                         {
                             width: '*',
                             stack: [
-                                { text: 'DICREWA', fontSize: 26, bold: true, color: PRIMARY },
-                                { text: 'SMM Automation Platform', fontSize: 10, color: '#999', margin: [0, 2, 0, 0] }
+                                { text: tpl.companyName || 'Invoice', fontSize: 26, bold: true, color: PRIMARY },
+                                { text: tpl.tagline || '', fontSize: 10, color: '#999', margin: [0, 2, 0, 0] }
                             ]
                         },
                         {
@@ -415,7 +429,7 @@ class InvoiceService {
                         }
                     ]
                 },
-                // Purple divider
+                // Divider
                 {
                     canvas: [{ type: 'line', x1: 0, y1: 0, x2: 495, y2: 0, lineWidth: 3, lineColor: PRIMARY }],
                     margin: [0, 15, 0, 20]
@@ -449,15 +463,7 @@ class InvoiceService {
                 // ─── FROM / BILL TO ───
                 {
                     columns: [
-                        {
-                            width: '50%',
-                            stack: [
-                                { text: 'FROM', fontSize: 9, color: '#999', bold: true, margin: [0, 0, 0, 6] },
-                                { text: 'DICREWA Platform', fontSize: 11, bold: true },
-                                { text: 'SMM Automation Services', fontSize: 10, color: '#666', margin: [0, 2, 0, 0] },
-                                { text: 'support@dicrewa.com', fontSize: 10, color: '#666', margin: [0, 2, 0, 0] }
-                            ]
-                        },
+                        { width: '50%', stack: fromStack },
                         {
                             width: '50%',
                             stack: [
@@ -517,11 +523,11 @@ class InvoiceService {
                     margin: [0, 35, 0, 10]
                 },
                 {
-                    text: 'Thank you for your payment!',
+                    text: tpl.footerText || 'Thank you for your payment!',
                     alignment: 'center', fontSize: 11, color: '#888', margin: [0, 0, 0, 4]
                 },
                 {
-                    text: 'This invoice was generated automatically by DICREWA Platform.',
+                    text: tpl.footerSubtext || `This invoice was generated automatically by ${tpl.companyName || 'the platform'}.`,
                     alignment: 'center', fontSize: 9, color: '#aaa'
                 }
             ],
@@ -573,6 +579,49 @@ class InvoiceService {
     safeParseJSON(str, fallback = null) {
         if (!str) return fallback;
         try { return JSON.parse(str); } catch { return fallback; }
+    }
+
+    /**
+     * Get invoice template config from DB (cached for 5 minutes)
+     * @returns {Promise<Object>} Template config
+     */
+    async _getTemplateConfig() {
+        const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+        // Return cached if valid
+        if (this._templateConfig && this._templateCacheTime && (Date.now() - this._templateCacheTime < CACHE_TTL)) {
+            return this._templateConfig;
+        }
+
+        const defaults = {
+            companyName: 'DICREWA',
+            tagline: 'SMM Automation Platform',
+            address: '',
+            phone: '',
+            email: 'support@dicrewa.com',
+            website: '',
+            logoUrl: '',
+            accentColor: '#6c5ce7',
+            footerText: 'Thank you for your payment!',
+            footerSubtext: 'This invoice was generated automatically.',
+        };
+
+        try {
+            const config = await prisma.systemConfig.findUnique({
+                where: { key: 'invoice_template' }
+            });
+
+            if (config) {
+                this._templateConfig = { ...defaults, ...JSON.parse(config.value) };
+            } else {
+                this._templateConfig = defaults;
+            }
+        } catch {
+            this._templateConfig = defaults;
+        }
+
+        this._templateCacheTime = Date.now();
+        return this._templateConfig;
     }
 }
 

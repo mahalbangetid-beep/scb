@@ -1343,6 +1343,85 @@ router.put('/charges', requireMasterAdmin, async (req, res, next) => {
     }
 });
 
+// ==================== INVOICE TEMPLATE (Master Admin Only) ====================
+
+// GET /api/admin/invoice-template - Get invoice template config
+router.get('/invoice-template', requireMasterAdmin, async (req, res, next) => {
+    try {
+        const config = await prisma.systemConfig.findUnique({
+            where: { key: 'invoice_template' }
+        });
+
+        const defaults = {
+            companyName: 'DICREWA',
+            tagline: 'SMM Automation Platform',
+            address: '',
+            phone: '',
+            email: 'support@dicrewa.com',
+            website: '',
+            logoUrl: '',
+            accentColor: '#6c5ce7',
+            footerText: 'Thank you for your payment!',
+            footerSubtext: 'This invoice was generated automatically.',
+        };
+
+        const settings = config ? { ...defaults, ...JSON.parse(config.value) } : defaults;
+        successResponse(res, settings);
+    } catch (error) {
+        next(error);
+    }
+});
+
+// PUT /api/admin/invoice-template - Update invoice template config
+router.put('/invoice-template', requireMasterAdmin, async (req, res, next) => {
+    try {
+        const {
+            companyName, tagline, address, phone, email, website,
+            logoUrl, accentColor, footerText, footerSubtext
+        } = req.body;
+
+        // Validate accent color format
+        if (accentColor && !/^#[0-9a-fA-F]{6}$/.test(accentColor)) {
+            throw new AppError('Accent color must be a valid hex code (e.g. #6c5ce7)', 400);
+        }
+
+        // Read existing config first to merge
+        const existing = await prisma.systemConfig.findUnique({
+            where: { key: 'invoice_template' }
+        });
+        const current = existing ? JSON.parse(existing.value) : {};
+
+        // Merge updates
+        const updated = { ...current };
+        if (companyName !== undefined) updated.companyName = String(companyName).slice(0, 200);
+        if (tagline !== undefined) updated.tagline = String(tagline).slice(0, 200);
+        if (address !== undefined) updated.address = String(address).slice(0, 500);
+        if (phone !== undefined) updated.phone = String(phone).slice(0, 50);
+        if (email !== undefined) updated.email = String(email).slice(0, 200);
+        if (website !== undefined) updated.website = String(website).slice(0, 200);
+        if (logoUrl !== undefined) updated.logoUrl = String(logoUrl).slice(0, 500);
+        if (accentColor !== undefined) updated.accentColor = accentColor;
+        if (footerText !== undefined) updated.footerText = String(footerText).slice(0, 300);
+        if (footerSubtext !== undefined) updated.footerSubtext = String(footerSubtext).slice(0, 300);
+
+        await prisma.systemConfig.upsert({
+            where: { key: 'invoice_template' },
+            update: { value: JSON.stringify(updated), category: 'invoice' },
+            create: { key: 'invoice_template', value: JSON.stringify(updated), category: 'invoice' }
+        });
+
+        // Clear cached template in invoiceService
+        try {
+            const invoiceService = require('../services/invoiceService');
+            invoiceService._templateConfig = null;
+        } catch { /* ignore */ }
+
+        successResponse(res, updated, 'Invoice template updated');
+    } catch (error) {
+        next(error);
+    }
+});
+
 // ==================== SYSTEM CONFIG (Master Admin Only) ====================
 
 
