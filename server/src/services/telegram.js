@@ -386,6 +386,8 @@ class TelegramService {
     async handleSmmCommand(botRecord, ctx, text) {
         const commandHandler = require('./commandHandler');
         const creditService = require('./creditService');
+        const messageCreditService = require('./messageCreditService');
+        const billingModeService = require('./billingModeService');
 
         // Get chat info for sender identification
         const chatId = ctx.message.chat.id.toString();
@@ -403,23 +405,34 @@ class TelegramService {
                 select: {
                     id: true,
                     creditBalance: true,
+                    messageCredits: true,
+                    supportCredits: true,
                     role: true,
                     customTgRate: true,
                     customGroupRate: true,
+                    customCreditRate: true,
                     discountRate: true
                 }
             });
 
-            // Check if user has sufficient balance
+            // Check billing mode
+            const isCreditsMode = await billingModeService.isCreditsMode();
+
+            // Check if user has sufficient balance (respects billing mode)
             const { rate, enabled } = await creditService.getMessageTypeRate('tg_system_message', 'TELEGRAM', isGroup, user);
-            if (enabled && user && user.creditBalance < rate && user.role !== 'MASTER_ADMIN' && user.role !== 'ADMIN') {
-                const responseTemplateService = require('./responseTemplateService');
-                const balMsg = await responseTemplateService.getResponse(botRecord.userId, 'TELEGRAM_INSUFFICIENT_BALANCE', { balance: user.creditBalance.toFixed(2) }) ||
-                    `⚠️ *Insufficient Balance*\n\n` +
-                    `Your credit balance is low (${user.creditBalance.toFixed(2)}).\n` +
-                    `Please top up to continue using the bot.`;
-                await ctx.reply(balMsg, { parse_mode: 'Markdown' });
-                return;
+            if (enabled && user && user.role !== 'MASTER_ADMIN' && user.role !== 'ADMIN') {
+                const balanceToCheck = isCreditsMode
+                    ? (user.supportCredits || user.messageCredits || 0)
+                    : (user.creditBalance || 0);
+                if (balanceToCheck < rate) {
+                    const responseTemplateService = require('./responseTemplateService');
+                    const balMsg = await responseTemplateService.getResponse(botRecord.userId, 'TELEGRAM_INSUFFICIENT_BALANCE', { balance: balanceToCheck.toFixed(2) }) ||
+                        `⚠️ *Insufficient Balance*\n\n` +
+                        `Your credit balance is low (${balanceToCheck.toFixed(2)}).\n` +
+                        `Please top up to continue using the bot.`;
+                    await ctx.reply(balMsg, { parse_mode: 'Markdown' });
+                    return;
+                }
             }
 
             // Send processing message
@@ -459,10 +472,14 @@ class TelegramService {
                 return;
             }
 
-            // Charge credit for the response
+            // Charge credit for the response (respects billing mode)
             let creditResult = { charged: false, amount: 0 };
             try {
-                creditResult = await creditService.chargeMessageByType(botRecord.userId, 'tg_system_message', 'TELEGRAM', isGroup, user);
+                if (isCreditsMode) {
+                    creditResult = await messageCreditService.chargeMessageByType(botRecord.userId, 'tg_system_message', 'TELEGRAM', isGroup, user);
+                } else {
+                    creditResult = await creditService.chargeMessageByType(botRecord.userId, 'tg_system_message', 'TELEGRAM', isGroup, user);
+                }
             } catch (error) {
                 console.error(`[Telegram] Credit charge error:`, error.message);
             }
