@@ -222,6 +222,7 @@ class EsewaService {
         // Previously these pointed to FRONTEND_URL which completely bypassed
         // backend verification — money was deducted from eSewa but never credited.
         const backendUrl = process.env.BACKEND_URL
+            || process.env.FRONTEND_URL
             || `http://localhost:${process.env.PORT || 3001}`;
         
         const formData = {
