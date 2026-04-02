@@ -328,6 +328,224 @@ class InvoiceService {
     }
 
     /**
+     * Generate a proper PDF invoice using pdfmake
+     * @param {Object} invoice - Invoice object with items, user, etc.
+     * @returns {Promise<Buffer>} PDF buffer
+     */
+    async generateInvoicePDF(invoice) {
+        const pdfmake = require('pdfmake');
+        const fs = require('fs');
+        const path = require('path');
+        const items = Array.isArray(invoice.items) ? invoice.items : this.safeParseJSON(invoice.items, []);
+        const user = invoice.user || {};
+
+        // Register fonts once (pdfmake v0.3.x API)
+        if (!this._fontsRegistered) {
+            const pdfmakeRoot = path.join(path.dirname(require.resolve('pdfmake')), '..');
+            const fontDir = path.join(pdfmakeRoot, 'fonts', 'Roboto');
+
+            // Load font buffers into virtual filesystem
+            pdfmake.virtualfs.storage['Roboto-Regular.ttf'] = fs.readFileSync(path.join(fontDir, 'Roboto-Regular.ttf'));
+            pdfmake.virtualfs.storage['Roboto-Medium.ttf'] = fs.readFileSync(path.join(fontDir, 'Roboto-Medium.ttf'));
+            pdfmake.virtualfs.storage['Roboto-Italic.ttf'] = fs.readFileSync(path.join(fontDir, 'Roboto-Italic.ttf'));
+            pdfmake.virtualfs.storage['Roboto-MediumItalic.ttf'] = fs.readFileSync(path.join(fontDir, 'Roboto-MediumItalic.ttf'));
+
+            pdfmake.setFonts({
+                Roboto: {
+                    normal: 'Roboto-Regular.ttf',
+                    bold: 'Roboto-Medium.ttf',
+                    italics: 'Roboto-Italic.ttf',
+                    bolditalics: 'Roboto-MediumItalic.ttf'
+                }
+            });
+
+            // Suppress URL access policy warning
+            pdfmake.setUrlAccessPolicy(() => false);
+            this._fontsRegistered = true;
+        }
+
+        const PRIMARY = '#6c5ce7';
+        const dateStr = new Date(invoice.paidAt).toLocaleDateString('en-US', {
+            year: 'numeric', month: 'long', day: 'numeric'
+        });
+
+        // Build item rows for table
+        const tableBody = [
+            // Header row
+            [
+                { text: 'Description', style: 'tableHeader' },
+                { text: 'Qty', style: 'tableHeader', alignment: 'center' },
+                { text: 'Amount', style: 'tableHeader', alignment: 'right' }
+            ],
+            // Item rows
+            ...items.map((item, i) => [
+                { text: item.description || 'Credit Top-Up', fontSize: 10, margin: [0, 6, 0, 6], fillColor: i % 2 === 0 ? '#f8f9fa' : null },
+                { text: String(parseInt(item.quantity) || 1), fontSize: 10, alignment: 'center', margin: [0, 6, 0, 6], fillColor: i % 2 === 0 ? '#f8f9fa' : null },
+                { text: `$${(parseFloat(item.amount) || 0).toFixed(2)}`, fontSize: 10, alignment: 'right', margin: [0, 6, 0, 6], fillColor: i % 2 === 0 ? '#f8f9fa' : null }
+            ]),
+            // Total row
+            [
+                { text: 'Total', colSpan: 2, alignment: 'right', bold: true, fontSize: 12, margin: [0, 8, 10, 8] },
+                {},
+                { text: `$${(parseFloat(invoice.amount) || 0).toFixed(2)} ${invoice.currency || 'USD'}`, bold: true, fontSize: 12, alignment: 'right', margin: [0, 8, 0, 8], color: PRIMARY }
+            ]
+        ];
+
+        const docDefinition = {
+            pageSize: 'A4',
+            pageMargins: [50, 50, 50, 60],
+            content: [
+                // ─── HEADER ───
+                {
+                    columns: [
+                        {
+                            width: '*',
+                            stack: [
+                                { text: 'DICREWA', fontSize: 26, bold: true, color: PRIMARY },
+                                { text: 'SMM Automation Platform', fontSize: 10, color: '#999', margin: [0, 2, 0, 0] }
+                            ]
+                        },
+                        {
+                            width: 'auto',
+                            stack: [
+                                { text: 'INVOICE', fontSize: 22, bold: true, color: '#333', alignment: 'right' },
+                                { text: invoice.invoiceNumber, fontSize: 11, color: '#666', alignment: 'right', margin: [0, 4, 0, 0] },
+                                { text: dateStr, fontSize: 10, color: '#888', alignment: 'right', margin: [0, 2, 0, 0] }
+                            ]
+                        }
+                    ]
+                },
+                // Purple divider
+                {
+                    canvas: [{ type: 'line', x1: 0, y1: 0, x2: 495, y2: 0, lineWidth: 3, lineColor: PRIMARY }],
+                    margin: [0, 15, 0, 20]
+                },
+                // ─── STATUS BADGE ───
+                {
+                    columns: [
+                        { width: '*', text: '' },
+                        {
+                            width: 'auto',
+                            table: {
+                                body: [[{
+                                    text: ` ${invoice.status} `,
+                                    fontSize: 9,
+                                    bold: true,
+                                    color: invoice.status === 'PAID' ? '#155724' : '#721c24',
+                                    fillColor: invoice.status === 'PAID' ? '#d4edda' : '#f8d7da',
+                                    margin: [8, 3, 8, 3]
+                                }]]
+                            },
+                            layout: {
+                                hLineWidth: () => 0,
+                                vLineWidth: () => 0,
+                                paddingLeft: () => 0, paddingRight: () => 0,
+                                paddingTop: () => 0, paddingBottom: () => 0
+                            }
+                        }
+                    ],
+                    margin: [0, 0, 0, 20]
+                },
+                // ─── FROM / BILL TO ───
+                {
+                    columns: [
+                        {
+                            width: '50%',
+                            stack: [
+                                { text: 'FROM', fontSize: 9, color: '#999', bold: true, margin: [0, 0, 0, 6] },
+                                { text: 'DICREWA Platform', fontSize: 11, bold: true },
+                                { text: 'SMM Automation Services', fontSize: 10, color: '#666', margin: [0, 2, 0, 0] },
+                                { text: 'support@dicrewa.com', fontSize: 10, color: '#666', margin: [0, 2, 0, 0] }
+                            ]
+                        },
+                        {
+                            width: '50%',
+                            stack: [
+                                { text: 'BILL TO', fontSize: 9, color: '#999', bold: true, margin: [0, 0, 0, 6] },
+                                { text: user.name || user.username || 'Customer', fontSize: 11, bold: true },
+                                { text: user.email || '', fontSize: 10, color: '#666', margin: [0, 2, 0, 0] },
+                                { text: `@${user.username || ''}`, fontSize: 10, color: '#666', margin: [0, 2, 0, 0] }
+                            ]
+                        }
+                    ],
+                    margin: [0, 0, 0, 25]
+                },
+                // ─── ITEMS TABLE ───
+                {
+                    table: {
+                        headerRows: 1,
+                        widths: ['*', 60, 80],
+                        body: tableBody
+                    },
+                    layout: {
+                        hLineWidth: (i, node) => {
+                            if (i === 0 || i === 1) return 0;
+                            if (i === node.table.body.length) return 2;
+                            if (i === node.table.body.length - 1) return 2;
+                            return 0.5;
+                        },
+                        vLineWidth: () => 0,
+                        hLineColor: (i, node) => {
+                            if (i === node.table.body.length || i === node.table.body.length - 1) return PRIMARY;
+                            return '#eee';
+                        },
+                        paddingLeft: () => 10,
+                        paddingRight: () => 10,
+                        paddingTop: () => 0,
+                        paddingBottom: () => 0
+                    }
+                },
+                // ─── PAYMENT METHOD ───
+                {
+                    text: [
+                        { text: 'Payment Method: ', bold: true, fontSize: 10, color: '#666' },
+                        { text: invoice.method || 'N/A', fontSize: 10, color: '#333' }
+                    ],
+                    margin: [0, 20, 0, 0]
+                },
+                // Notes (if any)
+                ...(invoice.notes ? [{
+                    text: [
+                        { text: 'Notes: ', bold: true, fontSize: 10, color: '#666' },
+                        { text: invoice.notes, fontSize: 10, color: '#333' }
+                    ],
+                    margin: [0, 5, 0, 0]
+                }] : []),
+                // ─── FOOTER ───
+                {
+                    canvas: [{ type: 'line', x1: 0, y1: 0, x2: 495, y2: 0, lineWidth: 0.5, lineColor: '#ddd' }],
+                    margin: [0, 35, 0, 10]
+                },
+                {
+                    text: 'Thank you for your payment!',
+                    alignment: 'center', fontSize: 11, color: '#888', margin: [0, 0, 0, 4]
+                },
+                {
+                    text: 'This invoice was generated automatically by DICREWA Platform.',
+                    alignment: 'center', fontSize: 9, color: '#aaa'
+                }
+            ],
+            styles: {
+                tableHeader: {
+                    fontSize: 10,
+                    bold: true,
+                    color: '#ffffff',
+                    fillColor: PRIMARY,
+                    margin: [0, 8, 0, 8]
+                }
+            },
+            defaultStyle: {
+                font: 'Roboto'
+            }
+        };
+
+        // Generate PDF as buffer (pdfmake v0.3.x async API)
+        const doc = pdfmake.createPdf(docDefinition);
+        const arrayBuffer = await doc.getBuffer();
+        return Buffer.from(arrayBuffer);
+    }
+
+    /**
      * Get invoice stats for admin dashboard
      */
     async getStats() {

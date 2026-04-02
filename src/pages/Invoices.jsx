@@ -43,11 +43,26 @@ const Invoices = () => {
 
     const handleDownload = async (invoiceId) => {
         try {
-            const res = await api.get(`/invoices/${invoiceId}/download`, {
-                responseType: 'blob'
-            })
-            // api interceptor returns response.data, so res is the blob
-            const blob = res instanceof Blob ? res : new Blob([res])
+            // First, get a download token (authenticated)
+            const tokenRes = await api.post(`/invoices/${invoiceId}/download-token`)
+            const downloadToken = tokenRes.data?.token
+            
+            if (!downloadToken) {
+                console.error('Failed to get download token')
+                return
+            }
+            
+            // Use raw fetch with the token to get PDF binary
+            // (can't use api interceptor — it unwraps response.data and corrupts binary)
+            const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api'
+            const response = await fetch(`${API_URL}/invoices/${invoiceId}/download?token=${downloadToken}`)
+            
+            if (!response.ok) {
+                console.error('PDF download failed:', response.status)
+                return
+            }
+            
+            const blob = await response.blob()
             const url = window.URL.createObjectURL(blob)
             const a = document.createElement('a')
             a.href = url
@@ -268,67 +283,129 @@ const Invoices = () => {
             {/* Invoice Detail Modal */}
             {showModal && selectedInvoice && (
                 <div className="modal-overlay open" onClick={() => setShowModal(false)}>
-                    <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 550 }}>
-                        <div className="modal-header">
-                            <h3><FileText size={20} /> Invoice {selectedInvoice.invoiceNumber}</h3>
-                            <button className="btn btn-ghost btn-sm" onClick={() => setShowModal(false)}>
-                                <X size={18} />
-                            </button>
+                    <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 560, borderRadius: 16, overflow: 'hidden' }}>
+                        {/* Branded Header */}
+                        <div style={{
+                            background: 'linear-gradient(135deg, #6c5ce7 0%, #a55eea 100%)',
+                            padding: '24px 28px',
+                            display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start'
+                        }}>
+                            <div>
+                                <div style={{ fontSize: 22, fontWeight: 700, color: '#fff', letterSpacing: '0.5px' }}>DICREWA</div>
+                                <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.7)', marginTop: 2 }}>SMM Automation Platform</div>
+                            </div>
+                            <div style={{ textAlign: 'right' }}>
+                                <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.6)', textTransform: 'uppercase', letterSpacing: '1px' }}>Invoice</div>
+                                <div style={{ fontSize: 15, fontWeight: 600, color: '#fff', fontFamily: 'monospace', marginTop: 2 }}>{selectedInvoice.invoiceNumber}</div>
+                                <button onClick={() => setShowModal(false)} style={{
+                                    background: 'rgba(255,255,255,0.15)', border: 'none', borderRadius: 8,
+                                    color: '#fff', padding: '4px 8px', cursor: 'pointer', marginTop: 8,
+                                    fontSize: 12, display: 'flex', alignItems: 'center', gap: 4, marginLeft: 'auto'
+                                }}>
+                                    <X size={14} /> Close
+                                </button>
+                            </div>
                         </div>
-                        <div className="modal-body" style={{ padding: 24 }}>
+
+                        <div style={{ padding: '24px 28px' }}>
+                            {/* Status + Date Row */}
                             <div style={{
-                                display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16,
-                                marginBottom: 20
+                                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                                marginBottom: 20, paddingBottom: 16, borderBottom: '1px solid var(--border-color)'
                             }}>
-                                <div>
-                                    <label style={{ fontSize: 12, color: 'var(--text-secondary)', display: 'block', marginBottom: 4 }}>Invoice Number</label>
-                                    <strong style={{ fontFamily: 'monospace' }}>{selectedInvoice.invoiceNumber}</strong>
-                                </div>
-                                <div>
-                                    <label style={{ fontSize: 12, color: 'var(--text-secondary)', display: 'block', marginBottom: 4 }}>Status</label>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                                     {getStatusBadge(selectedInvoice.status)}
+                                    <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
+                                        {formatDate(selectedInvoice.paidAt)}
+                                    </span>
                                 </div>
-                                <div>
-                                    <label style={{ fontSize: 12, color: 'var(--text-secondary)', display: 'block', marginBottom: 4 }}>Payment Date</label>
-                                    {formatDate(selectedInvoice.paidAt)}
-                                </div>
-                                <div>
-                                    <label style={{ fontSize: 12, color: 'var(--text-secondary)', display: 'block', marginBottom: 4 }}>Payment Method</label>
-                                    {getMethodIcon(selectedInvoice.method)} {selectedInvoice.method}
+                                <div style={{
+                                    display: 'flex', alignItems: 'center', gap: 6,
+                                    background: 'var(--bg-tertiary)', padding: '5px 12px',
+                                    borderRadius: 8, fontSize: 13
+                                }}>
+                                    <span>{getMethodIcon(selectedInvoice.method)}</span>
+                                    <span style={{ fontWeight: 500 }}>{selectedInvoice.method}</span>
                                 </div>
                             </div>
 
+                            {/* Bill To Section */}
+                            {selectedInvoice.user && (
+                                <div style={{
+                                    background: 'var(--bg-secondary)', borderRadius: 10,
+                                    padding: '14px 16px', marginBottom: 20,
+                                    border: '1px solid var(--border-color)'
+                                }}>
+                                    <div style={{ fontSize: 10, textTransform: 'uppercase', color: 'var(--text-muted)', letterSpacing: '1px', marginBottom: 6, fontWeight: 600 }}>Bill To</div>
+                                    <div style={{ fontSize: 14, fontWeight: 600 }}>{selectedInvoice.user.name || selectedInvoice.user.username || 'Customer'}</div>
+                                    {selectedInvoice.user.email && (
+                                        <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>{selectedInvoice.user.email}</div>
+                                    )}
+                                </div>
+                            )}
+
+                            {/* Line Items */}
                             <div style={{
-                                background: 'var(--bg-secondary)', borderRadius: 8,
-                                padding: 16, marginBottom: 16
+                                borderRadius: 10, overflow: 'hidden',
+                                border: '1px solid var(--border-color)', marginBottom: 20
                             }}>
-                                <h4 style={{ marginBottom: 12, fontSize: 14 }}>Line Items</h4>
+                                {/* Items Header */}
+                                <div style={{
+                                    display: 'grid', gridTemplateColumns: '1fr auto auto',
+                                    gap: 12, padding: '10px 16px',
+                                    background: 'var(--bg-tertiary)',
+                                    fontSize: 11, fontWeight: 600, color: 'var(--text-muted)',
+                                    textTransform: 'uppercase', letterSpacing: '0.5px'
+                                }}>
+                                    <span>Description</span>
+                                    <span style={{ textAlign: 'center', minWidth: 40 }}>Qty</span>
+                                    <span style={{ textAlign: 'right', minWidth: 70 }}>Amount</span>
+                                </div>
+                                {/* Item Rows */}
                                 {(selectedInvoice.items || []).map((item, i) => (
                                     <div key={i} style={{
-                                        display: 'flex', justifyContent: 'space-between',
-                                        padding: '8px 0', borderBottom: '1px solid var(--border-color)'
+                                        display: 'grid', gridTemplateColumns: '1fr auto auto',
+                                        gap: 12, padding: '12px 16px',
+                                        borderTop: '1px solid var(--border-color)',
+                                        background: i % 2 === 0 ? 'transparent' : 'var(--bg-secondary)',
+                                        fontSize: 13
                                     }}>
-                                        <span>{item.description}</span>
-                                        <strong>{formatCurrency(item.amount, selectedInvoice.currency)}</strong>
+                                        <span style={{ color: 'var(--text-primary)' }}>{item.description}</span>
+                                        <span style={{ textAlign: 'center', minWidth: 40, color: 'var(--text-secondary)' }}>
+                                            {item.quantity || 1}
+                                        </span>
+                                        <span style={{ textAlign: 'right', minWidth: 70, fontWeight: 500 }}>
+                                            {formatCurrency(item.amount, selectedInvoice.currency)}
+                                        </span>
                                     </div>
                                 ))}
+                                {/* Total Row */}
                                 <div style={{
                                     display: 'flex', justifyContent: 'space-between',
-                                    padding: '12px 0 0', marginTop: 8
+                                    padding: '14px 16px',
+                                    borderTop: '2px solid #6c5ce7',
+                                    background: 'rgba(108, 92, 231, 0.05)'
                                 }}>
                                     <strong style={{ fontSize: 15 }}>Total</strong>
-                                    <strong style={{ fontSize: 16, color: 'var(--primary)' }}>
+                                    <strong style={{ fontSize: 17, color: '#6c5ce7' }}>
                                         {formatCurrency(selectedInvoice.amount, selectedInvoice.currency)}
                                     </strong>
                                 </div>
                             </div>
 
+                            {/* Download Button */}
                             <button
                                 className="btn btn-primary"
-                                style={{ width: '100%' }}
+                                style={{
+                                    width: '100%', padding: '12px',
+                                    background: 'linear-gradient(135deg, #6c5ce7, #a55eea)',
+                                    border: 'none', borderRadius: 10,
+                                    fontSize: 14, fontWeight: 600,
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8
+                                }}
                                 onClick={() => handleDownload(selectedInvoice.id)}
                             >
-                                <Download size={16} /> Download Invoice
+                                <Download size={16} /> Download PDF
                             </button>
                         </div>
                     </div>

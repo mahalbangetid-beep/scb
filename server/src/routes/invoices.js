@@ -123,7 +123,7 @@ router.post('/:id/download-token', async (req, res, next) => {
     }
 });
 
-// GET /api/invoices/:id/download — download invoice as printable HTML
+// GET /api/invoices/:id/download — download invoice as PDF
 // Uses a short-lived download token because this opens in a new browser tab
 router.get('/:id/download', async (req, res) => {
     try {
@@ -170,13 +170,15 @@ router.get('/:id/download', async (req, res) => {
             return res.status(404).json({ success: false, error: 'Invoice not found' });
         }
 
-        const html = invoiceService.generateInvoiceHTML(invoice);
+        // Generate proper PDF
+        const pdfBuffer = await invoiceService.generateInvoicePDF(invoice);
 
         // Sanitize filename
         const safeFilename = (invoice.invoiceNumber || 'invoice').replace(/[^a-zA-Z0-9\-]/g, '_');
-        res.setHeader('Content-Type', 'text/html');
-        res.setHeader('Content-Disposition', `inline; filename="${safeFilename}.html"`);
-        res.send(html);
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `attachment; filename="${safeFilename}.pdf"`);
+        res.setHeader('Content-Length', pdfBuffer.length);
+        res.send(pdfBuffer);
     } catch (error) {
         console.error('[Invoices] Download error:', error);
         res.status(500).json({ success: false, error: error.message });
