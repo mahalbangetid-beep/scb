@@ -445,6 +445,19 @@ class BotMessageHandler {
                     userId
                 );
 
+                // Charge wa_register_confirm credit
+                try {
+                    const regIsCreditsMode = await billingModeService.isCreditsMode();
+                    const regMsgType = platform === 'TELEGRAM' ? 'tg_system_message' : 'wa_register_confirm';
+                    if (regIsCreditsMode) {
+                        messageCreditService.chargeMessageByType(userId, regMsgType, platform, false, user)
+                            .catch(e => console.log('[BotHandler] Registration charge error:', e.message));
+                    } else {
+                        creditService.chargeMessageByType(userId, regMsgType, platform, false, user)
+                            .catch(e => console.log('[BotHandler] Registration charge error:', e.message));
+                    }
+                } catch (chargeErr) { /* non-critical */ }
+
                 return {
                     handled: true,
                     type: 'registration',
@@ -782,6 +795,20 @@ class BotMessageHandler {
                     if (params._systemBotSubscriptionId) {
                         await this.incrementSystemBotUsage(params._systemBotSubscriptionId);
                     }
+
+                    // Charge wa_general_response credit
+                    try {
+                        const fbIsCreditsMode = await billingModeService.isCreditsMode();
+                        const fbMsgType = platform === 'TELEGRAM' ? 'tg_system_message' : 'wa_general_response';
+                        if (fbIsCreditsMode) {
+                            messageCreditService.chargeMessageByType(userId, fbMsgType, platform, isGroup, user)
+                                .catch(e => console.log('[BotHandler] Fallback charge error:', e.message));
+                        } else {
+                            creditService.chargeMessageByType(userId, fbMsgType, platform, isGroup, user)
+                                .catch(e => console.log('[BotHandler] Fallback charge error:', e.message));
+                        }
+                    } catch (chargeErr) { /* non-critical */ }
+
                     return {
                         handled: true,
                         type: 'fallback',
@@ -1093,6 +1120,19 @@ class BotMessageHandler {
                 panelIds
             });
             console.log(`[BotHandler] Registration flow started for ${senderNumber}`);
+
+            // Charge wa_register_confirm credit for registration prompt
+            try {
+                const regPromptMsgType = platform === 'TELEGRAM' ? 'tg_system_message' : 'wa_register_confirm';
+                if (isCreditsMode) {
+                    messageCreditService.chargeMessageByType(userId, regPromptMsgType, platform, false, user)
+                        .catch(e => console.log('[BotHandler] Reg prompt charge error:', e.message));
+                } else {
+                    creditService.chargeMessageByType(userId, regPromptMsgType, platform, false, user)
+                        .catch(e => console.log('[BotHandler] Reg prompt charge error:', e.message));
+                }
+            } catch (chargeErr) { /* non-critical */ }
+
             return {
                 handled: true,
                 type: 'registration_prompt',
