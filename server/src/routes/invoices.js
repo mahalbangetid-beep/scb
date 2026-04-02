@@ -2,7 +2,7 @@
  * Invoice Routes
  * GET /api/invoices — list user invoices
  * GET /api/invoices/:id — get single invoice
- * GET /api/invoices/:id/download — download invoice as HTML (printable)
+ * GET /api/invoices/:id/download — download invoice as PDF (self-authenticating via token)
  * GET /api/invoices/admin/all — admin: list all invoices
  * GET /api/invoices/admin/stats — admin: invoice stats
  */
@@ -12,7 +12,72 @@ const router = express.Router();
 const { authenticate, requireAdmin, getEffectiveUserId } = require('../middleware/auth');
 const invoiceService = require('../services/invoiceService');
 
-// All routes require authentication
+// ===== SELF-AUTHENTICATED ROUTE (must be BEFORE router.use(authenticate)) =====
+// This route uses its own JWT token from query param, not Bearer header,
+// because the frontend uses raw fetch() to download binary PDF data.
+
+// GET /api/invoices/:id/download — download invoice as PDF
+router.get('/:id/download', async (req, res) => {
+    try {
+        const jwt = require('jsonwebtoken');
+        const prisma = require('../utils/prisma');
+
+        // Get token from query or header
+        let token = req.query.token;
+        if (!token && req.headers.authorization) {
+            token = req.headers.authorization.replace('Bearer ', '');
+        }
+
+        if (!token) {
+            return res.status(401).json({ success: false, error: 'No token provided' });
+        }
+
+        let decoded;
+        try {
+            decoded = jwt.verify(token, process.env.JWT_SECRET);
+        } catch (jwtErr) {
+            return res.status(401).json({ success: false, error: 'Invalid or expired token' });
+        }
+
+        // Support both full session tokens (userId) and scoped download tokens (id + purpose)
+        const userId = decoded.userId || decoded.id;
+
+        // Verify scoped download token matches this specific invoice
+        if (decoded.purpose === 'invoice_download' && decoded.invoiceId !== req.params.id) {
+            return res.status(403).json({ success: false, error: 'Token not valid for this invoice' });
+        }
+
+        const user = await prisma.user.findUnique({ where: { id: userId } });
+        if (!user) {
+            return res.status(401).json({ success: false, error: 'User not found' });
+        }
+
+        const isAdmin = user.role === 'MASTER_ADMIN' || user.role === 'ADMIN';
+        const invoice = await invoiceService.getInvoice(
+            req.params.id,
+            isAdmin ? null : user.id
+        );
+
+        if (!invoice) {
+            return res.status(404).json({ success: false, error: 'Invoice not found' });
+        }
+
+        // Generate proper PDF
+        const pdfBuffer = await invoiceService.generateInvoicePDF(invoice);
+
+        // Sanitize filename
+        const safeFilename = (invoice.invoiceNumber || 'invoice').replace(/[^a-zA-Z0-9\-]/g, '_');
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `attachment; filename="${safeFilename}.pdf"`);
+        res.setHeader('Content-Length', pdfBuffer.length);
+        res.send(pdfBuffer);
+    } catch (error) {
+        console.error('[Invoices] Download error:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// ===== ALL ROUTES BELOW REQUIRE AUTHENTICATION =====
 router.use(authenticate);
 // Resolve effective userId (staff → owner's ID, others → own ID)
 router.use(async (req, res, next) => {
@@ -123,67 +188,4 @@ router.post('/:id/download-token', async (req, res, next) => {
     }
 });
 
-// GET /api/invoices/:id/download — download invoice as PDF
-// Uses a short-lived download token because this opens in a new browser tab
-router.get('/:id/download', async (req, res) => {
-    try {
-        const jwt = require('jsonwebtoken');
-        const prisma = require('../utils/prisma');
-
-        // Get token from query or header
-        let token = req.query.token;
-        if (!token && req.headers.authorization) {
-            token = req.headers.authorization.replace('Bearer ', '');
-        }
-
-        if (!token) {
-            return res.status(401).json({ success: false, error: 'No token provided' });
-        }
-
-        let decoded;
-        try {
-            decoded = jwt.verify(token, process.env.JWT_SECRET);
-        } catch (jwtErr) {
-            return res.status(401).json({ success: false, error: 'Invalid or expired token' });
-        }
-
-        // Support both full session tokens (userId) and scoped download tokens (id + purpose)
-        const userId = decoded.userId || decoded.id;
-
-        // Verify scoped download token matches this specific invoice
-        if (decoded.purpose === 'invoice_download' && decoded.invoiceId !== req.params.id) {
-            return res.status(403).json({ success: false, error: 'Token not valid for this invoice' });
-        }
-
-        const user = await prisma.user.findUnique({ where: { id: userId } });
-        if (!user) {
-            return res.status(401).json({ success: false, error: 'User not found' });
-        }
-
-        const isAdmin = user.role === 'MASTER_ADMIN' || user.role === 'ADMIN';
-        const invoice = await invoiceService.getInvoice(
-            req.params.id,
-            isAdmin ? null : user.id
-        );
-
-        if (!invoice) {
-            return res.status(404).json({ success: false, error: 'Invoice not found' });
-        }
-
-        // Generate proper PDF
-        const pdfBuffer = await invoiceService.generateInvoicePDF(invoice);
-
-        // Sanitize filename
-        const safeFilename = (invoice.invoiceNumber || 'invoice').replace(/[^a-zA-Z0-9\-]/g, '_');
-        res.setHeader('Content-Type', 'application/pdf');
-        res.setHeader('Content-Disposition', `attachment; filename="${safeFilename}.pdf"`);
-        res.setHeader('Content-Length', pdfBuffer.length);
-        res.send(pdfBuffer);
-    } catch (error) {
-        console.error('[Invoices] Download error:', error);
-        res.status(500).json({ success: false, error: error.message });
-    }
-});
-
 module.exports = router;
-
