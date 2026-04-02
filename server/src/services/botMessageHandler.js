@@ -504,7 +504,8 @@ class BotMessageHandler {
 
                         // Charge wa_fonepay_verification credit (fire-and-forget, non-blocking)
                         try {
-                            if (isCreditsMode) {
+                            const fonepayIsCreditsMode = await billingModeService.isCreditsMode();
+                            if (fonepayIsCreditsMode) {
                                 messageCreditService.chargeMessageByType(userId, 'wa_fonepay_verification', platform, false, user)
                                     .catch(e => console.log('[BotHandler] Fonepay charge error:', e.message));
                             } else {
