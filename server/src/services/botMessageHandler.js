@@ -892,8 +892,10 @@ class BotMessageHandler {
         // Check if user has sufficient balance based on billing mode
         if (user.role !== 'MASTER_ADMIN' && user.role !== 'ADMIN') {
             if (isCreditsMode) {
-                // CREDITS MODE: Check support credits (bot replies use support category)
-                const creditsPerMessage = user.customCreditRate || 1;
+                // CREDITS MODE: Check support credits using per-type rate
+                const smmPreCheckType = platform === 'TELEGRAM' ? 'tg_system_message' : 'wa_system_message';
+                const { rate: preCheckRate } = await creditService.getMessageTypeRate(smmPreCheckType, platform, isGroup);
+                const creditsPerMessage = user.customCreditRate || preCheckRate || 1;
                 const userCredits = user.supportCredits ?? 0;
 
                 if (userCredits < creditsPerMessage) {

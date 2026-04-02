@@ -702,9 +702,9 @@ class MessageCreditService {
             };
         }
 
-        // Check if this message type is enabled (from shared creditService config)
+        // Check if this message type is enabled AND get per-type rate
         const creditService = require('./creditService');
-        const { enabled } = await creditService.getMessageTypeRate(messageType, platform, isGroup);
+        const { enabled, rate: typeRate } = await creditService.getMessageTypeRate(messageType, platform, isGroup);
 
         // If type is disabled, skip charging
         if (!enabled) {
@@ -716,9 +716,11 @@ class MessageCreditService {
             };
         }
 
-        // In credits mode, use creditsPerMessage (not dollar rate) for deduction amount
+        // Use per-type rate from config (respects admin-set rates per message type)
+        // User custom rate overrides if set; otherwise use the per-type rate
+        // Fallback to global creditsPerMessage only if type rate is zero/missing
         const config = await this.getConfig();
-        const creditsToDeduct = user?.customCreditRate || config.creditsPerMessage;
+        const creditsToDeduct = user?.customCreditRate || typeRate || config.creditsPerMessage;
 
         if (creditsToDeduct <= 0) {
             return {

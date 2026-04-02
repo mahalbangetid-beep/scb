@@ -112,6 +112,11 @@ export default function DefaultCharges() {
             if (JSON.stringify(charges.other) !== JSON.stringify(originalCharges.other)) {
                 payload.other = {}
                 for (const [k, v] of Object.entries(charges.other)) {
+                    // Preserve boolean values (e.g. low_credit_notify_enabled)
+                    if (typeof v === 'boolean') {
+                        payload.other[k] = v
+                        continue
+                    }
                     payload.other[k] = parseFloat(v)
                 }
             }
