@@ -85,6 +85,28 @@ router.get('/', authenticate, async (req, res, next) => {
 });
 
 
+// GET /api/devices/slot-pricing - Check pricing for next device slot
+// MUST be defined BEFORE /:id to avoid Express matching 'slot-pricing' as a param
+router.get('/slot-pricing', authenticate, async (req, res, next) => {
+    try {
+        const effectiveUserId = await getEffectiveUserId(req);
+        const preCheck = await resourceSubscriptionHook.beforeResourceCreate(effectiveUserId, 'DEVICE');
+        const deviceCount = await prisma.device.count({ where: { userId: effectiveUserId } });
+
+        successResponse(res, {
+            isFree: preCheck.isFree,
+            fee: preCheck.isFree ? 0 : preCheck.requiredBalance,
+            canAfford: preCheck.canCreate,
+            currentBalance: preCheck.currentBalance || 0,
+            currentDevices: deviceCount,
+            freeSlots: 1,
+            message: preCheck.message
+        });
+    } catch (error) {
+        next(error);
+    }
+});
+
 // GET /api/devices/:id - Get device by ID
 router.get('/:id', authenticate, async (req, res, next) => {
     try {
@@ -227,27 +249,6 @@ router.post('/', authenticate, async (req, res, next) => {
             subscription: subscriptionInfo,
             slotCharge: upfrontCharge
         }, message, 201);
-    } catch (error) {
-        next(error);
-    }
-});
-
-// GET /api/devices/slot-pricing - Check pricing for next device slot
-router.get('/slot-pricing', authenticate, async (req, res, next) => {
-    try {
-        const effectiveUserId = await getEffectiveUserId(req);
-        const preCheck = await resourceSubscriptionHook.beforeResourceCreate(effectiveUserId, 'DEVICE');
-        const deviceCount = await prisma.device.count({ where: { userId: effectiveUserId } });
-
-        successResponse(res, {
-            isFree: preCheck.isFree,
-            fee: preCheck.isFree ? 0 : preCheck.requiredBalance,
-            canAfford: preCheck.canCreate,
-            currentBalance: preCheck.currentBalance || 0,
-            currentDevices: deviceCount,
-            freeSlots: 1,
-            message: preCheck.message
-        });
     } catch (error) {
         next(error);
     }
