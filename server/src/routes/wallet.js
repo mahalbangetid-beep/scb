@@ -522,18 +522,26 @@ router.post('/vouchers/redeem', async (req, res, next) => {
 // ==================== ADMIN PAYMENT MANAGEMENT ====================
 
 // GET /api/wallet/admin/payments - List all payments (Admin)
+// Merges Payment table (Binance, Manual, etc) + WalletTransaction table (eSewa)
 router.get('/admin/payments', requireAdmin, async (req, res, next) => {
     try {
         const { page, limit, skip } = parsePagination(req.query);
         const { status, userId } = req.query;
 
-        const where = {};
-        if (status) where.status = status;
-        if (userId) where.userId = userId;
+        // Build filters for Payment table
+        const paymentWhere = {};
+        if (status) paymentWhere.status = status;
+        if (userId) paymentWhere.userId = userId;
 
-        const [payments, total] = await Promise.all([
+        // Build filters for WalletTransaction table
+        const walletWhere = {};
+        if (status) walletWhere.status = status;
+        if (userId) walletWhere.userId = userId;
+
+        // Fetch from both tables in parallel
+        const [payments, paymentCount, walletTxs, walletCount] = await Promise.all([
             prisma.payment.findMany({
-                where,
+                where: paymentWhere,
                 include: {
                     user: {
                         select: {
@@ -545,13 +553,80 @@ router.get('/admin/payments', requireAdmin, async (req, res, next) => {
                     }
                 },
                 orderBy: { createdAt: 'desc' },
-                take: limit,
-                skip
+                take: limit * 2, // Fetch extra to merge
+                skip: 0
             }),
-            prisma.payment.count({ where })
+            prisma.payment.count({ where: paymentWhere }),
+            prisma.walletTransaction.findMany({
+                where: walletWhere,
+                include: {
+                    user: {
+                        select: {
+                            id: true,
+                            username: true,
+                            email: true,
+                            name: true
+                        }
+                    }
+                },
+                orderBy: { createdAt: 'desc' },
+                take: limit * 2,
+                skip: 0
+            }),
+            prisma.walletTransaction.count({ where: walletWhere })
         ]);
 
-        paginatedResponse(res, payments, { page, limit, total });
+        // Normalize WalletTransaction records to match Payment shape
+        const normalizedWalletTxs = walletTxs.map(wt => {
+            let parsedMeta = {};
+            try { parsedMeta = JSON.parse(wt.metadata || '{}'); } catch { parsedMeta = {}; }
+
+            return {
+                id: wt.id,
+                userId: wt.userId,
+                amount: wt.amount,
+                currency: 'USD',
+                method: wt.gateway || 'UNKNOWN',
+                status: wt.status,
+                reference: wt.gatewayRef || null,
+                transactionId: parsedMeta.refId || wt.gatewayRef || null,
+                notes: wt.description || null,
+                metadata: wt.metadata,
+                completedAt: wt.status === 'COMPLETED' ? wt.updatedAt : null,
+                createdAt: wt.createdAt,
+                updatedAt: wt.updatedAt,
+                user: wt.user,
+                // eSewa-specific parsed fields for admin display
+                _source: 'wallet_transaction',
+                _esewaDetails: wt.gateway === 'ESEWA' ? {
+                    transactionCode: parsedMeta.refId || null,
+                    nprAmount: parsedMeta.nprAmount || null,
+                    usdAmount: parsedMeta.usdAmount || wt.amount,
+                    exchangeRate: parsedMeta.exchangeRate || null,
+                    taxPercent: parsedMeta.taxPercent || 0,
+                    bonusPercent: parsedMeta.bonusPercent || 0,
+                    memo: parsedMeta.memo || null,
+                    verificationData: parsedMeta.verificationData || null
+                } : null
+            };
+        });
+
+        // Tag Payment records with source
+        const taggedPayments = payments.map(p => ({
+            ...p,
+            _source: 'payment',
+            _esewaDetails: null
+        }));
+
+        // Merge and sort by createdAt descending
+        const merged = [...taggedPayments, ...normalizedWalletTxs]
+            .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+        // Apply pagination to merged results
+        const total = paymentCount + walletCount;
+        const paginatedData = merged.slice(skip, skip + limit);
+
+        paginatedResponse(res, paginatedData, { page, limit, total });
     } catch (error) {
         next(error);
     }

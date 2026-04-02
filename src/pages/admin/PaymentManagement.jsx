@@ -531,6 +531,92 @@ export default function PaymentManagement() {
                                 )}
                             </div>
 
+                            {/* eSewa Transaction Details */}
+                            {selectedPayment._esewaDetails && (
+                                <div style={{
+                                    marginTop: 16, padding: 16,
+                                    background: 'rgba(96, 187, 70, 0.05)',
+                                    border: '1px solid rgba(96, 187, 70, 0.2)',
+                                    borderRadius: 12
+                                }}>
+                                    <div style={{
+                                        display: 'flex', alignItems: 'center', gap: 8,
+                                        marginBottom: 12, paddingBottom: 10,
+                                        borderBottom: '1px solid rgba(96, 187, 70, 0.15)'
+                                    }}>
+                                        <span style={{
+                                            background: '#60BB46', color: '#fff',
+                                            padding: '2px 8px', borderRadius: 6,
+                                            fontSize: 11, fontWeight: 700
+                                        }}>eSewa</span>
+                                        <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>
+                                            Transaction Details
+                                        </span>
+                                    </div>
+                                    <div className="pm-detail-grid" style={{ gap: 10 }}>
+                                        <div className="pm-detail-item">
+                                            <span className="pm-detail-label">Transaction Code</span>
+                                            <span className="pm-detail-value" style={{ fontFamily: 'monospace', fontWeight: 600 }}>
+                                                {selectedPayment._esewaDetails.transactionCode || '—'}
+                                            </span>
+                                        </div>
+                                        <div className="pm-detail-item">
+                                            <span className="pm-detail-label">NPR Amount (Paid)</span>
+                                            <span className="pm-detail-value" style={{ fontWeight: 600, color: '#60BB46' }}>
+                                                Rs. {selectedPayment._esewaDetails.nprAmount || '—'}
+                                            </span>
+                                        </div>
+                                        <div className="pm-detail-item">
+                                            <span className="pm-detail-label">USD Amount (Credited)</span>
+                                            <span className="pm-detail-value" style={{ fontWeight: 600 }}>
+                                                ${(selectedPayment._esewaDetails.usdAmount || 0).toFixed(5)}
+                                            </span>
+                                        </div>
+                                        <div className="pm-detail-item">
+                                            <span className="pm-detail-label">Exchange Rate</span>
+                                            <span className="pm-detail-value">
+                                                1 USD = {selectedPayment._esewaDetails.exchangeRate || '—'} NPR
+                                            </span>
+                                        </div>
+                                        <div className="pm-detail-item">
+                                            <span className="pm-detail-label">Tax %</span>
+                                            <span className="pm-detail-value">
+                                                {selectedPayment._esewaDetails.taxPercent}%
+                                                {selectedPayment._esewaDetails.taxPercent > 0 && (
+                                                    <span style={{ color: 'var(--text-secondary)', marginLeft: 6, fontSize: 11 }}>
+                                                        (${(selectedPayment._esewaDetails.usdAmount * selectedPayment._esewaDetails.taxPercent / 100).toFixed(5)})
+                                                    </span>
+                                                )}
+                                            </span>
+                                        </div>
+                                        <div className="pm-detail-item">
+                                            <span className="pm-detail-label">Bonus %</span>
+                                            <span className="pm-detail-value">
+                                                {selectedPayment._esewaDetails.bonusPercent}%
+                                                {selectedPayment._esewaDetails.bonusPercent > 0 && (
+                                                    <span style={{ color: '#10b981', marginLeft: 6, fontSize: 11 }}>
+                                                        (+${(selectedPayment._esewaDetails.usdAmount * selectedPayment._esewaDetails.bonusPercent / 100).toFixed(5)})
+                                                    </span>
+                                                )}
+                                            </span>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Source Badge */}
+                            {selectedPayment._source && (
+                                <div style={{ marginTop: 12, textAlign: 'right' }}>
+                                    <span style={{
+                                        fontSize: 10, padding: '2px 8px', borderRadius: 4,
+                                        background: 'var(--bg-tertiary)', color: 'var(--text-muted)',
+                                        textTransform: 'uppercase', letterSpacing: '0.5px'
+                                    }}>
+                                        Source: {selectedPayment._source === 'wallet_transaction' ? 'Gateway' : 'Manual/API'}
+                                    </span>
+                                </div>
+                            )}
+
                             {/* Actions for PENDING */}
                             {selectedPayment.status === 'PENDING' && (
                                 <div className="pm-modal-actions-section">
