@@ -694,6 +694,18 @@ router.put('/admin/payments/:id/approve', requireAdmin, async (req, res, next) =
             payment: { ...result.payment, status: 'COMPLETED' },
             userBalance: result.balanceAfter
         });
+
+        // Section 5.3: Send payment notification to user (fire-and-forget)
+        try {
+            const userNotificationService = require('../services/userNotificationService');
+            const payUser = await prisma.user.findUnique({ where: { id: result.payment.userId }, select: { username: true } });
+            if (payUser) {
+                userNotificationService.sendPaymentNotification(req.effectiveUserId, payUser.username, {
+                    amount: result.payment.amount, type: 'credit',
+                    method: result.payment.gateway || 'Manual', newBalance: result.balanceAfter, currency: 'USD'
+                }).catch(e => console.log('[Wallet] Payment notification failed:', e.message));
+            }
+        } catch (notifErr) { /* non-critical */ }
     } catch (error) {
         next(error);
     }

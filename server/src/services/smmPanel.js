@@ -570,6 +570,13 @@ class SmmPanelService {
                                 oldStatus: order.status,
                                 newStatus
                             });
+
+                            // Section 3.4: Send AI status update to mapped user (fire-and-forget)
+                            try {
+                                const userNotificationService = require('./userNotificationService');
+                                userNotificationService.sendOrderStatusUpdate(userId, order, order.status, newStatus)
+                                    .catch(e => console.log('[SMM] Status notification failed:', e.message));
+                            } catch (notifErr) { /* non-critical */ }
                         }
                     }
                 }

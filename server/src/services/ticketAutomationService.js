@@ -337,24 +337,20 @@ class TicketAutomationService {
 
     /**
      * Send notification for ticket update
+     * Routes through userNotificationService to charge wa_ticket_reply credits
      */
     async sendUpdateNotification(ticket, message) {
         if (!ticket.customerPhone) return;
 
-        // Use WhatsApp service to send notification
         try {
-            const whatsAppService = require('./whatsapp');
-            const device = await prisma.device.findFirst({
-                where: { userId: ticket.userId, status: 'connected' }
-            });
-
-            if (device) {
-                await whatsAppService.sendMessage(
-                    device.id,
-                    ticket.customerPhone,
-                    `📋 *Ticket Update*\n\nTicket: #${ticket.ticketNumber}\n${message}`
-                );
-            }
+            const userNotificationService = require('./userNotificationService');
+            const fullMessage = `📋 *Ticket Update*\n\nTicket: #${ticket.ticketNumber}\n${message}`;
+            await userNotificationService.sendNotification(
+                ticket.userId,
+                'wa_ticket_reply',
+                ticket.customerPhone,
+                fullMessage
+            );
         } catch (error) {
             console.error('[TicketAutomation] Notification failed:', error.message);
         }

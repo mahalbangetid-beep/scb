@@ -500,6 +500,19 @@ class BotMessageHandler {
                             await this.incrementSystemBotUsage(params._systemBotSubscriptionId);
                         }
 
+
+
+                        // Charge wa_fonepay_verification credit (fire-and-forget, non-blocking)
+                        try {
+                            if (isCreditsMode) {
+                                messageCreditService.chargeMessageByType(userId, 'wa_fonepay_verification', platform, false, user)
+                                    .catch(e => console.log('[BotHandler] Fonepay charge error:', e.message));
+                            } else {
+                                creditService.chargeMessageByType(userId, 'wa_fonepay_verification', platform, false, user)
+                                    .catch(e => console.log('[BotHandler] Fonepay charge error:', e.message));
+                            }
+                        } catch (chargeErr) { /* non-critical */ }
+
                         return {
                             handled: true,
                             type: 'fonepay_verification',
