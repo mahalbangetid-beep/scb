@@ -356,6 +356,15 @@ httpServer.listen(PORT, async () => {
     subscriptionScheduler.initialize();
     console.log('[Server] Subscription Scheduler initialized');
 
+    // Start Payment Polling Service (panel payment notification)
+    try {
+        const paymentPollingService = require('./services/paymentPollingService');
+        paymentPollingService.start();
+        console.log('[Server] Payment Polling Service initialized');
+    } catch (e) {
+        console.log('[Server] Payment Polling Service skipped:', e.message);
+    }
+
     // Seed default email templates
     try {
         const emailService = require('./services/emailService');

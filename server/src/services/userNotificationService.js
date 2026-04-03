@@ -145,7 +145,7 @@ class UserNotificationService {
         // Try to get custom template
         const responseTemplateService = require('./responseTemplateService');
         const statusDisplay = this.formatStatus(newStatus);
-        
+
         let message = await responseTemplateService.getResponse(userId, 'ORDER_STATUS_UPDATE', {
             order_id: order.externalOrderId,
             status: statusDisplay,
@@ -192,7 +192,7 @@ class UserNotificationService {
 
         const { amount, type, method, newBalance, currency = 'USD' } = paymentInfo;
         const responseTemplateService = require('./responseTemplateService');
-        
+
         const templateKey = type === 'credit' ? 'PAYMENT_ADDED' : 'PAYMENT_DEDUCTED';
         let message = await responseTemplateService.getResponse(userId, templateKey, {
             amount: amount.toFixed(2),
@@ -269,13 +269,13 @@ class UserNotificationService {
         try {
             const userMappingService = require('./userMappingService');
             const mapping = await userMappingService.findByUsername(userId, customerUsername);
-            
+
             if (mapping) {
                 // Return the first available phone number
                 const phones = Array.isArray(mapping.whatsappNumbers)
                     ? mapping.whatsappNumbers
                     : (mapping.whatsappNumber ? [mapping.whatsappNumber] : []);
-                
+
                 if (phones.length > 0) {
                     return phones[0];
                 }
