@@ -128,8 +128,17 @@ class UserNotificationService {
         }
 
         // Find the user's phone from mapping
-        const recipientPhone = await this.findUserPhone(userId, order.customerUsername);
+        // Try by customerUsername first, then fallback to any mapping for this user
+        let recipientPhone = null;
+        if (order.customerUsername) {
+            recipientPhone = await this.findUserPhone(userId, order.customerUsername);
+        }
         if (!recipientPhone) {
+            // Fallback: find ANY mapping with a phone for this userId
+            recipientPhone = await this.findPhoneByUserId(userId);
+        }
+        if (!recipientPhone) {
+            console.log(`[UserNotification] No phone found for status update: userId=${userId}, customerUsername=${order.customerUsername || 'null'}`);
             return { sent: false, reason: 'no_mapping' };
         }
 
@@ -161,8 +170,17 @@ class UserNotificationService {
      * @param {Object} paymentInfo - { amount, type ('credit'|'debit'), method, newBalance, currency }
      */
     async sendPaymentNotification(userId, customerUsername, paymentInfo) {
-        const recipientPhone = await this.findUserPhone(userId, customerUsername);
+        // Try by panel username first, then fallback to any mapping for this userId
+        let recipientPhone = null;
+        if (customerUsername) {
+            recipientPhone = await this.findUserPhone(userId, customerUsername);
+        }
         if (!recipientPhone) {
+            // Fallback: find ANY mapping with a phone for this userId
+            recipientPhone = await this.findPhoneByUserId(userId);
+        }
+        if (!recipientPhone) {
+            console.log(`[UserNotification] No phone found for payment notification: userId=${userId}, username=${customerUsername || 'null'}`);
             return { sent: false, reason: 'no_mapping' };
         }
 
@@ -258,6 +276,42 @@ class UserNotificationService {
             }
         } catch (error) {
             console.error(`[UserNotification] findUserPhone error:`, error.message);
+        }
+
+        return null;
+    }
+
+    /**
+     * Find ANY WhatsApp phone number for a userId from their mappings.
+     * Used as fallback when customerUsername is unknown or doesn't match.
+     * Searches all mappings for this bot owner and returns the first phone found.
+     */
+    async findPhoneByUserId(userId) {
+        try {
+            const mappings = await prisma.userPanelMapping.findMany({
+                where: { userId },
+                orderBy: { updatedAt: 'desc' },
+                take: 10
+            });
+
+            for (const mapping of mappings) {
+                // Parse whatsappNumbers (stored as JSON string)
+                let phones = [];
+                try {
+                    phones = typeof mapping.whatsappNumbers === 'string'
+                        ? JSON.parse(mapping.whatsappNumbers)
+                        : (mapping.whatsappNumbers || []);
+                } catch (e) {
+                    phones = [];
+                }
+
+                if (Array.isArray(phones) && phones.length > 0) {
+                    console.log(`[UserNotification] Found phone via userId fallback: ${phones[0]} (mapping: ${mapping.panelUsername})`);
+                    return phones[0];
+                }
+            }
+        } catch (error) {
+            console.error(`[UserNotification] findPhoneByUserId error:`, error.message);
         }
 
         return null;

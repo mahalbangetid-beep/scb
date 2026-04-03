@@ -698,9 +698,11 @@ router.put('/admin/payments/:id/approve', requireAdmin, async (req, res, next) =
         // Section 5.3: Send payment notification to user (fire-and-forget)
         try {
             const userNotificationService = require('../services/userNotificationService');
+            // Use admin's userId (req.effectiveUserId) for device & mapping lookup
+            // The admin owns the devices and mappings, not the payment recipient
             const payUser = await prisma.user.findUnique({ where: { id: result.payment.userId }, select: { username: true } });
             if (payUser) {
-                userNotificationService.sendPaymentNotification(result.payment.userId, payUser.username, {
+                userNotificationService.sendPaymentNotification(req.effectiveUserId, payUser.username, {
                     amount: result.payment.amount, type: 'credit',
                     method: result.payment.method || 'Manual', newBalance: result.balanceAfter, currency: 'USD'
                 }).catch(e => console.log('[Wallet] Payment notification failed:', e.message));
