@@ -118,6 +118,33 @@ class GroupForwardingService {
         let providerGroup = null;
         let targetJidOverride = null;  // For service ID specific routing
 
+        // Helper: detect manual/no-provider orders
+        const _noProviderValues = ['n/a', '0', 'none', 'manual', ''];
+        const _isManualService = !providerName || _noProviderValues.includes(providerName.toLowerCase());
+
+        // ==================== 0. CHECK SERVICE FORWARD RULES (per-service-ID override) ====================
+        // ServiceForwardRule table — user-defined per-service-ID forwarding destinations
+        // If matched, forward directly to configured destination and return early
+        if (order.serviceId && order.panelId) {
+            try {
+                const panelToolsService = require('./panelToolsService');
+                const forwardRule = await panelToolsService.getForwardRuleForService(userId, order.panelId, order.serviceId);
+                if (forwardRule) {
+                    // Check if this command type is enabled for this rule
+                    const cmdUpper = command.toUpperCase();
+                    const isAllowed = (cmdUpper === 'REFILL' && forwardRule.forwardRefill) ||
+                                     (cmdUpper === 'CANCEL' && forwardRule.forwardCancel) ||
+                                     !['REFILL', 'CANCEL'].includes(cmdUpper); // other commands always allowed
+                    if (isAllowed) {
+                        logger.info(`📋 ServiceForwardRule matched for serviceId ${order.serviceId} → forwarding directly`);
+                        return this._forwardViaServiceRule(forwardRule, command, order, providerOrderId, userId, deviceId);
+                    }
+                }
+            } catch (ruleErr) {
+                logger.warn(`ServiceForwardRule check failed (non-blocking):`, ruleErr.message);
+            }
+        }
+
         // ==================== 1. CHECK SERVICE ID ROUTING ====================
         // Check if any provider group has a serviceIdRules that matches this order's serviceId
         if (order.serviceId) {
@@ -162,8 +189,8 @@ class GroupForwardingService {
         }
 
         // ==================== 3. CHECK FOR MANUAL SERVICE GROUP ====================
-        // If no provider name, this might be a manual service
-        if (!providerGroup && !providerName) {
+        // If no real provider (null, "N/A", "0", "none", "manual"), use manual service group
+        if (!providerGroup && _isManualService) {
             providerGroup = await prisma.providerGroup.findFirst({
                 where: {
                     panelId: order.panelId,
@@ -173,7 +200,7 @@ class GroupForwardingService {
             });
 
             if (providerGroup) {
-                logger.info(`Using manual service group (no provider detected)`);
+                logger.info(`Using manual service group (provider="${providerName || 'null'}" treated as manual)`);
             }
         }
 
@@ -992,6 +1019,125 @@ Remains: {remains}
                 : `Forward failed: ${errors.join('; ')}`,
             source: 'ProviderConfig',
             groupName: config.alias || config.providerName,
+            forwardedTo,
+            errors: errors.length > 0 ? errors : undefined
+        };
+    }
+
+    /**
+     * Forward via ServiceForwardRule (per-service-ID override from Panel Tools page)
+     * Called when a ServiceForwardRule matches the order's serviceId.
+     * Forwards to configured WhatsApp group/number or Telegram chat.
+     */
+    async _forwardViaServiceRule(rule, command, order, providerOrderId, userId, deviceId) {
+        const targetGroup = rule.forwardToGroup;
+        const targetNumber = rule.forwardToNumber;
+        const targetTelegram = rule.forwardToChat;
+
+        if (!targetGroup && !targetNumber && !targetTelegram) {
+            return {
+                success: false,
+                reason: 'no_destination',
+                message: `ServiceForwardRule for service ${rule.serviceId} has no forwarding destination set.`
+            };
+        }
+
+        // Build simple message format: "orderId command"
+        const validPOI = providerOrderId && providerOrderId !== '0' ? providerOrderId : null;
+        const validOPOI = order.providerOrderId && order.providerOrderId !== '0' ? order.providerOrderId : null;
+        const displayOrderId = validPOI || validOPOI || order.externalOrderId || 'N/A';
+        const cmdMap = { 'REFILL': 'refill', 'CANCEL': 'cancel', 'SPEED_UP': 'speed up', 'NEW_ORDER': 'new' };
+        const message = `${displayOrderId} ${cmdMap[command.toUpperCase()] || command.toLowerCase()}`;
+
+        // Resolve deviceId
+        let sendDeviceId = deviceId;
+        if (!sendDeviceId) {
+            try {
+                const connectedDevice = await prisma.device.findFirst({
+                    where: { userId, status: 'connected' },
+                    select: { id: true }
+                });
+                if (connectedDevice) sendDeviceId = connectedDevice.id;
+            } catch (e) { /* non-critical */ }
+        }
+
+        let success = false;
+        let forwardedTo = [];
+        let errors = [];
+
+        // Forward to WhatsApp Group
+        if (targetGroup && sendDeviceId && this.whatsappService) {
+            try {
+                const formattedJid = targetGroup.includes('@') ? targetGroup : `${targetGroup}@g.us`;
+                await this.whatsappService.sendMessage(sendDeviceId, formattedJid, message);
+                forwardedTo.push(`WA Group`);
+                success = true;
+                logger.info(`✅ ServiceForwardRule: Forwarded ${command} for service ${rule.serviceId} to WA group`);
+            } catch (err) {
+                errors.push(`WA Group failed: ${err.message}`);
+            }
+        }
+
+        // Forward to WhatsApp Number
+        if (targetNumber && sendDeviceId && this.whatsappService) {
+            try {
+                const numberJid = `${targetNumber.replace(/\D/g, '')}@s.whatsapp.net`;
+                await this.whatsappService.sendMessage(sendDeviceId, numberJid, message);
+                forwardedTo.push(`WA Number`);
+                success = true;
+                logger.info(`✅ ServiceForwardRule: Forwarded ${command} for service ${rule.serviceId} to WA number`);
+            } catch (err) {
+                errors.push(`WA Number failed: ${err.message}`);
+            }
+        }
+
+        // Forward to Telegram
+        if (targetTelegram) {
+            try {
+                const telegramService = require('./telegram');
+                const firstBot = await prisma.telegramBot.findFirst({
+                    where: { userId, status: 'connected' },
+                    select: { id: true },
+                    orderBy: { createdAt: 'asc' }
+                });
+                if (firstBot) {
+                    await telegramService.sendMessage(firstBot.id, targetTelegram, message, { parseMode: undefined });
+                    forwardedTo.push(`Telegram`);
+                    success = true;
+                    logger.info(`✅ ServiceForwardRule: Forwarded ${command} for service ${rule.serviceId} to Telegram`);
+                } else {
+                    errors.push('No active Telegram bot found');
+                }
+            } catch (tgErr) {
+                errors.push(`Telegram failed: ${tgErr.message}`);
+            }
+        }
+
+        // Log
+        try {
+            await prisma.orderCommand.updateMany({
+                where: { orderId: order.id, command: command.toUpperCase(), status: 'SUCCESS' },
+                data: {
+                    forwardedTo: forwardedTo.join(', ') || null,
+                    response: JSON.stringify({
+                        forwarded: true,
+                        source: 'ServiceForwardRule',
+                        ruleId: rule.id,
+                        serviceId: rule.serviceId,
+                        destinations: forwardedTo,
+                        timestamp: new Date().toISOString()
+                    })
+                }
+            });
+        } catch (logErr) { /* non-critical */ }
+
+        return {
+            success,
+            message: success
+                ? `Forwarded to ${forwardedTo.join(', ')} (via Service Forward Rule)`
+                : `Forward failed: ${errors.join('; ')}`,
+            source: 'ServiceForwardRule',
+            groupName: rule.serviceName || `Service ${rule.serviceId}`,
             forwardedTo,
             errors: errors.length > 0 ? errors : undefined
         };

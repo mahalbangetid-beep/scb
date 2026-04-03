@@ -815,16 +815,39 @@ class CommandHandlerService {
                         errorNotifyEnabled: true
                     }
                 });
-                if (providerConfig && (providerConfig.errorGroupJid || providerConfig.errorChatId || providerConfig.whatsappNumber)) {
+                if (providerConfig && (providerConfig.errorGroupJid || providerConfig.errorWhatsappNumber || providerConfig.errorChatId)) {
                     const errorMsg = `⚠️ Error Order: #${orderId}\nStatus: ${order.status}\nService: ${order.serviceName || 'N/A'}`;
+
+                    // Prefer errorDeviceId from config, fallback to command deviceId
+                    const errorDeviceId = providerConfig.errorDeviceId || deviceId;
+
+                    // Forward to WhatsApp (group or number)
                     const targetJid = providerConfig.errorGroupJid
                         ? (providerConfig.errorGroupJid.includes('@') ? providerConfig.errorGroupJid : `${providerConfig.errorGroupJid}@g.us`)
-                        : providerConfig.whatsappNumber
-                            ? `${providerConfig.whatsappNumber.replace(/\D/g, '')}@s.whatsapp.net`
+                        : providerConfig.errorWhatsappNumber
+                            ? `${providerConfig.errorWhatsappNumber.replace(/\D/g, '')}@s.whatsapp.net`
                             : null;
-                    if (targetJid && deviceId) {
-                        await groupForwardingService.whatsappService.sendMessage(deviceId, targetJid, errorMsg);
-                        console.log(`[CommandHandler] ✅ Error order ${orderId} forwarded to error destination`);
+                    if (targetJid && errorDeviceId && groupForwardingService.whatsappService) {
+                        await groupForwardingService.whatsappService.sendMessage(errorDeviceId, targetJid, errorMsg);
+                        console.log(`[CommandHandler] ✅ Error order ${orderId} forwarded to WA error destination`);
+                    }
+
+                    // Forward to Telegram errorChatId
+                    if (providerConfig.errorChatId) {
+                        try {
+                            const telegramService = require('./telegram');
+                            const firstBot = await prisma.telegramBot.findFirst({
+                                where: { userId, status: 'connected' },
+                                select: { id: true },
+                                orderBy: { createdAt: 'asc' }
+                            });
+                            if (firstBot) {
+                                await telegramService.sendMessage(firstBot.id, providerConfig.errorChatId, errorMsg, { parseMode: undefined });
+                                console.log(`[CommandHandler] ✅ Error order ${orderId} forwarded to Telegram error destination`);
+                            }
+                        } catch (tgErr) {
+                            console.log(`[CommandHandler] Telegram error forwarding failed:`, tgErr.message);
+                        }
                     }
                 }
             } catch (errFwd) {
