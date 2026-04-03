@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Settings, Shield, Zap, MessageSquare, AlertTriangle, RotateCcw, Save, ChevronDown, ChevronRight, Bell, Package, Users, Search, Phone, ShieldAlert, Plus, Trash2, UserCheck } from 'lucide-react';
 import api from '../services/api';
 import ScopeSelector from '../components/ScopeSelector';
+import CommandAliasEditor from '../components/CommandAliasEditor';
 
 const BotSettings = () => {
     const [toggles, setToggles] = useState(null);
@@ -427,6 +428,9 @@ const BotSettings = () => {
                         toggleKey="allowStatusCommand"
                     />
                 </Section>
+
+                {/* Command Keyword Aliases */}
+                <CommandAliasEditor />
 
                 {/* Response Settings */}
                 <Section
