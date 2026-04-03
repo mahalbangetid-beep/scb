@@ -816,7 +816,20 @@ class CommandHandlerService {
                     }
                 });
                 if (providerConfig && (providerConfig.errorGroupJid || providerConfig.errorWhatsappNumber || providerConfig.errorChatId)) {
-                    const errorMsg = `⚠️ Error Order: #${orderId}\nStatus: ${order.status}\nService: ${order.serviceName || 'N/A'}`;
+                    // Use errorTemplate if configured, otherwise use default
+                    let errorMsg;
+                    if (providerConfig.errorTemplate) {
+                        errorMsg = providerConfig.errorTemplate
+                            .replace(/{order_id}/gi, orderId)
+                            .replace(/{orderId}/gi, orderId)
+                            .replace(/{status}/gi, order.status || 'Error')
+                            .replace(/{service}/gi, order.serviceName || 'N/A')
+                            .replace(/{link}/gi, order.link || '')
+                            .replace(/{quantity}/gi, order.quantity || '')
+                            .replace(/{provider}/gi, order.providerName || 'N/A');
+                    } else {
+                        errorMsg = `⚠️ Error Order: #${orderId}\nStatus: ${order.status}\nService: ${order.serviceName || 'N/A'}`;
+                    }
 
                     // Prefer errorDeviceId from config, fallback to command deviceId
                     const errorDeviceId = providerConfig.errorDeviceId || deviceId;

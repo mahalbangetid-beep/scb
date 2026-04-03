@@ -100,7 +100,7 @@ router.post('/manual-destination', async (req, res, next) => {
     try {
         const {
             deviceId, whatsappNumber, whatsappGroupJid, telegramChatId,
-            refillTemplate, cancelTemplate, speedupTemplate,
+            refillTemplate, cancelTemplate, speedupTemplate, statusTemplate,
             errorGroupJid, errorWhatsappNumber, errorChatId, errorDeviceId, errorTemplate
         } = req.body;
 
@@ -118,6 +118,7 @@ router.post('/manual-destination', async (req, res, next) => {
                 refillTemplate: refillTemplate || null,
                 cancelTemplate: cancelTemplate || null,
                 speedupTemplate: speedupTemplate || null,
+                statusTemplate: statusTemplate || null,
                 errorGroupJid: errorGroupJid || null,
                 errorWhatsappNumber: errorWhatsappNumber || null,
                 errorChatId: errorChatId || null,
@@ -136,6 +137,7 @@ router.post('/manual-destination', async (req, res, next) => {
                 refillTemplate: refillTemplate || null,
                 cancelTemplate: cancelTemplate || null,
                 speedupTemplate: speedupTemplate || null,
+                statusTemplate: statusTemplate || null,
                 errorGroupJid: errorGroupJid || null,
                 errorWhatsappNumber: errorWhatsappNumber || null,
                 errorChatId: errorChatId || null,
@@ -291,7 +293,7 @@ router.put('/:id', async (req, res, next) => {
             'whatsappGroupJid', 'whatsappNumber',
             'telegramChatId', 'telegramBotToken',
             'errorGroupJid', 'errorChatId', 'errorNotifyEnabled',
-            'refillTemplate', 'cancelTemplate', 'speedupTemplate', 'errorTemplate',
+            'refillTemplate', 'cancelTemplate', 'speedupTemplate', 'statusTemplate', 'errorTemplate',
             'priority', 'isActive', 'deviceId'
         ];
 

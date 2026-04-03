@@ -9,9 +9,10 @@ export default function ServiceForwardRules({ panelId }) {
     const [editingId, setEditingId] = useState(null)
     const [saving, setSaving] = useState(false)
     const [error, setError] = useState(null)
-    const [form, setForm] = useState({ serviceId: '', serviceName: '', forwardRefill: true, forwardCancel: true, forwardToGroup: '', forwardToNumber: '', forwardToChat: '', reason: '' })
+    const [devices, setDevices] = useState([])
+    const [form, setForm] = useState({ serviceId: '', serviceName: '', forwardRefill: true, forwardCancel: true, forwardSpeedup: true, forwardStatus: false, deviceId: '', forwardToGroup: '', forwardToNumber: '', forwardToChat: '', reason: '' })
 
-    useEffect(() => { if (panelId) fetchRules() }, [panelId])
+    useEffect(() => { if (panelId) { fetchRules(); fetchDevices() } }, [panelId])
     useEffect(() => { if (error) { const t = setTimeout(() => setError(null), 5000); return () => clearTimeout(t) } }, [error])
 
     const fetchRules = async () => {
@@ -21,6 +22,13 @@ export default function ServiceForwardRules({ panelId }) {
             setRules(res.data.data || [])
         } catch (e) { setError(e.response?.data?.message || 'Failed to load') }
         setLoading(false)
+    }
+
+    const fetchDevices = async () => {
+        try {
+            const res = await api.get('/devices')
+            setDevices(res.data?.devices || res.data || [])
+        } catch (e) { console.error('Failed to fetch devices') }
     }
 
     const handleSave = async () => {
@@ -48,7 +56,7 @@ export default function ServiceForwardRules({ panelId }) {
 
     const handleEdit = (r) => {
         setEditingId(r.id)
-        setForm({ serviceId: r.serviceId, serviceName: r.serviceName || '', forwardRefill: r.forwardRefill, forwardCancel: r.forwardCancel, forwardToGroup: r.forwardToGroup || '', forwardToNumber: r.forwardToNumber || '', forwardToChat: r.forwardToChat || '', reason: r.reason || '' })
+        setForm({ serviceId: r.serviceId, serviceName: r.serviceName || '', forwardRefill: r.forwardRefill, forwardCancel: r.forwardCancel, forwardSpeedup: r.forwardSpeedup ?? true, forwardStatus: r.forwardStatus ?? false, deviceId: r.deviceId || '', forwardToGroup: r.forwardToGroup || '', forwardToNumber: r.forwardToNumber || '', forwardToChat: r.forwardToChat || '', reason: r.reason || '' })
         setShowForm(true)
     }
 
@@ -62,7 +70,7 @@ export default function ServiceForwardRules({ panelId }) {
     const resetForm = () => {
         setShowForm(false)
         setEditingId(null)
-        setForm({ serviceId: '', serviceName: '', forwardRefill: true, forwardCancel: true, forwardToGroup: '', forwardToNumber: '', forwardToChat: '', reason: '' })
+        setForm({ serviceId: '', serviceName: '', forwardRefill: true, forwardCancel: true, forwardSpeedup: true, forwardStatus: false, deviceId: '', forwardToGroup: '', forwardToNumber: '', forwardToChat: '', reason: '' })
     }
 
     if (!panelId) return <div className="empty-state"><p>Select a panel first</p></div>
@@ -113,7 +121,16 @@ export default function ServiceForwardRules({ panelId }) {
                             <label className="form-label">Reason / Notes</label>
                             <input className="form-input" placeholder="e.g. Provider requested manual handling" value={form.reason} onChange={e => setForm({ ...form, reason: e.target.value })} />
                         </div>
-                        <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
+                        <div style={{ gridColumn: '1 / -1' }}>
+                            <label className="form-label">Select Device (for sending)</label>
+                            <select className="form-select" value={form.deviceId} onChange={e => setForm({ ...form, deviceId: e.target.value })}>
+                                <option value="">Default (use command device)</option>
+                                {devices.map(d => (
+                                    <option key={d.id} value={d.id}>{d.name} ({d.status})</option>
+                                ))}
+                            </select>
+                        </div>
+                        <div style={{ display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap' }}>
                             <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                                 <input type="checkbox" checked={form.forwardRefill} onChange={e => setForm({ ...form, forwardRefill: e.target.checked })} />
                                 Forward Refill
@@ -121,6 +138,14 @@ export default function ServiceForwardRules({ panelId }) {
                             <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                                 <input type="checkbox" checked={form.forwardCancel} onChange={e => setForm({ ...form, forwardCancel: e.target.checked })} />
                                 Forward Cancel
+                            </label>
+                            <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                <input type="checkbox" checked={form.forwardSpeedup} onChange={e => setForm({ ...form, forwardSpeedup: e.target.checked })} />
+                                Forward Speed Up
+                            </label>
+                            <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                <input type="checkbox" checked={form.forwardStatus} onChange={e => setForm({ ...form, forwardStatus: e.target.checked })} />
+                                Forward Status
                             </label>
                         </div>
                     </div>
@@ -146,9 +171,11 @@ export default function ServiceForwardRules({ panelId }) {
                                 <th>Name</th>
                                 <th>Refill</th>
                                 <th>Cancel</th>
+                                <th>Speed</th>
+                                <th>Status</th>
                                 <th>Forward To</th>
                                 <th>Reason</th>
-                                <th>Status</th>
+                                <th>Active</th>
                                 <th>Actions</th>
                             </tr>
                         </thead>
@@ -159,6 +186,8 @@ export default function ServiceForwardRules({ panelId }) {
                                     <td>{r.serviceName || '—'}</td>
                                     <td>{r.forwardRefill ? '✅' : '❌'}</td>
                                     <td>{r.forwardCancel ? '✅' : '❌'}</td>
+                                    <td>{r.forwardSpeedup ? '✅' : '❌'}</td>
+                                    <td>{r.forwardStatus ? '✅' : '❌'}</td>
                                     <td style={{ fontSize: 12 }}>
                                         {r.forwardToGroup && <div>WA Group: <code>{r.forwardToGroup}</code></div>}
                                         {r.forwardToNumber && <div>WA DM: <code>{r.forwardToNumber}</code></div>}

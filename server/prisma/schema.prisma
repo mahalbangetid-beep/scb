@@ -1824,6 +1824,7 @@ model ProviderConfig {
   refillTemplate  String? @db.Text // Template for refill messages
   cancelTemplate  String? @db.Text // Template for cancel messages
   speedupTemplate String? @db.Text // Template for speedup messages
+  statusTemplate  String? @db.Text // Template for status check messages
   errorTemplate   String? @db.Text // Template for error messages
 
   // Device for forwarding (Section 8.2)
@@ -1860,6 +1861,11 @@ model ServiceForwardRule {
   // What to forward
   forwardRefill  Boolean @default(true)
   forwardCancel  Boolean @default(true)
+  forwardSpeedup Boolean @default(true)
+  forwardStatus  Boolean @default(false)
+
+  // Device for sending forwarded messages
+  deviceId String? // WhatsApp device ID
 
   // Where to forward
   forwardToGroup  String?  // WhatsApp group JID

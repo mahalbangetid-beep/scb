@@ -134,10 +134,13 @@ class GroupForwardingService {
                     const cmdUpper = command.toUpperCase();
                     const isAllowed = (cmdUpper === 'REFILL' && forwardRule.forwardRefill) ||
                                      (cmdUpper === 'CANCEL' && forwardRule.forwardCancel) ||
-                                     !['REFILL', 'CANCEL'].includes(cmdUpper); // other commands always allowed
+                                     (cmdUpper === 'SPEED_UP' && forwardRule.forwardSpeedup) ||
+                                     (cmdUpper === 'STATUS' && forwardRule.forwardStatus);
                     if (isAllowed) {
                         logger.info(`📋 ServiceForwardRule matched for serviceId ${order.serviceId} → forwarding directly`);
-                        return this._forwardViaServiceRule(forwardRule, command, order, providerOrderId, userId, deviceId);
+                        // Prefer rule's own deviceId, fallback to command deviceId
+                        const ruleDeviceId = forwardRule.deviceId || deviceId;
+                        return this._forwardViaServiceRule(forwardRule, command, order, providerOrderId, userId, ruleDeviceId);
                     }
                 }
             } catch (ruleErr) {

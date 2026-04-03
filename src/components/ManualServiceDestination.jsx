@@ -17,6 +17,7 @@ export default function ManualServiceDestination({ panelId }) {
         refillTemplate: '',
         cancelTemplate: '',
         speedupTemplate: '',
+        statusTemplate: '',
         errorDeviceId: '',
         errorWhatsappNumber: '',
         errorGroupJid: '',
@@ -52,6 +53,7 @@ export default function ManualServiceDestination({ panelId }) {
                     refillTemplate: cfg.refillTemplate || '',
                     cancelTemplate: cfg.cancelTemplate || '',
                     speedupTemplate: cfg.speedupTemplate || '',
+                    statusTemplate: cfg.statusTemplate || '',
                     errorDeviceId: cfg.errorDeviceId || '',
                     errorWhatsappNumber: cfg.errorWhatsappNumber || '',
                     errorGroupJid: cfg.errorGroupJid || '',
@@ -88,6 +90,7 @@ export default function ManualServiceDestination({ panelId }) {
         if (savedConfig.refillTemplate) savedList.push({ type: 'Template', platform: 'Refill', value: savedConfig.refillTemplate.substring(0, 50) + (savedConfig.refillTemplate.length > 50 ? '...' : '') })
         if (savedConfig.cancelTemplate) savedList.push({ type: 'Template', platform: 'Cancel', value: savedConfig.cancelTemplate.substring(0, 50) + (savedConfig.cancelTemplate.length > 50 ? '...' : '') })
         if (savedConfig.speedupTemplate) savedList.push({ type: 'Template', platform: 'Speed Up', value: savedConfig.speedupTemplate.substring(0, 50) + (savedConfig.speedupTemplate.length > 50 ? '...' : '') })
+        if (savedConfig.statusTemplate) savedList.push({ type: 'Template', platform: 'Status', value: savedConfig.statusTemplate.substring(0, 50) + (savedConfig.statusTemplate.length > 50 ? '...' : '') })
         const errDevName = devices.find(d => d.id === savedConfig.errorDeviceId)?.name
         if (errDevName) savedList.push({ type: 'Error', platform: 'Error Device', value: errDevName })
         if (savedConfig.errorWhatsappNumber) savedList.push({ type: 'Error', platform: 'WhatsApp DM', value: savedConfig.errorWhatsappNumber })
@@ -175,6 +178,10 @@ export default function ManualServiceDestination({ panelId }) {
                                 <div>
                                     <label className="form-label">Speed Up Template</label>
                                     <textarea className="form-input" rows={2} placeholder="e.g. {order_id} speed up" value={form.speedupTemplate} onChange={e => setForm({ ...form, speedupTemplate: e.target.value })} style={{ resize: 'vertical', minHeight: 40 }} />
+                                </div>
+                                <div>
+                                    <label className="form-label">Status Template</label>
+                                    <textarea className="form-input" rows={2} placeholder="e.g. {order_id} status" value={form.statusTemplate} onChange={e => setForm({ ...form, statusTemplate: e.target.value })} style={{ resize: 'vertical', minHeight: 40 }} />
                                 </div>
                             </div>
                         </div>
