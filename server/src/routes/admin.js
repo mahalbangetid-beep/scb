@@ -272,10 +272,24 @@ router.put('/users/:id', async (req, res, next) => {
                 }
             });
 
-            return updatedUser;
+            return { updatedUser, creditAdjustment, balanceBefore: currentUser?.creditBalance || oldBalance, newBalance: updatedUser.creditBalance };
         });
 
-        successResponse(res, user, 'User updated successfully');
+        successResponse(res, user.updatedUser, 'User updated successfully');
+
+        // Send WhatsApp notification for credit adjustment (fire-and-forget)
+        if (user.creditAdjustment && user.creditAdjustment > 0) {
+            try {
+                const userNotificationService = require('../services/userNotificationService');
+                userNotificationService.sendPaymentNotification(req.effectiveUserId, user.updatedUser.username, {
+                    amount: Math.abs(user.creditAdjustment),
+                    type: 'credit',
+                    method: 'Admin Top-Up',
+                    newBalance: user.updatedUser.creditBalance,
+                    currency: 'USD'
+                }).catch(e => console.log('[Admin] Payment notification failed:', e.message));
+            } catch (notifErr) { /* non-critical */ }
+        }
     } catch (error) {
         next(error);
     }
@@ -344,6 +358,20 @@ router.post('/users/:id/adjust-credit', async (req, res, next) => {
                     date: new Date().toLocaleDateString()
                 }, user.id).catch(() => { });
             } catch (e) { /* non-critical */ }
+        }
+
+        // Send WhatsApp notification for credit adjustment (fire-and-forget)
+        if (type === 'CREDIT') {
+            try {
+                const userNotificationService = require('../services/userNotificationService');
+                userNotificationService.sendPaymentNotification(req.effectiveUserId, user.username, {
+                    amount: adjustAmount,
+                    type: 'credit',
+                    method: 'Admin Top-Up',
+                    newBalance: result.balanceAfter,
+                    currency: 'USD'
+                }).catch(e => console.log('[Admin] Payment notification failed:', e.message));
+            } catch (notifErr) { /* non-critical */ }
         }
     } catch (error) {
         next(error);
