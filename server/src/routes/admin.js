@@ -281,7 +281,8 @@ router.put('/users/:id', async (req, res, next) => {
         if (user.creditAdjustment && user.creditAdjustment > 0) {
             try {
                 const userNotificationService = require('../services/userNotificationService');
-                userNotificationService.sendPaymentNotification(req.effectiveUserId, user.updatedUser.username, {
+                // req.user.id = admin who owns the devices & mappings (no effectiveUserId in admin routes)
+                userNotificationService.sendPaymentNotification(req.user.id, user.updatedUser.username, {
                     amount: Math.abs(user.creditAdjustment),
                     type: 'credit',
                     method: 'Admin Top-Up',
@@ -364,7 +365,8 @@ router.post('/users/:id/adjust-credit', async (req, res, next) => {
         if (type === 'CREDIT') {
             try {
                 const userNotificationService = require('../services/userNotificationService');
-                userNotificationService.sendPaymentNotification(req.effectiveUserId, user.username, {
+                // req.user.id = admin who owns the devices & mappings (no effectiveUserId in admin routes)
+                userNotificationService.sendPaymentNotification(req.user.id, user.username, {
                     amount: adjustAmount,
                     type: 'credit',
                     method: 'Admin Top-Up',
