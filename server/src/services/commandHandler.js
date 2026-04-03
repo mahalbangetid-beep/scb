@@ -807,10 +807,15 @@ class CommandHandlerService {
         if (['ERROR', 'FAILED'].includes(order.status?.toUpperCase())) {
             try {
                 console.log(`[CommandHandler] Order ${orderId} has error/failed status, checking error forwarding...`);
+                // Determine search names — treat N/A, 0, none as MANUAL
+                const _noProviderVals = ['n/a', '0', 'none', 'manual', ''];
+                const _pName = order.providerName;
+                const _isManual = !_pName || _noProviderVals.includes(_pName.toLowerCase());
+                const searchNames = _isManual ? ['MANUAL', 'manual', 'default'] : [_pName, 'MANUAL', 'default'];
                 const providerConfig = await prisma.providerConfig.findFirst({
                     where: {
                         userId,
-                        providerName: order.providerName || 'MANUAL',
+                        providerName: { in: searchNames },
                         isActive: true,
                         errorNotifyEnabled: true
                     }

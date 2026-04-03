@@ -875,6 +875,7 @@ Remains: {remains}
             'REFILL': config.refillTemplate,
             'CANCEL': config.cancelTemplate,
             'SPEED_UP': config.speedupTemplate,
+            'STATUS': config.statusTemplate,
             'NEW_ORDER': null
         };
         const template = templateMap[commandUpper];
