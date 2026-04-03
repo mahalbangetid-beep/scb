@@ -288,6 +288,18 @@ const BotSettings = () => {
     };
 
     const TextAreaRow = ({ label, description, inputKey, placeholder, rows = 3 }) => {
+        // Local state prevents parent re-render on every keystroke (fixes auto-scroll bug)
+        const [localValue, setLocalValue] = useState(toggles?.[inputKey] || '');
+        const [isFocused, setIsFocused] = useState(false);
+
+        // Sync from parent when toggles change externally (e.g. reset, initial load)
+        // but NOT while user is actively typing (isFocused guard)
+        useEffect(() => {
+            if (!isFocused) {
+                setLocalValue(toggles?.[inputKey] || '');
+            }
+        }, [toggles?.[inputKey], isFocused]);
+
         if (!matchesSearch(label, description)) return null;
         return (
             <div className="toggle-row" style={{ flexDirection: 'column', alignItems: 'flex-start', gap: '0.5rem' }}>
@@ -299,8 +311,13 @@ const BotSettings = () => {
                     className="form-input"
                     rows={rows}
                     style={{ width: '100%', fontFamily: 'inherit', resize: 'vertical' }}
-                    value={toggles?.[inputKey] || ''}
-                    onChange={(e) => handleToggle(inputKey, e.target.value)}
+                    value={localValue}
+                    onFocus={() => setIsFocused(true)}
+                    onChange={(e) => setLocalValue(e.target.value)}
+                    onBlur={(e) => {
+                        setIsFocused(false);
+                        handleToggle(inputKey, e.target.value);
+                    }}
                     placeholder={placeholder}
                 />
             </div>
