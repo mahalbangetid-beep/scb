@@ -170,19 +170,25 @@ class UserNotificationService {
      * @param {Object} paymentInfo - { amount, type ('credit'|'debit'), method, newBalance, currency }
      */
     async sendPaymentNotification(userId, customerUsername, paymentInfo) {
+        console.log(`[UserNotification] 🔔 sendPaymentNotification called: userId=${userId}, customerUsername=${customerUsername}, amount=${paymentInfo?.amount}`);
+
         // Try by panel username first, then fallback to any mapping for this userId
         let recipientPhone = null;
         if (customerUsername) {
             recipientPhone = await this.findUserPhone(userId, customerUsername);
+            console.log(`[UserNotification] findUserPhone(${userId}, ${customerUsername}) => ${recipientPhone || 'null'}`);
         }
         if (!recipientPhone) {
             // Fallback: find ANY mapping with a phone for this userId
             recipientPhone = await this.findPhoneByUserId(userId);
+            console.log(`[UserNotification] findPhoneByUserId(${userId}) => ${recipientPhone || 'null'}`);
         }
         if (!recipientPhone) {
-            console.log(`[UserNotification] No phone found for payment notification: userId=${userId}, username=${customerUsername || 'null'}`);
+            console.log(`[UserNotification] ❌ No phone found for payment notification: userId=${userId}, username=${customerUsername || 'null'}`);
             return { sent: false, reason: 'no_mapping' };
         }
+
+        console.log(`[UserNotification] ✅ Phone found: ${recipientPhone}, building message...`);
 
         const { amount, type, method, newBalance, currency = 'USD' } = paymentInfo;
         const responseTemplateService = require('./responseTemplateService');

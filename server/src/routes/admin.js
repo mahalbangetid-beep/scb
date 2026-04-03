@@ -364,6 +364,7 @@ router.post('/users/:id/adjust-credit', async (req, res, next) => {
         // Send WhatsApp notification for credit adjustment (fire-and-forget)
         if (type === 'CREDIT') {
             try {
+                console.log(`[Admin] 🔔 Triggering payment notification: adminId=${req.user.id}, targetUser=${user.username}, amount=${adjustAmount}`);
                 const userNotificationService = require('../services/userNotificationService');
                 // req.user.id = admin who owns the devices & mappings (no effectiveUserId in admin routes)
                 userNotificationService.sendPaymentNotification(req.user.id, user.username, {
