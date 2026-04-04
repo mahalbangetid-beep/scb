@@ -234,16 +234,29 @@ class CryptomusService {
     async processWebhook(data) {
         const { uuid, order_id, status, amount, currency, sign } = data;
 
-        console.log('[Cryptomus] Processing webhook for:', uuid, 'status:', status);
+        console.log('[Cryptomus] ========== WEBHOOK RECEIVED ==========');
+        console.log('[Cryptomus] UUID:', uuid);
+        console.log('[Cryptomus] Status:', status);
+        console.log('[Cryptomus] Amount:', amount, currency);
+        console.log('[Cryptomus] Order ID:', order_id);
+        console.log('[Cryptomus] All data keys:', Object.keys(data).join(', '));
 
         // Get config for signature verification
         const config = await this.getConfig();
+        console.log('[Cryptomus] API key loaded:', config.apiKey ? `${config.apiKey.substring(0, 6)}...` : 'MISSING');
 
         // Verify signature
         if (!this.verifyWebhookSignature(data, sign, config.apiKey)) {
-            console.error('[Cryptomus] Invalid webhook signature');
+            console.error('[Cryptomus] ❌ SIGNATURE VERIFICATION FAILED');
+            console.error('[Cryptomus] Received sign:', sign);
+            // Try computing what we expect for debugging
+            const { sign: _s, ...debugData } = data;
+            const debugSign = this.generateSignature(debugData, config.apiKey);
+            console.error('[Cryptomus] Expected sign:', debugSign);
+            console.error('[Cryptomus] Data for verify (keys):', Object.keys(debugData).join(', '));
             return { success: false, error: 'Invalid signature' };
         }
+        console.log('[Cryptomus] ✅ Signature verified');
 
         // Find transaction
         const transaction = await prisma.walletTransaction.findFirst({
@@ -255,9 +268,18 @@ class CryptomusService {
         });
 
         if (!transaction) {
-            console.error('[Cryptomus] Transaction not found:', uuid);
+            console.error('[Cryptomus] ❌ Transaction not found for UUID:', uuid);
+            // List recent CRYPTOMUS transactions for debugging
+            const recentTxs = await prisma.walletTransaction.findMany({
+                where: { gateway: 'CRYPTOMUS' },
+                orderBy: { createdAt: 'desc' },
+                take: 3,
+                select: { id: true, gatewayRef: true, status: true, createdAt: true }
+            });
+            console.error('[Cryptomus] Recent transactions:', JSON.stringify(recentTxs));
             return { success: false, error: 'Transaction not found' };
         }
+        console.log('[Cryptomus] ✅ Transaction found:', transaction.id, 'current status:', transaction.status, 'user:', transaction.userId);
 
         // Map Cryptomus status to our status
         const statusMap = {
@@ -274,6 +296,7 @@ class CryptomusService {
         };
 
         const mappedStatus = statusMap[status] || 'PENDING';
+        console.log(`[Cryptomus] Status mapping: "${status}" → "${mappedStatus}"`);
 
         // Use atomic transaction to prevent race condition (double credit)
         const result = await prisma.$transaction(async (tx) => {
@@ -284,6 +307,7 @@ class CryptomusService {
 
             // Double-check: if already completed, skip crediting
             const shouldCredit = mappedStatus === 'COMPLETED' && currentTx.status !== 'COMPLETED';
+            console.log(`[Cryptomus] shouldCredit=${shouldCredit} (mappedStatus=${mappedStatus}, currentTxStatus=${currentTx.status})`);
 
             // Parse metadata safely
             let existingMetadata = {};
