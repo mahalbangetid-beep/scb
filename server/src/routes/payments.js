@@ -148,6 +148,97 @@ router.post('/cryptomus/create', authenticate, async (req, res, next) => {
     }
 });
 
+// Verify Cryptomus payment status (fallback when webhook doesn't arrive)
+// Frontend can poll this to check if a pending payment has been completed
+router.post('/cryptomus/verify', authenticate, async (req, res, next) => {
+    try {
+        const { transactionId } = req.body;
+
+        const prisma = require('../utils/prisma');
+
+        // Find the pending transaction - by ID if provided, or most recent
+        const whereClause = {
+            userId: req.user.id,
+            gateway: 'CRYPTOMUS',
+            status: 'PENDING'
+        };
+        if (transactionId) {
+            whereClause.id = transactionId;
+        }
+
+        const transaction = await prisma.walletTransaction.findFirst({
+            where: whereClause,
+            orderBy: { createdAt: 'desc' }
+        });
+
+        if (!transaction) {
+            return res.json({
+                success: true,
+                data: { status: 'NOT_FOUND', message: 'No pending Cryptomus transaction found' }
+            });
+        }
+
+        const cryptomusService = paymentGatewayService.getGateway('cryptomus');
+
+        // Check status from Cryptomus API
+        const statusResult = await cryptomusService.checkPaymentStatus(transaction.gatewayRef);
+        console.log(`[Cryptomus Verify] UUID=${transaction.gatewayRef} API status:`, statusResult.data?.payment_status || statusResult.data?.status);
+
+        if (!statusResult.success) {
+            return res.json({
+                success: true,
+                data: { status: 'CHECK_FAILED', message: statusResult.error }
+            });
+        }
+
+        const cryptomusStatus = statusResult.data?.payment_status || statusResult.data?.status;
+
+        // If Cryptomus says paid, simulate the webhook processing
+        if (['paid', 'paid_over'].includes(cryptomusStatus)) {
+            console.log(`[Cryptomus Verify] Payment ${transaction.gatewayRef} is PAID — applying credit via processWebhook`);
+
+            // Build webhook-like data and process it
+            const webhookData = {
+                uuid: transaction.gatewayRef,
+                order_id: statusResult.data?.order_id,
+                status: cryptomusStatus,
+                amount: statusResult.data?.amount || transaction.amount.toString(),
+                currency: statusResult.data?.currency || 'USD'
+            };
+
+            // Generate valid signature for our own verification
+            const config = await cryptomusService.getConfig();
+            webhookData.sign = cryptomusService.generateSignature(webhookData, config.apiKey);
+
+            const processResult = await cryptomusService.processWebhook(webhookData);
+
+            return res.json({
+                success: true,
+                data: {
+                    status: 'COMPLETED',
+                    credited: processResult.credited,
+                    message: processResult.credited
+                        ? 'Payment verified and credit applied!'
+                        : 'Payment already processed'
+                }
+            });
+        }
+
+        // Return current status
+        return res.json({
+            success: true,
+            data: {
+                status: cryptomusStatus === 'cancel' ? 'CANCELLED' : 'PENDING',
+                cryptomusStatus,
+                message: `Payment status: ${cryptomusStatus}`
+            }
+        });
+    } catch (error) {
+        console.error('[Cryptomus Verify] Error:', error.message);
+        next(error);
+    }
+});
+
 // ============ ESEWA SPECIFIC ROUTES ============
 
 // Create eSewa payment

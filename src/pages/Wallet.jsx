@@ -43,7 +43,45 @@ export default function WalletPage() {
 
     useEffect(() => {
         fetchData()
+        // Auto-verify Cryptomus payments when returning from payment page
+        verifyCryptomusPayments()
     }, [])
+
+    // Verify any pending Cryptomus payments (fallback when webhook doesn't arrive)
+    const verifyCryptomusPayments = async () => {
+        try {
+            // Check URL params for payment return
+            const params = new URLSearchParams(window.location.search)
+            const paymentStatus = params.get('payment')
+
+            // Only auto-verify when returning from Cryptomus payment
+            if (paymentStatus !== 'success' && paymentStatus !== 'processing') return
+
+            // Clean URL params
+            window.history.replaceState({}, '', window.location.pathname)
+
+            // Call verify endpoint - it auto-finds the most recent pending Cryptomus tx
+            const verifyRes = await api.post('/payments/cryptomus/verify', {})
+            const data = verifyRes.data || verifyRes
+
+            if (data?.credited) {
+                setSuccess('Payment verified and credit applied! 🎉')
+                fetchData()
+                window.dispatchEvent(new CustomEvent('user-data-updated'))
+            } else if (data?.status === 'COMPLETED') {
+                setSuccess('Payment already processed!')
+                fetchData()
+            } else if (data?.status === 'NOT_FOUND') {
+                // No pending transaction — might already be completed via webhook
+                fetchData()
+            } else {
+                // Still pending on Cryptomus side
+                setSuccess('Payment is being processed. Credit will be added shortly.')
+            }
+        } catch (e) {
+            console.error('[Wallet] Auto-verify error:', e)
+        }
+    }
 
     const fetchData = async () => {
         try {
