@@ -12,14 +12,30 @@ const express = require('express');
 const router = express.Router();
 const paymentGatewayService = require('../services/paymentGateway');
 
+// Cryptomus webhook - GET for connectivity testing
+router.get('/cryptomus', (req, res) => {
+    console.log('[PaymentWebhook] Cryptomus GET ping received');
+    res.json({ success: true, message: 'Cryptomus webhook endpoint is reachable', timestamp: new Date().toISOString() });
+});
+
 // Cryptomus IPN webhook
 // Signature verification is handled inside cryptomusService.processWebhook()
 router.post('/cryptomus', async (req, res) => {
     try {
-        console.log('[PaymentWebhook] Cryptomus received - status:', req.body?.status, 'uuid:', req.body?.uuid);
+        console.log('[PaymentWebhook] ========== CRYPTOMUS POST RECEIVED ==========');
+        console.log('[PaymentWebhook] Headers:', JSON.stringify({ 'content-type': req.headers['content-type'], 'user-agent': req.headers['user-agent'] }));
+        console.log('[PaymentWebhook] Body keys:', req.body ? Object.keys(req.body).join(', ') : 'EMPTY');
+        console.log('[PaymentWebhook] Status:', req.body?.status, 'UUID:', req.body?.uuid);
+
+        if (!req.body || Object.keys(req.body).length === 0) {
+            console.error('[PaymentWebhook] ❌ EMPTY BODY - possible body parsing issue');
+            return res.status(400).json({ success: false, error: 'Empty body' });
+        }
 
         const cryptomusService = paymentGatewayService.getGateway('cryptomus');
         const result = await cryptomusService.processWebhook(req.body);
+
+        console.log('[PaymentWebhook] Result:', JSON.stringify(result));
 
         if (result.success) {
             res.json({ success: true });
@@ -27,7 +43,7 @@ router.post('/cryptomus', async (req, res) => {
             res.status(400).json(result);
         }
     } catch (error) {
-        console.error('[PaymentWebhook] Cryptomus error:', error.message);
+        console.error('[PaymentWebhook] Cryptomus error:', error.message, error.stack);
         res.status(500).json({ success: false, error: 'Internal error' });
     }
 });

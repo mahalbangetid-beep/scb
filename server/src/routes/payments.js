@@ -23,21 +23,8 @@ router.get('/gateways', authenticate, async (req, res, next) => {
         const { country } = req.query;
         if (country && country.trim()) {
             countryCode = country.trim().toUpperCase();
-        } else if (req.user?.id) {
-            // Auto-detect from user profile
-            try {
-                const prisma = require('../utils/prisma');
-                const userProfile = await prisma.user.findUnique({
-                    where: { id: req.user.id },
-                    select: { countryCode: true }
-                });
-                if (userProfile?.countryCode) {
-                    countryCode = userProfile.countryCode.trim().toUpperCase();
-                }
-            } catch (e) {
-                // Silently continue without country filtering
-            }
         }
+        // Note: countryCode is not stored on User model, so auto-detect is only via query param
 
         if (countryCode) {
             gateways = gateways.filter(g => {
