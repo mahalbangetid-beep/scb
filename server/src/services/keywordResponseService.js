@@ -17,7 +17,7 @@ const { safeRegexTest } = require('../utils/safeRegex');
 class KeywordResponseService {
     constructor() {
         this.matchTypes = ['EXACT', 'CONTAINS', 'STARTS_WITH', 'ENDS_WITH', 'REGEX'];
-        this.triggerActions = ['NONE', 'FORWARD_TO_ADMIN', 'CREATE_TICKET', 'TRIGGER_WEBHOOK', 'BLOCK_USER'];
+        this.triggerActions = ['NONE', 'FORWARD_TO_ADMIN', 'CREATE_TICKET', 'TRIGGER_WEBHOOK', 'BLOCK_USER', 'IGNORE'];
         this.platforms = ['ALL', 'WHATSAPP', 'TELEGRAM'];
     }
 
@@ -101,7 +101,7 @@ class KeywordResponseService {
                 keyword: data.keyword,
                 matchType: data.matchType || 'CONTAINS',
                 caseSensitive: data.caseSensitive || false,
-                responseText: data.responseText,
+                responseText: data.responseText || '',
                 responseMedia: data.responseMedia || null,
                 triggerAction: data.triggerAction || 'NONE',
                 actionConfig: data.actionConfig ? JSON.stringify(data.actionConfig) : '{}',
@@ -149,6 +149,12 @@ class KeywordResponseService {
             if (data[field] !== undefined) {
                 updateData[field] = data[field];
             }
+        }
+
+        // Guard: responseText cannot be empty unless triggerAction is IGNORE
+        const effectiveAction = updateData.triggerAction || existing.triggerAction;
+        if (updateData.responseText !== undefined && !updateData.responseText && effectiveAction !== 'IGNORE') {
+            throw new Error('Response text is required when action is not IGNORE');
         }
 
         if (data.actionConfig !== undefined) {

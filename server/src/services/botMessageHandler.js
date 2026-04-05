@@ -694,6 +694,34 @@ class BotMessageHandler {
             });
 
             if (kwMatch) {
+                // ==================== IGNORE ACTION (No Reply) ====================
+                // If triggerAction is IGNORE, silently consume the message without replying.
+                // This prevents the fallback "I didn't understand" from triggering.
+                if (kwMatch.triggerAction === 'IGNORE') {
+                    console.log(`[BotHandler] Keyword IGNORE matched: "${kwMatch.keyword}" — suppressing reply`);
+
+                    // Log the match (but no credit charge since no message sent)
+                    await this.logMessage({
+                        deviceId, userId, senderNumber,
+                        content: message, type: 'keyword_response', platform,
+                        creditCharged: 0,
+                        metadata: { keywordId: kwMatch.id, keyword: kwMatch.keyword, action: 'IGNORE' }
+                    });
+
+                    // Increment system bot usage
+                    if (params._systemBotSubscriptionId) {
+                        await this.incrementSystemBotUsage(params._systemBotSubscriptionId);
+                    }
+
+                    return {
+                        handled: true,
+                        type: 'keyword_ignore',
+                        response: null,
+                        keywordId: kwMatch.id,
+                        creditCharged: false
+                    };
+                }
+
                 // Charge credit for keyword response
                 const kwUser = await prisma.user.findUnique({
                     where: { id: userId },

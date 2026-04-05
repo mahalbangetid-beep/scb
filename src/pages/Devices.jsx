@@ -21,7 +21,8 @@ import {
     Users,
     ShieldOff,
     ShieldCheck,
-    BellOff
+    BellOff,
+    LogOut
 } from 'lucide-react'
 import api from '../services/api'
 import { formatDistanceToNow } from 'date-fns'
@@ -49,6 +50,7 @@ export default function Devices() {
     const [deletingDevice, setDeletingDevice] = useState(null)
     const [restartingDevice, setRestartingDevice] = useState(null)
     const [togglingDevice, setTogglingDevice] = useState(null)
+    const [loggingOutDevice, setLoggingOutDevice] = useState(null)
 
     // Edit Panel Modal State
     const [showEditModal, setShowEditModal] = useState(false)
@@ -279,6 +281,34 @@ export default function Devices() {
             alert(error?.error?.message || 'Failed to toggle device')
         } finally {
             setTogglingDevice(null)
+        }
+    }
+
+    const handleLogoutDevice = async (device) => {
+        if (loggingOutDevice === device.id) return
+
+        const confirmed = confirm(
+            `⚠️ Change Number for "${device.name}"\n\n` +
+            `This will disconnect the current WhatsApp number${device.phone ? ` (${device.phone})` : ''} from this slot.\n\n` +
+            `• Your device slot will be preserved (no payment needed)\n` +
+            `• A new QR code will be generated to connect a new number\n` +
+            `• All panel bindings and settings will be kept\n\n` +
+            `Continue?`
+        )
+        if (!confirmed) return
+
+        setLoggingOutDevice(device.id)
+        try {
+            await api.post(`/devices/${device.id}/logout`)
+            // Refresh devices to show updated status
+            await fetchDevices()
+            // Open QR modal for reconnection
+            handleGetQR(device.id)
+        } catch (error) {
+            console.error('Failed to logout device:', error)
+            alert(error?.error?.message || error?.message || 'Failed to logout device')
+        } finally {
+            setLoggingOutDevice(null)
         }
     }
 
@@ -778,6 +808,15 @@ export default function Devices() {
                                     >
                                         <Settings size={14} />
                                         Edit
+                                    </button>
+                                    <button
+                                        className="btn btn-ghost btn-sm"
+                                        style={{ padding: '8px' }}
+                                        onClick={() => handleLogoutDevice(device)}
+                                        disabled={loggingOutDevice === device.id}
+                                        title="Change Number (Logout & Reconnect)"
+                                    >
+                                        {loggingOutDevice === device.id ? <Loader2 className="animate-spin" size={14} /> : <LogOut size={14} />}
                                     </button>
                                     <button
                                         className="btn btn-ghost btn-sm"

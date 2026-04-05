@@ -12,7 +12,7 @@ const express = require('express');
 const router = express.Router();
 const prisma = require('../utils/prisma');
 const bcrypt = require('bcryptjs');
-const { authenticator } = require('otplib');
+const otplib = require('otplib');
 const QRCode = require('qrcode');
 const { successResponse } = require('../utils/response');
 const { AppError } = require('../middleware/errorHandler');
@@ -58,11 +58,11 @@ router.post('/setup', async (req, res, next) => {
         }
 
         // Generate new TOTP secret
-        const secret = authenticator.generateSecret();
+        const secret = otplib.generateSecret();
 
         // Create otpauth URL for QR code
         const appName = process.env.APP_NAME || 'DICREWA';
-        const otpauthUrl = authenticator.keyuri(user.email || user.username, appName, secret);
+        const otpauthUrl = otplib.generateURI({ label: user.email || user.username, issuer: appName, secret, type: 'totp' });
 
         // Generate QR code as data URL
         const qrCodeDataUrl = await QRCode.toDataURL(otpauthUrl);
@@ -111,9 +111,9 @@ router.post('/verify', async (req, res, next) => {
 
         // Decrypt secret and verify TOTP code
         const secret = decrypt(user.twoFactorSecret);
-        const isValid = authenticator.verify({ token: String(code), secret });
+        const result = otplib.verifySync({ token: String(code), secret });
 
-        if (!isValid) {
+        if (!result.valid) {
             throw new AppError('Invalid verification code. Please try again.', 400);
         }
 
@@ -165,9 +165,9 @@ router.post('/disable', async (req, res, next) => {
 
         // Verify TOTP code
         const secret = decrypt(user.twoFactorSecret);
-        const isValid = authenticator.verify({ token: String(code), secret });
+        const result = otplib.verifySync({ token: String(code), secret });
 
-        if (!isValid) {
+        if (!result.valid) {
             throw new AppError('Invalid 2FA code', 400);
         }
 

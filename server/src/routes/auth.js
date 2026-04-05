@@ -339,12 +339,12 @@ router.post('/login', authLimiter, async (req, res, next) => {
 
             // Verify TOTP code
             try {
-                const { authenticator } = require('otplib');
+                const otplib = require('otplib');
                 const { decrypt } = require('../utils/encryption');
                 const secret = decrypt(user.twoFactorSecret);
-                const isValidOTP = authenticator.verify({ token: String(twoFactorCode), secret });
+                const otpResult = otplib.verifySync({ token: String(twoFactorCode), secret });
 
-                if (!isValidOTP) {
+                if (!otpResult.valid) {
                     await logLogin(user.id, ipAddress, userAgent, 'FAILED', 'Invalid 2FA code');
                     throw new AppError('Invalid two-factor authentication code', 401);
                 }

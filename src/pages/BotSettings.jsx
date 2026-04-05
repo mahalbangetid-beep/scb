@@ -15,6 +15,9 @@ const BotSettings = () => {
     const [staffOverride, setStaffOverride] = useState({ enabled: false, groups: [] });
     const [staffOverrideLoading, setStaffOverrideLoading] = useState(false);
     const [newGroupJid, setNewGroupJid] = useState('');
+    const [spamBans, setSpamBans] = useState([]);
+    const [spamBansLoading, setSpamBansLoading] = useState(false);
+    const [unbanningUser, setUnbanningUser] = useState(null);
     const [expandedSections, setExpandedSections] = useState({
         commands: true,
         highRisk: false,
@@ -25,7 +28,8 @@ const BotSettings = () => {
         callResponse: true,
         spamProtection: true,
         massTemplates: false,
-        staffOverride: true
+        staffOverride: true,
+        spamBans: true
     });
 
     useEffect(() => {
@@ -33,6 +37,7 @@ const BotSettings = () => {
         setSuccess('');
         fetchToggles();
         fetchStaffOverride();
+        fetchSpamBans();
     }, [scope.deviceId, scope.panelId]);
 
     const fetchToggles = async () => {
@@ -168,6 +173,50 @@ const BotSettings = () => {
             setTimeout(() => setSuccess(''), 3000);
         } catch (err) {
             setError('Failed to remove group');
+        }
+    };
+
+    // ==================== SPAM BAN MANAGEMENT ====================
+
+    const fetchSpamBans = async () => {
+        try {
+            setSpamBansLoading(true);
+            const response = await api.get('/admin/spam-bans');
+            setSpamBans(response.data?.bans || []);
+        } catch (err) {
+            console.error('Failed to load spam bans:', err);
+            // Non-admin users won't have access — that's OK, just hide the section
+            setSpamBans([]);
+        } finally {
+            setSpamBansLoading(false);
+        }
+    };
+
+    const handleUnban = async (userId, senderNumber) => {
+        if (unbanningUser === senderNumber) return;
+        setUnbanningUser(senderNumber);
+        try {
+            await api.delete(`/admin/spam-bans/${userId}/${senderNumber}`);
+            setSpamBans(prev => prev.filter(b => !(b.userId === userId && b.senderNumber === senderNumber)));
+            setSuccess(`Unbanned ${senderNumber}`);
+            setTimeout(() => setSuccess(''), 3000);
+        } catch (err) {
+            setError(err.error?.message || 'Failed to unban user');
+        } finally {
+            setUnbanningUser(null);
+        }
+    };
+
+    const handleClearAllBans = async () => {
+        if (spamBans.length === 0) return;
+        if (!window.confirm(`Clear all ${spamBans.length} active spam ban(s)? All banned users will be able to use the bot again.`)) return;
+        try {
+            await api.delete('/admin/spam-bans');
+            setSpamBans([]);
+            setSuccess('All spam bans cleared');
+            setTimeout(() => setSuccess(''), 3000);
+        } catch (err) {
+            setError('Failed to clear bans');
         }
     };
 
@@ -665,6 +714,67 @@ Example: 12345 status`}
                     )}
                 </Section>
 
+                {/* Active Spam Bans (Admin only) */}
+                <Section
+                    id="spamBans"
+                    title={`Active Spam Bans${spamBans.length > 0 ? ` (${spamBans.length})` : ''}`}
+                    icon={ShieldAlert}
+                    description="View and remove 60-minute temporary bans from spammers"
+                >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+                        <button
+                            className="btn btn-secondary"
+                            onClick={fetchSpamBans}
+                            disabled={spamBansLoading}
+                            style={{ fontSize: '0.8rem', padding: '0.375rem 0.75rem' }}
+                        >
+                            {spamBansLoading ? 'Loading...' : '🔄 Refresh'}
+                        </button>
+                        {spamBans.length > 0 && (
+                            <button
+                                className="btn btn-ghost"
+                                onClick={handleClearAllBans}
+                                style={{ fontSize: '0.8rem', padding: '0.375rem 0.75rem', color: 'var(--danger-color)' }}
+                            >
+                                <Trash2 size={14} /> Clear All
+                            </button>
+                        )}
+                    </div>
+
+                    {spamBansLoading ? (
+                        <div style={{ textAlign: 'center', padding: '1.5rem', color: 'var(--text-secondary)' }}>
+                            <div className="spinner-small" style={{ margin: '0 auto 0.5rem', borderTopColor: 'var(--primary-color)', borderColor: 'var(--border-color)' }}></div>
+                            Loading bans...
+                        </div>
+                    ) : spamBans.length === 0 ? (
+                        <div style={{ textAlign: 'center', padding: '1.5rem 0', color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
+                            ✅ No active spam bans. All users can use the bot normally.
+                        </div>
+                    ) : (
+                        <div className="spam-bans-list">
+                            {spamBans.map((ban, idx) => (
+                                <div key={`${ban.userId}-${ban.senderNumber}`} className="spam-ban-item">
+                                    <div className="spam-ban-info">
+                                        <span className="spam-ban-phone">📱 {ban.senderNumber}</span>
+                                        <span className="spam-ban-remaining">
+                                            ⏱ {ban.remainingMinutes} min remaining
+                                        </span>
+                                    </div>
+                                    <button
+                                        className="btn btn-ghost"
+                                        onClick={() => handleUnban(ban.userId, ban.senderNumber)}
+                                        disabled={unbanningUser === ban.senderNumber}
+                                        style={{ fontSize: '0.8rem', padding: '0.25rem 0.625rem', color: 'var(--success-color)' }}
+                                        title="Remove ban — user can use the bot again immediately"
+                                    >
+                                        {unbanningUser === ban.senderNumber ? '...' : '✅ Unban'}
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </Section>
+
                 {/* Mass/Bulk Order Templates (Section 18) */}
                 <Section
                     id="massTemplates"
@@ -1146,6 +1256,40 @@ Total: {total} | ✅ {success_count} | ❌ {failed_count}`}
           .form-input.compact {
             width: 100%;
           }
+        }
+
+        /* Spam Bans Management */
+        .spam-bans-list {
+          display: flex;
+          flex-direction: column;
+          gap: 0.5rem;
+        }
+
+        .spam-ban-item {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          padding: 0.625rem 0.875rem;
+          background: var(--bg-secondary);
+          border-radius: 0.5rem;
+          border: 1px solid var(--border-color);
+        }
+
+        .spam-ban-info {
+          display: flex;
+          flex-direction: column;
+          gap: 0.125rem;
+        }
+
+        .spam-ban-phone {
+          font-weight: 500;
+          color: var(--text-primary);
+          font-size: 0.875rem;
+        }
+
+        .spam-ban-remaining {
+          font-size: 0.75rem;
+          color: var(--warning-color, #f59e0b);
         }
       `}</style>
         </div>

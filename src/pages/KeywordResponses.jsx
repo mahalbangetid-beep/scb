@@ -181,6 +181,11 @@ const KeywordResponses = () => {
 
     const handleSubmit = async (e) => {
         e.preventDefault();
+        // Validate responseText is required when action is not IGNORE
+        if (formData.triggerAction !== 'IGNORE' && !formData.responseText?.trim()) {
+            setError('Response text is required when action is not "Ignore"');
+            return;
+        }
         try {
             const payload = {
                 ...formData,
@@ -541,7 +546,13 @@ const KeywordResponses = () => {
                                 </div>
 
                                 <div className="keyword-response">
-                                    {(item.responseText || '').substring(0, 120)}{item.responseText?.length > 120 ? '...' : ''}
+                                    {item.triggerAction === 'IGNORE' ? (
+                                        <span style={{ color: '#f59e0b', fontStyle: 'italic', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                            🔇 Ignore — No reply will be sent
+                                        </span>
+                                    ) : (
+                                        <>{(item.responseText || '').substring(0, 120)}{item.responseText?.length > 120 ? '...' : ''}</>
+                                    )}
                                 </div>
 
                                 <div className="keyword-meta">
@@ -705,6 +716,7 @@ const KeywordResponses = () => {
                                     </div>
                                 </div>
 
+                                {formData.triggerAction !== 'IGNORE' && (
                                 <div className="form-group">
                                     <label className="form-label">Response Text *</label>
                                     <textarea
@@ -716,6 +728,7 @@ const KeywordResponses = () => {
                                         required
                                     />
                                 </div>
+                                )}
 
                                 <div className="form-row">
                                     <div className="form-group">
@@ -737,9 +750,13 @@ const KeywordResponses = () => {
                                             onChange={(e) => setFormData({ ...formData, triggerAction: e.target.value })}
                                         >
                                             <option value="NONE">None</option>
+                                            <option value="IGNORE">🔇 Ignore (No Reply)</option>
                                             <option value="FORWARD_TO_ADMIN">Forward to Admin</option>
                                             <option value="TRIGGER_WEBHOOK">Trigger Webhook</option>
                                         </select>
+                                        {formData.triggerAction === 'IGNORE' && (
+                                            <span className="form-hint" style={{ color: '#f59e0b' }}>Bot will silently ignore messages matching this keyword — no reply will be sent.</span>
+                                        )}
                                     </div>
                                 </div>
 

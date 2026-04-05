@@ -797,4 +797,46 @@ router.delete('/:id/group-blocks/:blockId', authenticate, async (req, res, next)
     }
 });
 
+// POST /api/devices/:id/logout - Logout WhatsApp session (keep device slot, allow number change)
+// This clears the session files and resets phone/status so user can pair a new number
+router.post('/:id/logout', authenticate, async (req, res, next) => {
+    try {
+        const effectiveUserId = await getEffectiveUserId(req);
+        const device = await prisma.device.findFirst({
+            where: {
+                id: req.params.id,
+                userId: effectiveUserId
+            }
+        });
+
+        if (!device) {
+            throw new AppError('Device not found', 404);
+        }
+
+        // Logout and delete session files (but keep the device record)
+        const whatsapp = req.app.get('whatsapp');
+        await whatsapp.deleteSession(device.id);
+
+        // Reset phone and status in database
+        await prisma.device.update({
+            where: { id: device.id },
+            data: {
+                status: 'disconnected',
+                phone: null
+            }
+        });
+
+        console.log(`[Devices] Device ${device.id} (${device.name}) logged out for number change. Slot preserved.`);
+
+        successResponse(res, {
+            id: device.id,
+            name: device.name,
+            status: 'disconnected',
+            phone: null
+        }, 'WhatsApp session logged out. You can now connect a new number.');
+    } catch (error) {
+        next(error);
+    }
+});
+
 module.exports = router;

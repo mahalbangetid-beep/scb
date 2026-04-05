@@ -133,7 +133,7 @@ router.post('/bulk', async (req, res, next) => {
 
         for (const item of items) {
             try {
-                if (!item.keyword || !item.responseText) {
+                if (!item.keyword || (!item.responseText && item.triggerAction !== 'IGNORE')) {
                     errors.push({ item, error: 'keyword and responseText are required' });
                     continue;
                 }
@@ -352,7 +352,7 @@ router.post('/', async (req, res, next) => {
             throw new AppError('Keyword is required', 400);
         }
 
-        if (!responseText) {
+        if (!responseText && rest.triggerAction !== 'IGNORE') {
             throw new AppError('Response text is required', 400);
         }
 
