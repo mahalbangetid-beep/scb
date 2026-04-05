@@ -24,12 +24,12 @@ export default function Reports() {
             // Build date query params
             const dateParams = {}
             if (dateRange.startDate) dateParams.startDate = dateRange.startDate
-            if (dateRange.endDate) dateParams.endDate = dateRange.endDate + 'T23:59:59'
+            if (dateRange.endDate) dateParams.endDate = dateRange.endDate
             const qs = new URLSearchParams(dateParams).toString()
             const suffix = qs ? `?${qs}` : ''
 
             const [dashboardRes, ordersRes, commandsRes, creditsRes] = await Promise.all([
-                api.get('/reports/dashboard'),
+                api.get(`/reports/dashboard${suffix}`),
                 api.get(`/reports/orders${suffix}`),
                 api.get(`/reports/commands${suffix}`),
                 api.get(`/reports/credits${suffix}`)

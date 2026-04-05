@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import {
     MessageSquare,
     Save,
@@ -12,7 +12,9 @@ import {
     ChevronDown,
     ChevronRight,
     Copy,
-    Check
+    Check,
+    Search,
+    ChevronsUpDown
 } from 'lucide-react'
 import api from '../services/api'
 
@@ -123,6 +125,7 @@ export default function ResponseTemplates() {
     const [saving, setSaving] = useState(false)
     const [saved, setSaved] = useState(false)
     const [error, setError] = useState(null)
+    const [searchQuery, setSearchQuery] = useState('')
 
     useEffect(() => {
         fetchTemplates()
@@ -208,6 +211,29 @@ export default function ResponseTemplates() {
         return templates.find(t => t.command === command) || { command, template: '', isCustom: false }
     }
 
+    const expandAll = () => setExpandedCategories(Object.keys(TEMPLATE_CATEGORIES))
+    const collapseAll = () => setExpandedCategories([])
+    const isAllExpanded = expandedCategories.length === Object.keys(TEMPLATE_CATEGORIES).length
+
+    const filteredCategories = useMemo(() => {
+        const q = searchQuery.trim().toLowerCase()
+        if (!q) return Object.entries(TEMPLATE_CATEGORIES)
+
+        return Object.entries(TEMPLATE_CATEGORIES)
+            .map(([key, category]) => {
+                const labelMatch = category.label.toLowerCase().includes(q)
+                const matchingTemplates = category.templates.filter(cmd => {
+                    if (labelMatch) return true
+                    const tpl = getTemplateByCommand(cmd)
+                    return cmd.toLowerCase().includes(q) ||
+                        (tpl.description || '').toLowerCase().includes(q) ||
+                        (tpl.template || tpl.defaultTemplate || '').toLowerCase().includes(q)
+                })
+                return [key, { ...category, templates: matchingTemplates }]
+            })
+            .filter(([, category]) => category.templates.length > 0)
+    }, [searchQuery, templates])
+
     if (loading) {
         return (
             <div className="flex items-center justify-center min-h-[400px]">
@@ -226,6 +252,29 @@ export default function ResponseTemplates() {
                 <button className="btn btn-secondary" onClick={handleResetAll}>
                     <RotateCcw size={16} />
                     Reset All to Default
+                </button>
+            </div>
+
+            {/* Search Bar & Expand/Collapse */}
+            <div style={{ display: 'flex', gap: 'var(--spacing-md)', marginBottom: 'var(--spacing-lg)', alignItems: 'center', flexWrap: 'wrap' }}>
+                <div style={{ flex: 1, minWidth: '200px', position: 'relative' }}>
+                    <Search size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary)' }} />
+                    <input
+                        type="text"
+                        className="form-input"
+                        placeholder="Search templates by name, keyword, or content..."
+                        value={searchQuery}
+                        onChange={e => setSearchQuery(e.target.value)}
+                        style={{ paddingLeft: '36px' }}
+                    />
+                </div>
+                <button
+                    className="btn btn-secondary"
+                    onClick={isAllExpanded ? collapseAll : expandAll}
+                    style={{ whiteSpace: 'nowrap' }}
+                >
+                    <ChevronsUpDown size={16} />
+                    {isAllExpanded ? 'Collapse All' : 'Expand All'}
                 </button>
             </div>
 
@@ -292,7 +341,7 @@ export default function ResponseTemplates() {
 
             {/* Template Categories */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-md)' }}>
-                {Object.entries(TEMPLATE_CATEGORIES).map(([key, category]) => (
+                {filteredCategories.map(([key, category]) => (
                     <div key={key} className="card" style={{ overflow: 'hidden' }}>
                         <div
                             className="card-header"
@@ -306,10 +355,10 @@ export default function ResponseTemplates() {
                                     <p className="card-subtitle">{category.templates.length} templates</p>
                                 </div>
                             </div>
-                            {expandedCategories.includes(key) ? <ChevronDown size={20} /> : <ChevronRight size={20} />}
+                            {(searchQuery.trim() || expandedCategories.includes(key)) ? <ChevronDown size={20} /> : <ChevronRight size={20} />}
                         </div>
 
-                        {expandedCategories.includes(key) && (
+                        {(searchQuery.trim() || expandedCategories.includes(key)) && (
                             <div style={{ padding: 'var(--spacing-md)' }}>
                                 {category.templates.map(command => {
                                     const template = getTemplateByCommand(command)

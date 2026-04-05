@@ -336,6 +336,42 @@ class WhatsAppService {
         const deviceContacts = new Map();
         sessionContacts.set(deviceId, deviceContacts);
 
+        // PRIMARY: Baileys v7 sends bulk contacts via messaging-history.set (history sync)
+        socket.ev.on('messaging-history.set', ({ contacts: histContacts, chats }) => {
+            // Process contacts from history sync
+            if (histContacts && Array.isArray(histContacts)) {
+                for (const contact of histContacts) {
+                    const jid = contact.id;
+                    if (jid && !jid.endsWith('@g.us') && !jid.endsWith('@broadcast') && !jid.endsWith('@lid')) {
+                        deviceContacts.set(jid, {
+                            jid,
+                            name: contact.name || contact.notify || null,
+                            pushName: contact.notify || null,
+                            phone: jid.replace('@s.whatsapp.net', '').replace('@c.us', '') || null
+                        });
+                    }
+                }
+                console.log(`[WA:${deviceId}] History sync contacts: ${deviceContacts.size} total`);
+            }
+
+            // Also extract contacts from chat metadata (groups + DMs)
+            if (chats && Array.isArray(chats)) {
+                for (const chat of chats) {
+                    const chatJid = chat.id;
+                    if (chatJid && chatJid.endsWith('@s.whatsapp.net') && !deviceContacts.has(chatJid)) {
+                        deviceContacts.set(chatJid, {
+                            jid: chatJid,
+                            name: chat.name || chat.conversationTitle || null,
+                            pushName: chat.name || null,
+                            phone: chatJid.replace('@s.whatsapp.net', '').replace('@c.us', '') || null
+                        });
+                    }
+                }
+                console.log(`[WA:${deviceId}] After chat merge: ${deviceContacts.size} contacts total`);
+            }
+        });
+
+        // SECONDARY: contacts.upsert for incremental updates after initial sync
         socket.ev.on('contacts.upsert', (contacts) => {
             for (const contact of contacts) {
                 if (contact.id && !contact.id.endsWith('@g.us') && !contact.id.endsWith('@broadcast')) {
@@ -347,7 +383,7 @@ class WhatsAppService {
                     });
                 }
             }
-            console.log(`[WA:${deviceId}] Contacts updated: ${deviceContacts.size} total`);
+            console.log(`[WA:${deviceId}] Contacts upsert: ${deviceContacts.size} total`);
         });
 
         socket.ev.on('contacts.update', (updates) => {

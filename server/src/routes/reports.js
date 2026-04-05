@@ -29,6 +29,23 @@ router.get('/dashboard', async (req, res, next) => {
         const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
         const thisMonthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
 
+        // Optional date filter — when empty, spread is a no-op (zero behavior change)
+        const { startDate, endDate } = req.query;
+        const dateFilter = {};
+        if (startDate) {
+            const start = new Date(startDate);
+            start.setHours(0, 0, 0, 0);
+            dateFilter.gte = start;
+        }
+        if (endDate) {
+            const end = new Date(endDate);
+            end.setHours(23, 59, 59, 999);
+            dateFilter.lte = end;
+        }
+        const hasDateFilter = Object.keys(dateFilter).length > 0;
+        const orderDateWhere = hasDateFilter ? { createdAt: dateFilter } : {};
+        const commandDateWhere = hasDateFilter ? { createdAt: dateFilter } : {};
+
         const [
             totalOrders,
             todayOrders,
@@ -44,16 +61,16 @@ router.get('/dashboard', async (req, res, next) => {
             activePanels
         ] = await Promise.all([
             // Orders
-            prisma.order.count({ where: { userId } }),
+            prisma.order.count({ where: { userId, ...orderDateWhere } }),
             prisma.order.count({ where: { userId, createdAt: { gte: today } } }),
             prisma.order.count({ where: { userId, createdAt: { gte: thisMonth } } }),
-            prisma.order.count({ where: { userId, status: 'COMPLETED' } }),
-            prisma.order.count({ where: { userId, status: { in: ['PENDING', 'IN_PROGRESS', 'PROCESSING'] } } }),
-            prisma.order.count({ where: { userId, status: { in: ['CANCELLED', 'REFUNDED'] } } }),
+            prisma.order.count({ where: { userId, status: 'COMPLETED', ...orderDateWhere } }),
+            prisma.order.count({ where: { userId, status: { in: ['PENDING', 'IN_PROGRESS', 'PROCESSING'] }, ...orderDateWhere } }),
+            prisma.order.count({ where: { userId, status: { in: ['CANCELLED', 'REFUNDED'] }, ...orderDateWhere } }),
 
             // Commands
             prisma.orderCommand.count({
-                where: { order: { userId } }
+                where: { order: { userId }, ...commandDateWhere }
             }),
             prisma.orderCommand.count({
                 where: { order: { userId }, createdAt: { gte: today } }

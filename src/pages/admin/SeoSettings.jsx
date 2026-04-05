@@ -72,7 +72,8 @@ export default function SeoSettings() {
             await fetchPages()
         } catch (err) {
             console.error('Failed to save SEO settings:', err)
-            const errMsg = typeof err === 'string' ? err : (err?.error?.message || err?.message || (typeof err?.error === 'string' ? err.error : null))
+            const errRaw = err?.error?.message || err?.message || err?.error || err
+            const errMsg = typeof errRaw === 'string' ? errRaw : JSON.stringify(errRaw)
             alert('Failed to save: ' + (errMsg || 'Unknown error'))
         } finally {
             setSaving(false)
@@ -89,7 +90,8 @@ export default function SeoSettings() {
             await fetchPages()
         } catch (err) {
             console.error('Failed to add page:', err)
-            alert('Failed to add: ' + (typeof err === 'string' ? err : err?.message || err?.error || 'Unknown error'))
+            const addErrRaw = err?.error?.message || err?.message || err?.error || err
+            alert('Failed to add: ' + (typeof addErrRaw === 'string' ? addErrRaw : JSON.stringify(addErrRaw)))
         } finally {
             setSaving(false)
         }
