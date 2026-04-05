@@ -2122,6 +2122,10 @@ router.get('/panels', requireMasterAdmin, async (req, res, next) => {
                 capabilities: true,
                 createdAt: true,
                 user: { select: { id: true, username: true, email: true } },
+                providerGroups: {
+                    select: { providerName: true, groupName: true, type: true, isActive: true },
+                    orderBy: { providerName: 'asc' }
+                },
                 _count: {
                     select: {
                         orders: true,
@@ -2156,6 +2160,12 @@ router.get('/panels', requireMasterAdmin, async (req, res, next) => {
                 capabilities: p.capabilities,
                 createdAt: p.createdAt,
                 owner: p.user,
+                providerAliases: (p.providerGroups || []).map(pg => ({
+                    name: pg.providerName || 'Default',
+                    group: pg.groupName,
+                    type: pg.type,
+                    active: pg.isActive
+                })),
                 stats: {
                     orders: p._count.orders,
                     providerGroups: p._count.providerGroups,

@@ -378,7 +378,7 @@ const AdminDashboard = () => {
                                     <th>Admin API</th>
                                     <th>Balance</th>
                                     <th>Orders</th>
-                                    <th>Providers</th>
+                                    <th>Provider Aliases</th>
                                     <th>Status</th>
                                 </tr>
                             </thead>
@@ -407,7 +407,29 @@ const AdminDashboard = () => {
                                             {p.balance != null ? `${p.currency} ${p.balance.toFixed(2)}` : '—'}
                                         </td>
                                         <td style={{ fontSize: '0.82rem', textAlign: 'center' }}>{p.stats.orders.toLocaleString()}</td>
-                                        <td style={{ fontSize: '0.82rem', textAlign: 'center' }}>{p.stats.providerGroups}</td>
+                                        <td>
+                                            {p.providerAliases && p.providerAliases.length > 0 ? (
+                                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '3px', maxWidth: '220px' }}>
+                                                    {p.providerAliases.map((pa, idx) => (
+                                                        <span key={idx} className="badge" style={{
+                                                            fontSize: '0.65rem',
+                                                            padding: '2px 6px',
+                                                            background: pa.active
+                                                                ? (pa.type === 'TELEGRAM' ? 'rgba(0,136,204,0.12)' : 'rgba(37,211,102,0.12)')
+                                                                : 'rgba(107,114,128,0.12)',
+                                                            color: pa.active
+                                                                ? (pa.type === 'TELEGRAM' ? '#0088cc' : '#25D366')
+                                                                : '#6b7280',
+                                                            whiteSpace: 'nowrap'
+                                                        }} title={`Group: ${pa.group} (${pa.type})`}>
+                                                            {pa.type === 'TELEGRAM' ? '✈️' : '💬'} {pa.name}
+                                                        </span>
+                                                    ))}
+                                                </div>
+                                            ) : (
+                                                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', opacity: 0.6 }}>No providers</span>
+                                            )}
+                                        </td>
                                         <td>
                                             <span className={`badge ${p.isActive ? 'badge-success' : 'badge-error'}`} style={{ fontSize: '0.7rem' }}>
                                                 {p.isActive ? 'Active' : 'Inactive'}
