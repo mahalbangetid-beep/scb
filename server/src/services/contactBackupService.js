@@ -184,6 +184,50 @@ class ContactBackupService {
             // Filter out invalid entries
             contacts = contacts.filter(c => c.jid && !c.jid.endsWith('@g.us'));
 
+            // DB FALLBACK: If contacts are still empty (e.g. after server restart where
+            // in-memory sessionContacts was lost and messaging-history.set didn't re-fire),
+            // reload contacts from the last successful backup in the database.
+            if (contacts.length === 0) {
+                const previousBackup = await prisma.contactBackup.findFirst({
+                    where: {
+                        deviceId,
+                        userId,
+                        status: 'COMPLETED',
+                        totalContacts: { gt: 0 }
+                    },
+                    orderBy: { createdAt: 'desc' },
+                    select: { contacts: true, groups: true, totalContacts: true }
+                });
+
+                if (previousBackup && Array.isArray(previousBackup.contacts) && previousBackup.contacts.length > 0) {
+                    contacts = previousBackup.contacts;
+                    logger.info(`Got ${contacts.length} contacts from previous DB backup (in-memory was empty)`);
+
+                    // Also re-populate the in-memory sessionContacts map so future
+                    // incremental contacts.upsert events merge on top of this base
+                    try {
+                        const contactMap = this.whatsappService?.getContacts(deviceId);
+                        if (contactMap && contactMap.size === 0) {
+                            for (const c of contacts) {
+                                if (c.jid) {
+                                    contactMap.set(c.jid, c);
+                                }
+                            }
+                            logger.info(`Re-populated in-memory contact map with ${contactMap.size} contacts`);
+                        }
+                    } catch (repopErr) {
+                        // Non-critical — backup will still work
+                        logger.warn(`Failed to re-populate contact map: ${repopErr.message}`);
+                    }
+
+                    // Recover groups from previous backup too if current groups are empty
+                    if (groups.length === 0 && Array.isArray(previousBackup.groups) && previousBackup.groups.length > 0) {
+                        groups = previousBackup.groups;
+                        logger.info(`Got ${groups.length} groups from previous DB backup`);
+                    }
+                }
+            }
+
             // Calculate file size estimate
             const dataString = JSON.stringify({ contacts, groups });
             const fileSize = Buffer.byteLength(dataString, 'utf8');
