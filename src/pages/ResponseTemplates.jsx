@@ -294,7 +294,7 @@ export default function ResponseTemplates() {
 
             {/* Edit Modal */}
             {editingTemplate && (
-                <div className="modal-overlay open" onClick={(e) => { if (e.target === e.currentTarget) setEditingTemplate(null) }}>
+                <div className="modal-overlay open" onMouseDown={(e) => { if (e.target === e.currentTarget) setEditingTemplate(null) }}>
                     <div className="modal" onClick={e => e.stopPropagation()} onMouseDown={e => e.stopPropagation()} style={{ maxWidth: '700px' }}>
                         <div className="modal-header">
                             <h3>Edit Template: {editingTemplate}</h3>

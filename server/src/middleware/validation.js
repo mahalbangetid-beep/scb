@@ -330,7 +330,8 @@ function securityCheck(req, res, next) {
         'responseText', 'template', 'csv', 'customMessage',
         'response', 'keyword', 'keywords', 'subject',
         'actionConfig', 'forwardingConfig', 'messageTemplates',
-        'value' // settings value (can be any string)
+        'value', // settings value (can be any string)
+        'customHeader' // SEO custom HTML for <head> (legitimately contains HTML tags)
     ]);
 
     const checkValue = (value, path = '', fieldName = '') => {

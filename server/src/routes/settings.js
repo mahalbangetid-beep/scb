@@ -638,6 +638,52 @@ router.post('/', async (req, res, next) => {
     }
 });
 
+// ==================== SPAM BAN MANAGEMENT (User-facing) ====================
+
+// GET /api/settings/spam-bans - List active spam bans for current user's bot
+router.get('/spam-bans', async (req, res, next) => {
+    try {
+        const botMessageHandler = require('../services/botMessageHandler');
+        const allBans = botMessageHandler.getDisabledUsers();
+        // Filter to only this user's bans
+        const userBans = allBans.filter(b => b.userId === req.effectiveUserId);
+        successResponse(res, { bans: userBans, total: userBans.length });
+    } catch (error) {
+        next(error);
+    }
+});
+
+// DELETE /api/settings/spam-bans/:senderNumber - Unban specific sender for current user
+router.delete('/spam-bans/:senderNumber', async (req, res, next) => {
+    try {
+        const botMessageHandler = require('../services/botMessageHandler');
+        const { senderNumber } = req.params;
+        const wasRemoved = botMessageHandler.unbanUser(req.effectiveUserId, senderNumber);
+        successResponse(res, { removed: wasRemoved }, wasRemoved ? 'User unbanned' : 'User was not banned');
+    } catch (error) {
+        next(error);
+    }
+});
+
+// DELETE /api/settings/spam-bans - Clear all spam bans for current user
+router.delete('/spam-bans', async (req, res, next) => {
+    try {
+        const botMessageHandler = require('../services/botMessageHandler');
+        // Only clear bans belonging to this user
+        const allBans = botMessageHandler.getDisabledUsers();
+        const userBans = allBans.filter(b => b.userId === req.effectiveUserId);
+        let cleared = 0;
+        for (const ban of userBans) {
+            if (botMessageHandler.unbanUser(ban.userId, ban.senderNumber)) {
+                cleared++;
+            }
+        }
+        successResponse(res, { cleared }, `Cleared ${cleared} spam ban(s)`);
+    } catch (error) {
+        next(error);
+    }
+});
+
 // ==================== WILDCARD ROUTES (MUST BE LAST) ====================
 // These routes use /:key which would match any path segment.
 // ALL specific named routes (e.g. /bot-security, /binance, /bot-toggles,
@@ -645,7 +691,7 @@ router.post('/', async (req, res, next) => {
 // Do NOT add new named routes below this comment.
 
 // Reserved route prefixes — /:key must not match these
-const RESERVED_PREFIXES = ['stats', 'bot-security', 'binance', 'bot-toggles', 'staff-override-groups', 'cleanup-cooldowns'];
+const RESERVED_PREFIXES = ['stats', 'bot-security', 'binance', 'bot-toggles', 'staff-override-groups', 'cleanup-cooldowns', 'spam-bans'];
 
 // GET /api/settings/:key - Get specific setting (MUST BE AFTER NAMED ROUTES)
 router.get('/:key', async (req, res, next) => {

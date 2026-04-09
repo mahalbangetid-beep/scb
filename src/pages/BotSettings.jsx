@@ -181,7 +181,7 @@ const BotSettings = () => {
     const fetchSpamBans = async () => {
         try {
             setSpamBansLoading(true);
-            const response = await api.get('/admin/spam-bans');
+            const response = await api.get('/settings/spam-bans');
             setSpamBans(response.data?.bans || []);
         } catch (err) {
             console.error('Failed to load spam bans:', err);
@@ -196,7 +196,7 @@ const BotSettings = () => {
         if (unbanningUser === senderNumber) return;
         setUnbanningUser(senderNumber);
         try {
-            await api.delete(`/admin/spam-bans/${userId}/${senderNumber}`);
+            await api.delete(`/settings/spam-bans/${senderNumber}`);
             setSpamBans(prev => prev.filter(b => !(b.userId === userId && b.senderNumber === senderNumber)));
             setSuccess(`Unbanned ${senderNumber}`);
             setTimeout(() => setSuccess(''), 3000);
@@ -211,7 +211,7 @@ const BotSettings = () => {
         if (spamBans.length === 0) return;
         if (!window.confirm(`Clear all ${spamBans.length} active spam ban(s)? All banned users will be able to use the bot again.`)) return;
         try {
-            await api.delete('/admin/spam-bans');
+            await api.delete('/settings/spam-bans');
             setSpamBans([]);
             setSuccess('All spam bans cleared');
             setTimeout(() => setSuccess(''), 3000);

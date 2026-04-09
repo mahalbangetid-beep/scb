@@ -857,6 +857,15 @@ export default function Devices() {
                                     <button
                                         className="btn btn-ghost btn-sm"
                                         style={{ padding: '8px' }}
+                                        onClick={() => handleLogoutDevice(device)}
+                                        disabled={loggingOutDevice === device.id}
+                                        title="Change Number (Clear Session & Reconnect)"
+                                    >
+                                        {loggingOutDevice === device.id ? <Loader2 className="animate-spin" size={14} /> : <LogOut size={14} />}
+                                    </button>
+                                    <button
+                                        className="btn btn-ghost btn-sm"
+                                        style={{ padding: '8px' }}
                                         onClick={() => handleDeleteDevice(device.id)}
                                         disabled={deletingDevice === device.id}
                                     >

@@ -161,17 +161,23 @@ router.put('/admin/pages/:id', async (req, res, next) => {
         // Coerce empty strings to null for nullable fields
         const coerce = (v) => (typeof v === 'string' && v.trim() === '') ? null : v;
 
-        const updated = await prisma.seoSetting.update({
-            where: { id: req.params.id },
-            data: {
-                ...(pageTitle !== undefined && { pageTitle: coerce(pageTitle) }),
-                ...(metaKeywords !== undefined && { metaKeywords }),
-                ...(metaDescription !== undefined && { metaDescription: coerce(metaDescription) }),
-                ...(metaRobots !== undefined && { metaRobots: coerce(metaRobots) }),
-                ...(customHeader !== undefined && { customHeader: coerce(customHeader) }),
-                ...(isVisible !== undefined && { isVisible })
-            }
-        });
+        let updated;
+        try {
+            updated = await prisma.seoSetting.update({
+                where: { id: req.params.id },
+                data: {
+                    ...(pageTitle !== undefined && { pageTitle: coerce(pageTitle) }),
+                    ...(metaKeywords !== undefined && { metaKeywords }),
+                    ...(metaDescription !== undefined && { metaDescription: coerce(metaDescription) }),
+                    ...(metaRobots !== undefined && { metaRobots: coerce(metaRobots) }),
+                    ...(customHeader !== undefined && { customHeader: coerce(customHeader) }),
+                    ...(isVisible !== undefined && { isVisible })
+                }
+            });
+        } catch (prismaErr) {
+            console.error('[SEO] Prisma update error:', prismaErr.message);
+            throw new AppError(prismaErr.message || 'Failed to update SEO settings', 400);
+        }
 
         successResponse(res, updated, 'SEO settings updated');
     } catch (error) {
