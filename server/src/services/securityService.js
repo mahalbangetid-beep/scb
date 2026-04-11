@@ -631,11 +631,17 @@ class SecurityService {
             }
 
             // If not found by phone and in a group, try by group JID
+            // Also collect ALL group mappings for ownership disambiguation later
+            let allGroupMappings = [];
             if (!mapping && isGroup && groupJid) {
-                mapping = await userMappingService.findByGroup(userId, groupJid);
-                if (mapping) {
-                    console.log(`[Security] Found mapping via group JID ${groupJid}: username="${mapping.panelUsername}"`);
+                allGroupMappings = await userMappingService.findAllByGroup(userId, groupJid);
+                if (allGroupMappings.length > 0) {
+                    mapping = allGroupMappings[0];
+                    console.log(`[Security] Found ${allGroupMappings.length} mapping(s) via group JID ${groupJid}: ${allGroupMappings.map(m => `"${m.panelUsername}"`).join(', ')}`);
                 }
+            } else if (isGroup && groupJid && mapping) {
+                // Phone lookup succeeded, but still collect group mappings for fallback disambiguation
+                allGroupMappings = await userMappingService.findAllByGroup(userId, groupJid);
             }
 
             // ==================== CASE 3: WA NOT registered ====================
@@ -740,44 +746,70 @@ class SecurityService {
 
             // ==================== STEP 3: Check ownership ====================
             // Compare order's username with mapped username
-            const mappedUsername = (mapping.panelUsername || '').trim().toLowerCase();
+            // Support comma-separated panelUsername (e.g. "user1, user2")
+            const matchesUsername = (panelUsername, targetUser) => {
+                if (!panelUsername || !targetUser) return false;
+                const names = panelUsername.split(',').map(n => n.trim().toLowerCase()).filter(Boolean);
+                return names.includes(targetUser.trim().toLowerCase());
+            };
+
             let orderUser = (orderUsername || '').trim().toLowerCase();
 
-            console.log(`[Security] Ownership check: mapped="${mappedUsername}" vs order="${orderUser}"`);
+            console.log(`[Security] Ownership check: mapped="${mapping.panelUsername}" vs order="${orderUser}"`);
 
-            if (mappedUsername !== orderUser) {
+            if (!matchesUsername(mapping.panelUsername, orderUser)) {
                 // First: try ALL other mappings for this phone number
                 if (allMappings.length > 1) {
                     const matchingMapping = allMappings.find(m =>
-                        (m.panelUsername || '').trim().toLowerCase() === orderUser
+                        matchesUsername(m.panelUsername, orderUser)
                     );
                     if (matchingMapping) {
-                        console.log(`[Security] Found matching mapping via alternate: username="${matchingMapping.panelUsername}"`);
+                        console.log(`[Security] Found matching mapping via phone alternate: username="${matchingMapping.panelUsername}"`);
                         mapping = matchingMapping;
-                        // Skip to CASE 1 — order matches this mapping
+                    }
+                }
+
+                // Second: try ALL group mappings (handles LID/multi-user group case)
+                if (!matchesUsername(mapping.panelUsername, orderUser) && allGroupMappings.length > 1) {
+                    const matchingGroupMapping = allGroupMappings.find(m =>
+                        matchesUsername(m.panelUsername, orderUser)
+                    );
+                    if (matchingGroupMapping) {
+                        console.log(`[Security] Found matching mapping via group alternate: username="${matchingGroupMapping.panelUsername}"`);
+                        mapping = matchingGroupMapping;
                     }
                 }
             }
 
             // Re-check after trying alternate mappings
-            const finalMappedUsername = (mapping.panelUsername || '').trim().toLowerCase();
 
-            if (finalMappedUsername !== orderUser) {
+            if (!matchesUsername(mapping.panelUsername, orderUser)) {
                 // Cached customerUsername might be stale — re-fetch from Admin API
                 console.log(`[Security] Mismatch — re-fetching customerUsername from Admin API to verify...`);
                 const freshUsername = await fetchCustomerUsername();
                 if (freshUsername) {
                     orderUser = freshUsername.trim().toLowerCase();
-                    console.log(`[Security] Re-fetched customerUsername: "${freshUsername}" vs mapped="${finalMappedUsername}"`);
+                    console.log(`[Security] Re-fetched customerUsername: "${freshUsername}" vs mapped="${mapping.panelUsername}"`);
 
                     // Try all mappings again with fresh username
-                    if (finalMappedUsername !== orderUser && allMappings.length > 1) {
+                    if (!matchesUsername(mapping.panelUsername, orderUser) && allMappings.length > 1) {
                         const matchingMapping = allMappings.find(m =>
-                            (m.panelUsername || '').trim().toLowerCase() === orderUser
+                            matchesUsername(m.panelUsername, orderUser)
                         );
                         if (matchingMapping) {
-                            console.log(`[Security] Found matching mapping via alternate (fresh): username="${matchingMapping.panelUsername}"`);
+                            console.log(`[Security] Found matching mapping via phone alternate (fresh): username="${matchingMapping.panelUsername}"`);
                             mapping = matchingMapping;
+                        }
+                    }
+
+                    // Also try group mappings with fresh username
+                    if (!matchesUsername(mapping.panelUsername, orderUser) && allGroupMappings.length > 1) {
+                        const matchingGroupMapping = allGroupMappings.find(m =>
+                            matchesUsername(m.panelUsername, orderUser)
+                        );
+                        if (matchingGroupMapping) {
+                            console.log(`[Security] Found matching mapping via group alternate (fresh): username="${matchingGroupMapping.panelUsername}"`);
+                            mapping = matchingGroupMapping;
                         }
                     }
                 } else {
@@ -792,8 +824,7 @@ class SecurityService {
                 }
             }
 
-            const checkedMappedUsername = (mapping.panelUsername || '').trim().toLowerCase();
-            if (checkedMappedUsername !== orderUser) {
+            if (!matchesUsername(mapping.panelUsername, orderUser)) {
                 // ==================== CASE 2: Order doesn't belong to this user ====================
                 // Fresh data from Admin API confirms mismatch, no alternate mapping matches
                 console.log(`[Security] CASE 2: Order ${order.externalOrderId} belongs to "${orderUsername}", not "${mapping.panelUsername}" (confirmed by Admin API)`);

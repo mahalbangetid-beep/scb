@@ -275,7 +275,29 @@ class UserMappingService {
         }
         const mapping = await prisma.userPanelMapping.findFirst({ where });
 
-        return mapping ? this.parseMapping(mapping) : null;
+        if (mapping) return this.parseMapping(mapping);
+
+        // Fallback: search for comma-separated panelUsername containing this username
+        const containsWhere = {
+            userId,
+            panelUsername: {
+                contains: panelUsername,
+                mode: 'insensitive'
+            }
+        };
+        if (panelId !== undefined) {
+            containsWhere.panelId = panelId;
+        }
+        const candidates = await prisma.userPanelMapping.findMany({ where: containsWhere });
+
+        for (const candidate of candidates) {
+            const names = (candidate.panelUsername || '').split(',').map(n => n.trim().toLowerCase());
+            if (names.includes(panelUsername.trim().toLowerCase())) {
+                return this.parseMapping(candidate);
+            }
+        }
+
+        return null;
     }
 
     /**
@@ -297,6 +319,29 @@ class UserMappingService {
         }
 
         return null;
+    }
+
+    /**
+     * Find ALL mappings by group ID (for multi-user groups)
+     * Returns all mappings whose groupIds contain the given group JID
+     */
+    async findAllByGroup(userId, groupId) {
+        const mappings = await prisma.userPanelMapping.findMany({
+            where: {
+                userId,
+                groupIds: { contains: groupId }
+            }
+        });
+
+        const results = [];
+        for (const mapping of mappings) {
+            const parsed = this.parseMapping(mapping);
+            if (parsed.groupIds.includes(groupId)) {
+                results.push(parsed);
+            }
+        }
+
+        return results;
     }
 
     /**
