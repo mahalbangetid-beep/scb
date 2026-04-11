@@ -139,10 +139,13 @@ class WhatsAppService {
 
     /**
      * Get stored contacts for a device
-     * @returns {Map} jid -> contact data
+     * @returns {Map} jid -> contact data (creates and persists entry if missing)
      */
     getContacts(deviceId) {
-        return sessionContacts.get(deviceId) || new Map();
+        if (!sessionContacts.has(deviceId)) {
+            sessionContacts.set(deviceId, new Map());
+        }
+        return sessionContacts.get(deviceId);
     }
 
     /**
