@@ -770,7 +770,7 @@ class SecurityService {
                 }
 
                 // Second: try ALL group mappings (handles LID/multi-user group case)
-                if (!matchesUsername(mapping.panelUsername, orderUser) && allGroupMappings.length > 1) {
+                if (!matchesUsername(mapping.panelUsername, orderUser) && allGroupMappings.length > 0) {
                     const matchingGroupMapping = allGroupMappings.find(m =>
                         matchesUsername(m.panelUsername, orderUser)
                     );
@@ -803,7 +803,7 @@ class SecurityService {
                     }
 
                     // Also try group mappings with fresh username
-                    if (!matchesUsername(mapping.panelUsername, orderUser) && allGroupMappings.length > 1) {
+                    if (!matchesUsername(mapping.panelUsername, orderUser) && allGroupMappings.length > 0) {
                         const matchingGroupMapping = allGroupMappings.find(m =>
                             matchesUsername(m.panelUsername, orderUser)
                         );

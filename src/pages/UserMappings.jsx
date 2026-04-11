@@ -720,9 +720,10 @@ const UserMappings = () => {
                                             className="form-input"
                                             value={formData.panelUsername}
                                             onChange={(e) => setFormData({ ...formData, panelUsername: e.target.value })}
-                                            placeholder="e.g. johndoe"
+                                            placeholder="e.g. johndoe or user1, user2"
                                             required
                                         />
+                                        <span className="form-hint">Multiple usernames separated by comma</span>
                                     </div>
                                     <div className="form-group">
                                         <label className="form-label">Panel</label>
