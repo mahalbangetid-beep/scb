@@ -108,7 +108,50 @@ router.post('/:id/cancel', async (req, res, next) => {
             req.params.id,
             req.effectiveUserId
         );
-        successResponse(res, subscription, 'Subscription cancelled');
+        successResponse(res, subscription, 'Subscription cancelled and service deactivated');
+    } catch (error) {
+        next(error);
+    }
+});
+
+/**
+ * POST /api/subscriptions/:id/renew
+ * Manually renew a cancelled or paused subscription
+ * Charges the user immediately and reactivates the resource
+ */
+router.post('/:id/renew', async (req, res, next) => {
+    try {
+        const subscription = await subscriptionService.renewSubscription(
+            req.params.id,
+            req.effectiveUserId
+        );
+        successResponse(res, subscription, 'Subscription renewed and service reactivated');
+    } catch (error) {
+        next(error);
+    }
+});
+
+/**
+ * GET /api/subscriptions/history
+ * Get subscription billing history (renewal transactions)
+ */
+router.get('/history', async (req, res, next) => {
+    try {
+        const prisma = require('../utils/prisma');
+        
+        // Get credit transactions related to subscriptions
+        const transactions = await prisma.creditTransaction.findMany({
+            where: {
+                userId: req.effectiveUserId,
+                reference: {
+                    startsWith: 'SUBSCRIPTION'
+                }
+            },
+            orderBy: { createdAt: 'desc' },
+            take: 50
+        });
+
+        successResponse(res, transactions);
     } catch (error) {
         next(error);
     }

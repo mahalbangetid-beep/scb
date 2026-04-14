@@ -5,6 +5,7 @@ const { authenticate, getEffectiveUserId } = require('../middleware/auth');
 const { AppError } = require('../middleware/errorHandler');
 const { successResponse, paginatedResponse, parsePagination } = require('../utils/response');
 const resourceSubscriptionHook = require('../services/resourceSubscriptionHook');
+const subscriptionService = require('../services/subscriptionService');
 
 // GET /api/devices - List all devices for current user
 router.get('/', authenticate, async (req, res, next) => {
@@ -443,6 +444,14 @@ router.patch('/:id/toggle', authenticate, async (req, res, next) => {
             throw new AppError('Device not found', 404);
         }
 
+        // Block re-enabling device if subscription is cancelled/paused (skip for system bots)
+        if (!device.isActive && !device.isSystemBot) {
+            const subCheck = await subscriptionService.checkDeviceSubscriptionAccess(effectiveUserId, device.id);
+            if (!subCheck.allowed) {
+                throw new AppError(subCheck.message, 403);
+            }
+        }
+
         const updatedDevice = await prisma.device.update({
             where: { id: device.id },
             data: { isActive: !device.isActive }
@@ -472,6 +481,14 @@ router.post('/:id/restart', authenticate, async (req, res, next) => {
             throw new AppError('Device not found', 404);
         }
 
+        // Block restart if subscription is cancelled/paused (skip system bots)
+        if (!device.isSystemBot) {
+            const subCheck = await subscriptionService.checkDeviceSubscriptionAccess(effectiveUserId, device.id);
+            if (!subCheck.allowed) {
+                throw new AppError(subCheck.message, 403);
+            }
+        }
+
         const whatsapp = req.app.get('whatsapp');
         await whatsapp.restartSession(device.id);
 
@@ -494,6 +511,14 @@ router.get('/:id/qr', authenticate, async (req, res, next) => {
 
         if (!device) {
             throw new AppError('Device not found', 404);
+        }
+
+        // Block reconnect if subscription is cancelled/paused (skip system bots)
+        if (!device.isSystemBot) {
+            const subCheck = await subscriptionService.checkDeviceSubscriptionAccess(effectiveUserId, device.id);
+            if (!subCheck.allowed) {
+                throw new AppError(subCheck.message, 403);
+            }
         }
 
         const whatsapp = req.app.get('whatsapp');

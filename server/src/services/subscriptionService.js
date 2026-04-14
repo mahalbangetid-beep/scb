@@ -185,7 +185,11 @@ class SubscriptionService {
                 }
             });
 
-            // If exceeded grace period, pause the subscription
+            // Immediately deactivate the resource on first failure
+            // (device/bot/panel should not remain active without payment)
+            await this.pauseResource(subscription);
+
+            // If exceeded grace period, fully pause the subscription status
             if (failedAttempts >= subscription.gracePeriodDays) {
                 await this.pauseSubscription(subscription.id, 'Insufficient balance');
                 return { success: false, reason: 'PAUSED_INSUFFICIENT_BALANCE' };
@@ -256,6 +260,29 @@ class SubscriptionService {
             });
 
             console.log(`[Subscription] Renewed: ${subscription.resourceType} for user ${subscription.userId} - $${fee}`);
+
+            // Log successful renewal to activity log
+            try {
+                const { activityLogService } = require('./activityLog');
+                await activityLogService.log({
+                    userId: subscription.userId,
+                    action: 'subscription_renewed',
+                    category: 'billing',
+                    description: `Subscription renewed: ${subscription.resourceType} - ${subscription.resourceName || subscription.resourceId}. Charged $${fee.toFixed(2)}. Balance: $${result.balanceAfter.toFixed(2)}`,
+                    metadata: {
+                        subscriptionId: subscription.id,
+                        resourceType: subscription.resourceType,
+                        resourceId: subscription.resourceId,
+                        fee,
+                        balanceBefore: result.balanceBefore,
+                        balanceAfter: result.balanceAfter
+                    },
+                    status: 'success'
+                });
+            } catch (logErr) {
+                console.error(`[Subscription] Activity log error:`, logErr.message);
+            }
+
             return { success: true, subscription: result.updated };
         } catch (error) {
             if (error.message === 'INSUFFICIENT_BALANCE_IN_TX') {
@@ -380,6 +407,7 @@ class SubscriptionService {
 
     /**
      * Cancel a subscription
+     * Also deactivates the associated resource (device/bot/panel)
      */
     async cancelSubscription(subscriptionId, userId) {
         const subscription = await prisma.monthlySubscription.findFirst({
@@ -390,13 +418,40 @@ class SubscriptionService {
             throw new Error('Subscription not found');
         }
 
-        return prisma.monthlySubscription.update({
+        // Deactivate the associated resource immediately
+        await this.pauseResource(subscription);
+
+        const updated = await prisma.monthlySubscription.update({
             where: { id: subscriptionId },
             data: {
                 status: 'CANCELLED',
+                autoRenew: false,
                 updatedAt: new Date()
             }
         });
+
+        console.log(`[Subscription] Cancelled: ${subscription.resourceType} ${subscription.resourceId} for user ${userId}`);
+
+        // Log cancellation to activity log
+        try {
+            const { activityLogService } = require('./activityLog');
+            await activityLogService.log({
+                userId,
+                action: 'subscription_cancelled',
+                category: 'billing',
+                description: `Subscription cancelled: ${subscription.resourceType} - ${subscription.resourceName || subscription.resourceId}. Service deactivated.`,
+                metadata: {
+                    subscriptionId,
+                    resourceType: subscription.resourceType,
+                    resourceId: subscription.resourceId
+                },
+                status: 'info'
+            });
+        } catch (logErr) {
+            console.error(`[Subscription] Activity log error:`, logErr.message);
+        }
+
+        return updated;
     }
 
     /**
@@ -476,6 +531,171 @@ class SubscriptionService {
     }
 
     /**
+     * Check subscription status for a device — used by device endpoints to block
+     * actions on cancelled/paused subscriptions.
+     * Returns { allowed, reason, subscription } 
+     * Note: devices without any subscription record are allowed (free tier).
+     */
+    async checkDeviceSubscriptionAccess(userId, deviceId) {
+        const subscription = await prisma.monthlySubscription.findFirst({
+            where: {
+                userId,
+                resourceType: 'DEVICE',
+                resourceId: deviceId
+            },
+            orderBy: { createdAt: 'desc' }
+        });
+
+        // No subscription record = free device (first device is free)
+        if (!subscription) {
+            return { allowed: true, reason: 'FREE_DEVICE', subscription: null };
+        }
+
+        if (subscription.status === 'ACTIVE') {
+            return { allowed: true, reason: 'ACTIVE_SUBSCRIPTION', subscription };
+        }
+
+        if (subscription.status === 'CANCELLED') {
+            return {
+                allowed: false,
+                reason: 'SUBSCRIPTION_CANCELLED',
+                message: 'Subscription is cancelled. Please renew your subscription to use this device.',
+                subscription
+            };
+        }
+
+        if (subscription.status === 'PAUSED') {
+            return {
+                allowed: false,
+                reason: 'SUBSCRIPTION_PAUSED',
+                message: 'Subscription is paused due to insufficient balance. Please add funds and resume your subscription.',
+                subscription
+            };
+        }
+
+        // EXPIRED or other status
+        return {
+            allowed: false,
+            reason: 'SUBSCRIPTION_INACTIVE',
+            message: 'Subscription is not active. Please renew to continue using this device.',
+            subscription
+        };
+    }
+
+    /**
+     * Manually renew a cancelled/paused subscription
+     * Charges the user immediately and reactivates the resource
+     */
+    async renewSubscription(subscriptionId, userId) {
+        const subscription = await prisma.monthlySubscription.findFirst({
+            where: { id: subscriptionId, userId }
+        });
+
+        if (!subscription) {
+            throw new Error('Subscription not found');
+        }
+
+        if (subscription.status === 'ACTIVE') {
+            throw new Error('Subscription is already active');
+        }
+
+        // Check balance
+        const user = await prisma.user.findUnique({
+            where: { id: userId },
+            select: { creditBalance: true }
+        });
+
+        const fee = subscription.monthlyFee;
+
+        if ((user?.creditBalance || 0) < fee) {
+            throw new Error(`Insufficient balance. Required: $${fee.toFixed(2)}, Available: $${(user?.creditBalance || 0).toFixed(2)}`);
+        }
+
+        // Calculate next billing date
+        const nextBillingDate = new Date();
+        const targetMonth = nextBillingDate.getMonth() + 1;
+        nextBillingDate.setMonth(targetMonth);
+        if (nextBillingDate.getMonth() !== targetMonth % 12) {
+            nextBillingDate.setDate(0);
+        }
+
+        // Atomic charge + reactivate
+        const result = await prisma.$transaction(async (tx) => {
+            const freshUser = await tx.user.findUnique({
+                where: { id: userId },
+                select: { creditBalance: true }
+            });
+
+            const balanceBefore = freshUser?.creditBalance || 0;
+            if (balanceBefore < fee) {
+                throw new Error(`Insufficient balance. Required: $${fee.toFixed(2)}`);
+            }
+
+            const balanceAfter = balanceBefore - fee;
+
+            await tx.user.update({
+                where: { id: userId },
+                data: { creditBalance: balanceAfter }
+            });
+
+            await tx.creditTransaction.create({
+                data: {
+                    userId,
+                    type: 'DEBIT',
+                    amount: fee,
+                    balanceBefore,
+                    balanceAfter,
+                    description: `Subscription renewal: ${subscription.resourceType} - ${subscription.resourceName}`,
+                    reference: `SUBSCRIPTION_RENEW_${subscription.id}`
+                }
+            });
+
+            const updated = await tx.monthlySubscription.update({
+                where: { id: subscriptionId },
+                data: {
+                    status: 'ACTIVE',
+                    autoRenew: true,
+                    lastBilledAt: new Date(),
+                    nextBillingDate,
+                    failedAttempts: 0,
+                    lastFailReason: null,
+                    lastFailedAt: null,
+                    pausedAt: null
+                }
+            });
+
+            return { updated, balanceBefore, balanceAfter };
+        }, { isolationLevel: 'Serializable' });
+
+        // Reactivate the resource
+        await this.resumeResource(subscription);
+
+        console.log(`[Subscription] Manually renewed: ${subscription.resourceType} for user ${userId} - $${fee}`);
+
+        // Log successful renewal to activity log
+        try {
+            const { activityLogService } = require('./activityLog');
+            await activityLogService.log({
+                userId,
+                action: 'subscription_renewed',
+                category: 'billing',
+                description: `Subscription manually renewed: ${subscription.resourceType} - ${subscription.resourceName}. Charged $${fee.toFixed(2)}. Balance: $${result.balanceAfter.toFixed(2)}`,
+                metadata: {
+                    subscriptionId,
+                    resourceType: subscription.resourceType,
+                    fee,
+                    balanceAfter: result.balanceAfter
+                },
+                status: 'success'
+            });
+        } catch (logErr) {
+            console.error(`[Subscription] Activity log error:`, logErr.message);
+        }
+
+        return result.updated;
+    }
+
+    /**
      * Get subscriptions expiring soon (for reminders)
      */
     async getExpiringSoon(daysAhead = 3) {
@@ -542,7 +762,10 @@ class SubscriptionService {
                 status: sub.status,
                 fee: sub.monthlyFee,
                 nextBilling: sub.nextBillingDate,
-                autoRenew: sub.autoRenew !== false
+                lastBilledAt: sub.lastBilledAt,
+                autoRenew: sub.autoRenew !== false,
+                failedAttempts: sub.failedAttempts || 0,
+                lastFailReason: sub.lastFailReason
             });
         }
 

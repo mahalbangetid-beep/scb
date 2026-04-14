@@ -1004,6 +1004,7 @@ class WhatsAppService {
 
     /**
      * Load semua existing sessions saat startup
+     * Checks subscription status before reconnecting — skips cancelled/paused devices
      */
     async loadExistingSessions() {
         await this.ensureLoaded();
@@ -1018,6 +1019,43 @@ class WhatsAppService {
         for (const folder of sessionFolders) {
             const deviceId = folder.replace('session_', '');
             try {
+                // Check if device exists and has valid subscription before reconnecting
+                const device = await prisma.device.findUnique({
+                    where: { id: deviceId },
+                    select: { id: true, userId: true, isSystemBot: true, status: true }
+                });
+
+                if (!device) {
+                    console.log(`[WA] Device ${deviceId} not found in DB, skipping session load`);
+                    continue;
+                }
+
+                // System bots always reconnect (no subscription needed)
+                if (!device.isSystemBot) {
+                    // Check subscription status
+                    const subscription = await prisma.monthlySubscription.findFirst({
+                        where: {
+                            userId: device.userId,
+                            resourceType: 'DEVICE',
+                            resourceId: deviceId
+                        },
+                        orderBy: { createdAt: 'desc' }
+                    });
+
+                    // If subscription exists and is not ACTIVE, skip reconnection
+                    if (subscription && subscription.status !== 'ACTIVE') {
+                        console.log(`[WA] Skipping device ${deviceId} — subscription ${subscription.status}`);
+                        // Ensure device stays in paused/disconnected state
+                        if (device.status === 'connected' || device.status === 'connecting') {
+                            await prisma.device.update({
+                                where: { id: deviceId },
+                                data: { status: 'PAUSED' }
+                            }).catch(() => {});
+                        }
+                        continue;
+                    }
+                }
+
                 console.log(`[WA] Loading session for device: ${deviceId}`);
                 await this.createSession(deviceId);
             } catch (err) {

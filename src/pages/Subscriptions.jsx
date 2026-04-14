@@ -1,15 +1,17 @@
 import { useState, useEffect } from 'react';
-import { CreditCard, Calendar, AlertTriangle, Zap, Play, Pause, XCircle, RefreshCw, DollarSign, Search, ToggleLeft, ToggleRight } from 'lucide-react';
+import { CreditCard, Calendar, AlertTriangle, Zap, Play, Pause, XCircle, RefreshCw, DollarSign, Search, ToggleLeft, ToggleRight, Clock, CheckCircle, ArrowUpCircle, History } from 'lucide-react';
 import api from '../services/api';
 
 const Subscriptions = () => {
     const [summary, setSummary] = useState(null);
     const [fees, setFees] = useState(null);
+    const [billingHistory, setBillingHistory] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
     const [actionLoading, setActionLoading] = useState(null);
     const [searchTerm, setSearchTerm] = useState('');
+    const [showHistory, setShowHistory] = useState(false);
 
     useEffect(() => {
         fetchData();
@@ -18,12 +20,14 @@ const Subscriptions = () => {
     const fetchData = async () => {
         try {
             setLoading(true);
-            const [summaryRes, feesRes] = await Promise.all([
+            const [summaryRes, feesRes, historyRes] = await Promise.all([
                 api.get('/subscriptions/summary'),
-                api.get('/subscriptions/fees')
+                api.get('/subscriptions/fees'),
+                api.get('/subscriptions/history').catch(() => ({ data: [] }))
             ]);
             setSummary(summaryRes.data);
             setFees(feesRes.data);
+            setBillingHistory(historyRes.data || []);
         } catch (err) {
             setError('Failed to load subscriptions');
         } finally {
@@ -31,32 +35,39 @@ const Subscriptions = () => {
         }
     };
 
-    const handleResume = async (id) => {
+
+    const handleRenew = async (id) => {
+        if (!window.confirm('This will charge your balance and reactivate the service. Continue?')) {
+            return;
+        }
         try {
             setActionLoading(id);
-            await api.post(`/subscriptions/${id}/resume`);
-            setSuccess('Subscription resumed');
+            setError('');
+            await api.post(`/subscriptions/${id}/renew`);
+            setSuccess('Subscription renewed and service reactivated!');
             fetchData();
             setTimeout(() => setSuccess(''), 3000);
         } catch (err) {
-            setError(err.error?.message || err.message || 'Failed to resume');
+            setError(err.error?.message || err.message || 'Failed to renew. Please check your balance.');
+            setTimeout(() => setError(''), 5000);
         } finally {
             setActionLoading(null);
         }
     };
 
     const handleCancel = async (id) => {
-        if (!window.confirm('Are you sure you want to cancel this subscription? The connected service will be deactivated.')) {
+        if (!window.confirm('Are you sure you want to cancel this subscription? The connected service will be deactivated immediately.')) {
             return;
         }
         try {
             setActionLoading(id);
             await api.post(`/subscriptions/${id}/cancel`);
-            setSuccess('Subscription cancelled');
+            setSuccess('Subscription cancelled and service deactivated');
             fetchData();
             setTimeout(() => setSuccess(''), 3000);
         } catch (err) {
             setError(err.error?.message || err.message || 'Failed to cancel');
+            setTimeout(() => setError(''), 5000);
         } finally {
             setActionLoading(null);
         }
@@ -71,6 +82,7 @@ const Subscriptions = () => {
             setTimeout(() => setSuccess(''), 3000);
         } catch (err) {
             setError(err.error?.message || err.message || 'Failed to toggle auto-renew');
+            setTimeout(() => setError(''), 5000);
         } finally {
             setActionLoading(null);
         }
@@ -108,6 +120,17 @@ const Subscriptions = () => {
         });
     };
 
+    const formatDateTime = (date) => {
+        if (!date) return '-';
+        return new Date(date).toLocaleDateString('en-US', {
+            year: 'numeric',
+            month: 'short',
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+        });
+    };
+
     const getDaysUntil = (date) => {
         if (!date) return null;
         const now = new Date();
@@ -134,9 +157,14 @@ const Subscriptions = () => {
                     <h1><CreditCard size={28} /> My Subscriptions</h1>
                     <p className="header-subtitle">Manage your monthly subscriptions for devices, bots, and panels</p>
                 </div>
-                <button className="btn btn-secondary" onClick={fetchData}>
-                    <RefreshCw size={16} /> Refresh
-                </button>
+                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                    <button className="btn btn-ghost" onClick={() => setShowHistory(!showHistory)} style={{ display: 'flex', alignItems: 'center', gap: '0.375rem' }}>
+                        <History size={16} /> {showHistory ? 'Hide' : 'Billing'} History
+                    </button>
+                    <button className="btn btn-secondary" onClick={fetchData}>
+                        <RefreshCw size={16} /> Refresh
+                    </button>
+                </div>
             </div>
 
             {error && <div className="alert alert-error"><AlertTriangle size={20} />{error}</div>}
@@ -197,6 +225,51 @@ const Subscriptions = () => {
                 </div>
             )}
 
+            {/* Billing History */}
+            {showHistory && (
+                <div className="card" style={{ marginBottom: '1.5rem' }}>
+                    <div className="card-header">
+                        <h3><History size={20} /> Billing History</h3>
+                    </div>
+                    {billingHistory.length === 0 ? (
+                        <div className="empty-state" style={{ padding: '2rem' }}>
+                            <History size={36} />
+                            <h4>No billing history yet</h4>
+                            <p>Subscription renewal transactions will appear here.</p>
+                        </div>
+                    ) : (
+                        <div style={{ overflowX: 'auto' }}>
+                            <table className="table" style={{ width: '100%' }}>
+                                <thead>
+                                    <tr>
+                                        <th>Date</th>
+                                        <th>Description</th>
+                                        <th>Amount</th>
+                                        <th>Balance After</th>
+                                        <th>Reference</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {billingHistory.map(tx => (
+                                        <tr key={tx.id}>
+                                            <td style={{ whiteSpace: 'nowrap' }}>{formatDateTime(tx.createdAt)}</td>
+                                            <td>{tx.description}</td>
+                                            <td style={{ color: 'var(--danger-color)', fontWeight: 600 }}>
+                                                -${tx.amount?.toFixed(2)}
+                                            </td>
+                                            <td>${tx.balanceAfter?.toFixed(2)}</td>
+                                            <td style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                                                {tx.reference?.replace('SUBSCRIPTION_', '').replace('SUBSCRIPTION_RENEW_', 'RENEW_').slice(0, 12)}...
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    )}
+                </div>
+            )}
+
             {/* Subscriptions List */}
             <div className="card">
                 <div className="card-header">
@@ -237,11 +310,23 @@ const Subscriptions = () => {
                                             <div className="subscription-details">
                                                 <h4>{sub.name}</h4>
                                                 <span className="subscription-type">{sub.type.replace('_', ' ')}</span>
+                                                {/* Show last billed date */}
+                                                {sub.lastBilledAt && (
+                                                    <div className="sub-last-billed">
+                                                        <Clock size={11} /> Last charged: {formatDate(sub.lastBilledAt)}
+                                                    </div>
+                                                )}
                                             </div>
                                         </div>
 
                                         <div className="subscription-status">
                                             {getStatusBadge(sub.status)}
+                                            {/* Show failure reason for paused */}
+                                            {sub.status === 'PAUSED' && sub.failedAttempts > 0 && (
+                                                <div className="sub-fail-info">
+                                                    <AlertTriangle size={11} /> {sub.failedAttempts} failed attempt{sub.failedAttempts > 1 ? 's' : ''}
+                                                </div>
+                                            )}
                                         </div>
 
                                         <div className="subscription-billing">
@@ -252,41 +337,61 @@ const Subscriptions = () => {
                                                     {daysUntil <= 0 ? 'Due today' : `${daysUntil} days left`}
                                                 </div>
                                             )}
+                                            {sub.status === 'ACTIVE' && (
+                                                <div className="sub-auto-renew-indicator">
+                                                    {sub.autoRenew ? (
+                                                        <span className="auto-renew-on"><CheckCircle size={11} /> Auto-renew ON</span>
+                                                    ) : (
+                                                        <span className="auto-renew-off"><XCircle size={11} /> Auto-renew OFF</span>
+                                                    )}
+                                                </div>
+                                            )}
                                         </div>
 
                                         <div className="subscription-actions">
-                                            {sub.status !== 'CANCELLED' && (
-                                                <button
-                                                    className="btn btn-sm btn-ghost"
-                                                    onClick={() => handleToggleAutoRenew(sub.id, sub.autoRenew)}
-                                                    disabled={actionLoading === sub.id}
-                                                    title={sub.autoRenew ? 'Disable auto-renew' : 'Enable auto-renew'}
-                                                    style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', color: sub.autoRenew ? 'var(--success-color)' : 'var(--text-muted)' }}
-                                                >
-                                                    {sub.autoRenew ? <ToggleRight size={18} /> : <ToggleLeft size={18} />}
-                                                    <span style={{ fontSize: '0.75rem' }}>{sub.autoRenew ? 'Auto' : 'Manual'}</span>
-                                                </button>
+                                            {/* ACTIVE: show auto-renew toggle + cancel */}
+                                            {sub.status === 'ACTIVE' && (
+                                                <>
+                                                    <button
+                                                        className="btn btn-sm btn-ghost"
+                                                        onClick={() => handleToggleAutoRenew(sub.id, sub.autoRenew)}
+                                                        disabled={actionLoading === sub.id}
+                                                        title={sub.autoRenew ? 'Disable auto-renew' : 'Enable auto-renew'}
+                                                        style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', color: sub.autoRenew ? 'var(--success-color)' : 'var(--text-muted)' }}
+                                                    >
+                                                        {sub.autoRenew ? <ToggleRight size={18} /> : <ToggleLeft size={18} />}
+                                                        <span style={{ fontSize: '0.75rem' }}>{sub.autoRenew ? 'Auto' : 'Manual'}</span>
+                                                    </button>
+                                                    <button
+                                                        className="btn btn-sm btn-ghost text-danger"
+                                                        onClick={() => handleCancel(sub.id)}
+                                                        disabled={actionLoading === sub.id}
+                                                    >
+                                                        <XCircle size={14} /> Cancel
+                                                    </button>
+                                                </>
                                             )}
+
+                                            {/* PAUSED: show Renew button prominently */}
                                             {sub.status === 'PAUSED' && (
                                                 <button
-                                                    className="btn btn-sm btn-primary"
-                                                    onClick={() => handleResume(sub.id)}
+                                                    className="btn btn-sm btn-primary sub-renew-btn"
+                                                    onClick={() => handleRenew(sub.id)}
                                                     disabled={actionLoading === sub.id}
                                                 >
-                                                    <Play size={14} /> Resume
+                                                    <ArrowUpCircle size={14} /> Renew
                                                 </button>
                                             )}
-                                            {sub.status === 'ACTIVE' && (
-                                                <button
-                                                    className="btn btn-sm btn-ghost text-danger"
-                                                    onClick={() => handleCancel(sub.id)}
-                                                    disabled={actionLoading === sub.id}
-                                                >
-                                                    <XCircle size={14} /> Cancel
-                                                </button>
-                                            )}
+
+                                            {/* CANCELLED: show only Renew button */}
                                             {sub.status === 'CANCELLED' && (
-                                                <span className="text-muted">Cancelled</span>
+                                                <button
+                                                    className="btn btn-sm btn-primary sub-renew-btn"
+                                                    onClick={() => handleRenew(sub.id)}
+                                                    disabled={actionLoading === sub.id}
+                                                >
+                                                    <ArrowUpCircle size={14} /> Renew
+                                                </button>
                                             )}
                                         </div>
                                     </div>
@@ -376,16 +481,21 @@ const Subscriptions = () => {
           gap: 1.5rem;
           padding: 1.25rem;
           border-bottom: 1px solid var(--border-color);
+          transition: background 0.2s;
         }
         .subscription-item:last-child {
           border-bottom: none;
         }
+        .subscription-item:hover {
+          background: var(--bg-tertiary);
+        }
         .subscription-item.paused {
-          opacity: 0.7;
-          background: rgba(245, 158, 11, 0.03);
+          background: rgba(245, 158, 11, 0.04);
+          border-left: 3px solid var(--warning-color);
         }
         .subscription-item.cancelled {
-          opacity: 0.5;
+          opacity: 0.65;
+          border-left: 3px solid var(--danger-color);
         }
         .subscription-info {
           display: flex;
@@ -403,6 +513,22 @@ const Subscriptions = () => {
         .subscription-type {
           font-size: 0.8rem;
           color: var(--text-secondary);
+        }
+        .sub-last-billed {
+          font-size: 0.72rem;
+          color: var(--text-muted);
+          display: flex;
+          align-items: center;
+          gap: 0.25rem;
+          margin-top: 0.2rem;
+        }
+        .sub-fail-info {
+          font-size: 0.72rem;
+          color: var(--warning-color);
+          display: flex;
+          align-items: center;
+          gap: 0.25rem;
+          margin-top: 0.25rem;
         }
         .subscription-status {
           min-width: 100px;
@@ -426,13 +552,67 @@ const Subscriptions = () => {
         .billing-date.warning {
           color: var(--warning-color);
         }
+        .sub-auto-renew-indicator {
+          font-size: 0.7rem;
+          margin-top: 0.15rem;
+          display: flex;
+          justify-content: flex-end;
+        }
+        .auto-renew-on {
+          color: var(--success-color);
+          display: flex;
+          align-items: center;
+          gap: 0.2rem;
+        }
+        .auto-renew-off {
+          color: var(--text-muted);
+          display: flex;
+          align-items: center;
+          gap: 0.2rem;
+        }
         .subscription-actions {
-          min-width: 100px;
+          min-width: 130px;
           text-align: right;
+          display: flex;
+          gap: 0.375rem;
+          justify-content: flex-end;
+          align-items: center;
+          flex-wrap: wrap;
         }
         .btn-sm {
           padding: 0.375rem 0.75rem;
           font-size: 0.85rem;
+        }
+        .sub-renew-btn {
+          animation: subtle-pulse 2s ease-in-out infinite;
+        }
+        @keyframes subtle-pulse {
+          0%, 100% { box-shadow: 0 0 0 0 rgba(var(--primary-rgb, 99, 102, 241), 0.4); }
+          50% { box-shadow: 0 0 0 6px rgba(var(--primary-rgb, 99, 102, 241), 0); }
+        }
+        .table {
+          border-collapse: collapse;
+        }
+        .table th {
+          text-align: left;
+          padding: 0.75rem 1rem;
+          font-size: 0.8rem;
+          font-weight: 600;
+          color: var(--text-secondary);
+          border-bottom: 1px solid var(--border-color);
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+        }
+        .table td {
+          padding: 0.75rem 1rem;
+          border-bottom: 1px solid var(--border-color);
+          font-size: 0.875rem;
+        }
+        .table tbody tr:hover {
+          background: var(--bg-tertiary);
+        }
+        .table tbody tr:last-child td {
+          border-bottom: none;
         }
       `}</style>
         </div>
