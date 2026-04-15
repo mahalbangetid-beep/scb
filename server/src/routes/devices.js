@@ -52,10 +52,22 @@ router.get('/', authenticate, async (req, res, next) => {
             })
         ]);
 
-        // Map database status to UI format and include message counts + panel info
+        // Fetch subscription status for all user devices (single query)
+        const deviceSubscriptions = await prisma.monthlySubscription.findMany({
+            where: {
+                userId: effectiveUserId,
+                resourceType: 'DEVICE'
+            },
+            orderBy: { createdAt: 'desc' }
+        });
+
+        // Map database status to UI format and include message counts + panel info + subscription
         const formattedDevices = devices.map(device => {
             const sent = messageStats.find(s => s.deviceId === device.id && s.type === 'outgoing')?._count || 0;
             const received = messageStats.find(s => s.deviceId === device.id && s.type === 'incoming')?._count || 0;
+
+            // Find subscription for this device (most recent)
+            const sub = deviceSubscriptions.find(s => s.resourceId === device.id);
 
             return {
                 id: device.id,
@@ -71,7 +83,16 @@ router.get('/', authenticate, async (req, res, next) => {
                 lastActive: device.lastActive,
                 messagesSent: sent,
                 messagesReceived: received,
-                createdAt: device.createdAt
+                createdAt: device.createdAt,
+                // Subscription info (null = free device, no subscription needed)
+                subscription: sub ? {
+                    id: sub.id,
+                    status: sub.status,
+                    nextBilling: sub.nextBillingDate,
+                    fee: sub.monthlyFee,
+                    autoRenew: sub.autoRenew !== false,
+                    failedAttempts: sub.failedAttempts || 0
+                } : null
             };
         });
 

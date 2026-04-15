@@ -22,7 +22,9 @@ import {
     ShieldOff,
     ShieldCheck,
     BellOff,
-    LogOut
+    LogOut,
+    AlertTriangle,
+    ArrowUpCircle
 } from 'lucide-react'
 import api from '../services/api'
 import { formatDistanceToNow } from 'date-fns'
@@ -51,6 +53,7 @@ export default function Devices() {
     const [restartingDevice, setRestartingDevice] = useState(null)
     const [togglingDevice, setTogglingDevice] = useState(null)
     const [loggingOutDevice, setLoggingOutDevice] = useState(null)
+    const [renewingDevice, setRenewingDevice] = useState(null)
 
     // Edit Panel Modal State
     const [showEditModal, setShowEditModal] = useState(false)
@@ -264,6 +267,22 @@ export default function Devices() {
             console.error('Failed to restart device:', error)
         } finally {
             setRestartingDevice(null)
+        }
+    }
+
+    const handleRenewSubscription = async (subscriptionId, deviceId) => {
+        if (renewingDevice === deviceId) return
+        if (!confirm('This will charge your balance and reactivate this device subscription. Continue?')) return
+        setRenewingDevice(deviceId)
+        try {
+            await api.post(`/subscriptions/${subscriptionId}/renew`)
+            await fetchDevices()
+            window.dispatchEvent(new Event('user-data-updated'))
+        } catch (error) {
+            console.error('Failed to renew subscription:', error)
+            alert(error?.error?.message || error?.message || 'Failed to renew. Check your balance.')
+        } finally {
+            setRenewingDevice(null)
         }
     }
 
@@ -797,8 +816,52 @@ export default function Devices() {
                         </div>
 
                         {/* Actions */}
+                        {/* Subscription Expired Banner */}
+                        {device.subscription && device.subscription.status !== 'ACTIVE' && (
+                            <div style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '8px',
+                                padding: '8px 12px',
+                                marginBottom: 'var(--spacing-sm)',
+                                borderRadius: '8px',
+                                fontSize: '0.8rem',
+                                background: 'rgba(239, 68, 68, 0.08)',
+                                border: '1px solid rgba(239, 68, 68, 0.2)',
+                                color: '#ef4444'
+                            }}>
+                                <AlertTriangle size={14} />
+                                <span style={{ flex: 1 }}>
+                                    Subscription {device.subscription.status === 'CANCELLED' ? 'cancelled' : 'paused'}. Renew to use this device.
+                                </span>
+                            </div>
+                        )}
+
                         <div style={{ display: 'flex', gap: 'var(--spacing-sm)' }}>
-                            {device.status === 'connected' ? (
+                            {/* If subscription is expired — show only Renew + Delete */}
+                            {device.subscription && device.subscription.status !== 'ACTIVE' ? (
+                                <>
+                                    <button
+                                        className="btn btn-primary btn-sm"
+                                        style={{ flex: 1 }}
+                                        onClick={() => handleRenewSubscription(device.subscription.id, device.id)}
+                                        disabled={renewingDevice === device.id}
+                                    >
+                                        {renewingDevice === device.id
+                                            ? <Loader2 className="animate-spin" size={14} />
+                                            : <ArrowUpCircle size={14} />}
+                                        Renew Subscription
+                                    </button>
+                                    <button
+                                        className="btn btn-ghost btn-sm"
+                                        style={{ padding: '8px' }}
+                                        onClick={() => handleDeleteDevice(device.id)}
+                                        disabled={deletingDevice === device.id}
+                                    >
+                                        {deletingDevice === device.id ? <Loader2 className="animate-spin" size={14} /> : <Trash2 size={14} />}
+                                    </button>
+                                </>
+                            ) : device.status === 'connected' ? (
                                 <>
                                     <button
                                         className="btn btn-secondary btn-sm"

@@ -65,6 +65,11 @@ export default function SmmPanels() {
     const [historyPage, setHistoryPage] = useState(1)
     const [historyPagination, setHistoryPagination] = useState({ total: 0, pages: 0 })
 
+    // Subscription Billing History State
+    const [showBilling, setShowBilling] = useState(false)
+    const [billingHistory, setBillingHistory] = useState([])
+    const [billingLoading, setBillingLoading] = useState(false)
+
     useEffect(() => {
         fetchPanels()
     }, [])
@@ -72,6 +77,10 @@ export default function SmmPanels() {
     useEffect(() => {
         if (showHistory) fetchHistory()
     }, [showHistory, historyPage])
+
+    useEffect(() => {
+        if (showBilling) fetchBillingHistory()
+    }, [showBilling])
 
     const fetchPanels = async () => {
         try {
@@ -96,6 +105,23 @@ export default function SmmPanels() {
             console.error('Failed to load panel history:', err)
         } finally {
             setHistoryLoading(false)
+        }
+    }
+
+    const fetchBillingHistory = async () => {
+        try {
+            setBillingLoading(true)
+            const res = await api.get('/subscriptions/history')
+            // Filter only SMM_PANEL related transactions
+            const allTransactions = res.data || []
+            const panelTransactions = allTransactions.filter(t =>
+                t.description?.includes('SMM_PANEL') || t.reference?.includes('SMM_PANEL')
+            )
+            setBillingHistory(panelTransactions)
+        } catch (err) {
+            console.error('Failed to load billing history:', err)
+        } finally {
+            setBillingLoading(false)
         }
     }
 
@@ -698,6 +724,73 @@ export default function SmmPanels() {
                                         </div>
                                     )}
                                 </>
+                            )}
+                        </div>
+                    )}
+                </div>
+            )}
+
+            {/* ── Subscription Billing History Section ── */}
+            {!loading && panels.length > 0 && (
+                <div className="card" style={{ marginTop: '1rem' }}>
+                    <div
+                        className="card-header"
+                        style={{ cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '1rem 1.25rem' }}
+                        onClick={() => setShowBilling(!showBilling)}
+                    >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                            <DollarSign size={18} />
+                            <h3 style={{ margin: 0, fontSize: '1rem' }}>Subscription Billing</h3>
+                            {billingHistory.length > 0 && (
+                                <span className="badge badge-secondary">{billingHistory.length}</span>
+                            )}
+                        </div>
+                        {showBilling ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+                    </div>
+
+                    {showBilling && (
+                        <div style={{ padding: '0 1.25rem 1.25rem' }}>
+                            {billingLoading ? (
+                                <div style={{ textAlign: 'center', padding: '2rem 0' }}>
+                                    <Loader2 className="animate-spin" size={24} />
+                                    <p style={{ marginTop: '0.5rem', color: 'var(--text-secondary)', fontSize: '0.875rem' }}>Loading billing history...</p>
+                                </div>
+                            ) : billingHistory.length === 0 ? (
+                                <div style={{ textAlign: 'center', padding: '2rem 0', color: 'var(--text-secondary)' }}>
+                                    <DollarSign size={32} style={{ opacity: 0.5, marginBottom: '0.5rem' }} />
+                                    <p style={{ fontSize: '0.875rem' }}>No subscription billing transactions yet</p>
+                                </div>
+                            ) : (
+                                <div style={{ overflowX: 'auto' }}>
+                                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                                        <thead>
+                                            <tr>
+                                                <th style={{ textAlign: 'left', padding: '0.5rem 0.75rem', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', borderBottom: '1px solid var(--border-color)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Date</th>
+                                                <th style={{ textAlign: 'left', padding: '0.5rem 0.75rem', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', borderBottom: '1px solid var(--border-color)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Description</th>
+                                                <th style={{ textAlign: 'right', padding: '0.5rem 0.75rem', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', borderBottom: '1px solid var(--border-color)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Amount</th>
+                                                <th style={{ textAlign: 'right', padding: '0.5rem 0.75rem', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', borderBottom: '1px solid var(--border-color)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Balance After</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {billingHistory.map((tx, idx) => (
+                                                <tr key={tx.id || idx} style={{ borderBottom: '1px solid var(--border-color)' }}>
+                                                    <td style={{ padding: '0.625rem 0.75rem', fontSize: '0.8125rem', whiteSpace: 'nowrap' }}>
+                                                        {new Date(tx.createdAt).toLocaleDateString()} {new Date(tx.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                                    </td>
+                                                    <td style={{ padding: '0.625rem 0.75rem', fontSize: '0.8125rem' }}>
+                                                        {tx.description}
+                                                    </td>
+                                                    <td style={{ padding: '0.625rem 0.75rem', fontSize: '0.8125rem', textAlign: 'right', color: tx.type === 'DEBIT' ? '#ef4444' : '#10b981', fontWeight: 600 }}>
+                                                        {tx.type === 'DEBIT' ? '-' : '+'}${Number(tx.amount).toFixed(2)}
+                                                    </td>
+                                                    <td style={{ padding: '0.625rem 0.75rem', fontSize: '0.8125rem', textAlign: 'right', color: 'var(--text-secondary)' }}>
+                                                        ${Number(tx.balanceAfter).toFixed(2)}
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
                             )}
                         </div>
                     )}

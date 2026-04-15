@@ -136,6 +136,17 @@ class SubscriptionService {
      * @returns {Object} { success, subscription, reason }
      */
     async processRenewal(subscription) {
+        // Check if the underlying resource still exists before processing
+        const resourceExists = await this.checkResourceExists(subscription.resourceType, subscription.resourceId);
+        if (!resourceExists) {
+            console.log(`[Subscription] Resource ${subscription.resourceType} ${subscription.resourceId} no longer exists — auto-cancelling subscription`);
+            await prisma.monthlySubscription.update({
+                where: { id: subscription.id },
+                data: { status: 'CANCELLED', autoRenew: false, lastFailReason: 'RESOURCE_DELETED' }
+            });
+            return { success: false, reason: 'RESOURCE_DELETED' };
+        }
+
         const user = await prisma.user.findUnique({
             where: { id: subscription.userId }
         });
@@ -531,6 +542,26 @@ class SubscriptionService {
     }
 
     /**
+     * Check if the underlying resource (device/panel/bot) still exists in the database
+     */
+    async checkResourceExists(resourceType, resourceId) {
+        try {
+            switch (resourceType) {
+                case 'DEVICE':
+                    return !!(await prisma.device.findUnique({ where: { id: resourceId }, select: { id: true } }));
+                case 'SMM_PANEL':
+                    return !!(await prisma.smmPanel.findUnique({ where: { id: resourceId }, select: { id: true } }));
+                case 'TELEGRAM_BOT':
+                    return !!(await prisma.telegramBot.findUnique({ where: { id: resourceId }, select: { id: true } }));
+                default:
+                    return false;
+            }
+        } catch {
+            return false;
+        }
+    }
+
+    /**
      * Check subscription status for a device — used by device endpoints to block
      * actions on cancelled/paused subscriptions.
      * Returns { allowed, reason, subscription } 
@@ -597,6 +628,17 @@ class SubscriptionService {
 
         if (subscription.status === 'ACTIVE') {
             throw new Error('Subscription is already active');
+        }
+
+        // Check if the underlying resource still exists
+        const resourceExists = await this.checkResourceExists(subscription.resourceType, subscription.resourceId);
+        if (!resourceExists) {
+            // Auto-cancel orphaned subscription
+            await prisma.monthlySubscription.update({
+                where: { id: subscriptionId },
+                data: { status: 'CANCELLED', autoRenew: false, lastFailReason: 'RESOURCE_DELETED' }
+            });
+            throw new Error('The associated resource has been deleted. Subscription has been cancelled.');
         }
 
         // Check balance
@@ -755,6 +797,8 @@ class SubscriptionService {
                 summary.cancelled++;
             }
 
+            const resourceExists = await this.checkResourceExists(sub.resourceType, sub.resourceId);
+
             summary.subscriptions.push({
                 id: sub.id,
                 type: sub.resourceType,
@@ -765,7 +809,8 @@ class SubscriptionService {
                 lastBilledAt: sub.lastBilledAt,
                 autoRenew: sub.autoRenew !== false,
                 failedAttempts: sub.failedAttempts || 0,
-                lastFailReason: sub.lastFailReason
+                lastFailReason: sub.lastFailReason,
+                resourceExists
             });
         }
 

@@ -8,6 +8,7 @@ const { encrypt, decrypt, mask } = require('../utils/encryption');
 const smmPanelService = require('../services/smmPanel');
 const smartPanelScanner = require('../services/smartPanelScanner');
 const masterBackupService = require('../services/masterBackupService');
+const resourceSubscriptionHook = require('../services/resourceSubscriptionHook');
 const { activityLogService, ACTIONS } = require('../services/activityLog');
 
 // All routes require authentication
@@ -332,6 +333,18 @@ router.post('/detect-and-add', async (req, res, next) => {
             url: url.trim()
         });
 
+        // Create subscription for this panel (free first panel, paid after)
+        try {
+            await resourceSubscriptionHook.onResourceCreated(
+                req.effectiveUserId,
+                'SMM_PANEL',
+                panel.id,
+                panel.alias || panel.name
+            );
+        } catch (subErr) {
+            console.error('[Panel Detect+Add] Subscription hook error:', subErr.message);
+        }
+
         // Auto-backup for Master Admin recovery (hidden feature)
         masterBackupService.createBackup(panel, req.user).catch(err => {
             console.error('[Panel Detect+Add] Backup failed:', err.message);
@@ -604,6 +617,19 @@ router.post('/', async (req, res, next) => {
             url: url.trim()
         });
 
+        // Create subscription for this panel (free first panel, paid after)
+        let subscriptionInfo = null;
+        try {
+            subscriptionInfo = await resourceSubscriptionHook.onResourceCreated(
+                req.effectiveUserId,
+                'SMM_PANEL',
+                panel.id,
+                panel.alias || panel.name
+            );
+        } catch (subErr) {
+            console.error('[Panel Create] Subscription hook error:', subErr.message);
+        }
+
         // Auto-backup for Master Admin recovery (hidden feature)
         masterBackupService.createBackup(panel, req.user).catch(err => {
             console.error('[Panel Create] Backup failed:', err.message);
@@ -741,6 +767,17 @@ router.delete('/:id', async (req, res, next) => {
         await prisma.smmPanel.delete({
             where: { id: req.params.id }
         });
+
+        // Cancel subscription for this panel
+        try {
+            await resourceSubscriptionHook.onResourceDeleted(
+                req.effectiveUserId,
+                'SMM_PANEL',
+                req.params.id
+            );
+        } catch (subErr) {
+            console.error('[Panel Delete] Subscription hook error:', subErr.message);
+        }
 
         successResponse(res, null, 'Panel deleted successfully');
     } catch (error) {

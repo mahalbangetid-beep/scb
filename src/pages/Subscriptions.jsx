@@ -300,9 +300,10 @@ const Subscriptions = () => {
                             .map(sub => {
                                 const daysUntil = getDaysUntil(sub.nextBilling);
                                 const isExpiringSoon = daysUntil !== null && daysUntil <= 3 && sub.status === 'ACTIVE';
+                                const isResourceDeleted = sub.resourceExists === false;
 
                                 return (
-                                    <div key={sub.id} className={`subscription-item ${sub.status.toLowerCase()}`}>
+                                    <div key={sub.id} className={`subscription-item ${sub.status.toLowerCase()} ${isResourceDeleted ? 'resource-deleted' : ''}`}>
                                         <div className="subscription-info">
                                             <div className="subscription-icon">
                                                 {getResourceIcon(sub.type)}
@@ -310,8 +311,14 @@ const Subscriptions = () => {
                                             <div className="subscription-details">
                                                 <h4>{sub.name}</h4>
                                                 <span className="subscription-type">{sub.type.replace('_', ' ')}</span>
+                                                {/* Show resource deleted warning */}
+                                                {isResourceDeleted && (
+                                                    <div className="sub-resource-deleted">
+                                                        <XCircle size={11} /> Resource Deleted
+                                                    </div>
+                                                )}
                                                 {/* Show last billed date */}
-                                                {sub.lastBilledAt && (
+                                                {!isResourceDeleted && sub.lastBilledAt && (
                                                     <div className="sub-last-billed">
                                                         <Clock size={11} /> Last charged: {formatDate(sub.lastBilledAt)}
                                                     </div>
@@ -349,49 +356,56 @@ const Subscriptions = () => {
                                         </div>
 
                                         <div className="subscription-actions">
-                                            {/* ACTIVE: show auto-renew toggle + cancel */}
-                                            {sub.status === 'ACTIVE' && (
+                                            {/* If resource is deleted — disable all actions */}
+                                            {isResourceDeleted ? (
+                                                <span className="sub-deleted-label">No actions available</span>
+                                            ) : (
                                                 <>
-                                                    <button
-                                                        className="btn btn-sm btn-ghost"
-                                                        onClick={() => handleToggleAutoRenew(sub.id, sub.autoRenew)}
-                                                        disabled={actionLoading === sub.id}
-                                                        title={sub.autoRenew ? 'Disable auto-renew' : 'Enable auto-renew'}
-                                                        style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', color: sub.autoRenew ? 'var(--success-color)' : 'var(--text-muted)' }}
-                                                    >
-                                                        {sub.autoRenew ? <ToggleRight size={18} /> : <ToggleLeft size={18} />}
-                                                        <span style={{ fontSize: '0.75rem' }}>{sub.autoRenew ? 'Auto' : 'Manual'}</span>
-                                                    </button>
-                                                    <button
-                                                        className="btn btn-sm btn-ghost text-danger"
-                                                        onClick={() => handleCancel(sub.id)}
-                                                        disabled={actionLoading === sub.id}
-                                                    >
-                                                        <XCircle size={14} /> Cancel
-                                                    </button>
+                                                    {/* ACTIVE: show auto-renew toggle + cancel */}
+                                                    {sub.status === 'ACTIVE' && (
+                                                        <>
+                                                            <button
+                                                                className="btn btn-sm btn-ghost"
+                                                                onClick={() => handleToggleAutoRenew(sub.id, sub.autoRenew)}
+                                                                disabled={actionLoading === sub.id}
+                                                                title={sub.autoRenew ? 'Disable auto-renew' : 'Enable auto-renew'}
+                                                                style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', color: sub.autoRenew ? 'var(--success-color)' : 'var(--text-muted)' }}
+                                                            >
+                                                                {sub.autoRenew ? <ToggleRight size={18} /> : <ToggleLeft size={18} />}
+                                                                <span style={{ fontSize: '0.75rem' }}>{sub.autoRenew ? 'Auto' : 'Manual'}</span>
+                                                            </button>
+                                                            <button
+                                                                className="btn btn-sm btn-ghost text-danger"
+                                                                onClick={() => handleCancel(sub.id)}
+                                                                disabled={actionLoading === sub.id}
+                                                            >
+                                                                <XCircle size={14} /> Cancel
+                                                            </button>
+                                                        </>
+                                                    )}
+
+                                                    {/* PAUSED: show Renew button prominently */}
+                                                    {sub.status === 'PAUSED' && (
+                                                        <button
+                                                            className="btn btn-sm btn-primary sub-renew-btn"
+                                                            onClick={() => handleRenew(sub.id)}
+                                                            disabled={actionLoading === sub.id}
+                                                        >
+                                                            <ArrowUpCircle size={14} /> Renew
+                                                        </button>
+                                                    )}
+
+                                                    {/* CANCELLED: show only Renew button */}
+                                                    {sub.status === 'CANCELLED' && (
+                                                        <button
+                                                            className="btn btn-sm btn-primary sub-renew-btn"
+                                                            onClick={() => handleRenew(sub.id)}
+                                                            disabled={actionLoading === sub.id}
+                                                        >
+                                                            <ArrowUpCircle size={14} /> Renew
+                                                        </button>
+                                                    )}
                                                 </>
-                                            )}
-
-                                            {/* PAUSED: show Renew button prominently */}
-                                            {sub.status === 'PAUSED' && (
-                                                <button
-                                                    className="btn btn-sm btn-primary sub-renew-btn"
-                                                    onClick={() => handleRenew(sub.id)}
-                                                    disabled={actionLoading === sub.id}
-                                                >
-                                                    <ArrowUpCircle size={14} /> Renew
-                                                </button>
-                                            )}
-
-                                            {/* CANCELLED: show only Renew button */}
-                                            {sub.status === 'CANCELLED' && (
-                                                <button
-                                                    className="btn btn-sm btn-primary sub-renew-btn"
-                                                    onClick={() => handleRenew(sub.id)}
-                                                    disabled={actionLoading === sub.id}
-                                                >
-                                                    <ArrowUpCircle size={14} /> Renew
-                                                </button>
                                             )}
                                         </div>
                                     </div>
@@ -613,6 +627,29 @@ const Subscriptions = () => {
         }
         .table tbody tr:last-child td {
           border-bottom: none;
+        }
+        .subscription-item.resource-deleted {
+          opacity: 0.45;
+          border-left: 3px solid var(--text-muted);
+          background: var(--bg-tertiary);
+          pointer-events: none;
+        }
+        .subscription-item.resource-deleted .subscription-actions {
+          pointer-events: auto;
+        }
+        .sub-resource-deleted {
+          font-size: 0.72rem;
+          color: var(--danger-color);
+          display: flex;
+          align-items: center;
+          gap: 0.25rem;
+          margin-top: 0.2rem;
+          font-weight: 600;
+        }
+        .sub-deleted-label {
+          font-size: 0.75rem;
+          color: var(--text-muted);
+          font-style: italic;
         }
       `}</style>
         </div>
