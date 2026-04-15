@@ -133,7 +133,17 @@ router.get('/:id', async (req, res, next) => {
 router.post('/', upload.single('media'), async (req, res, next) => {
     try {
         const { name, deviceId, telegramBotId, message, scheduledAt } = req.body;
-        let { recipients, mediaUrl, broadcastType, targetGroups, watermarkText, autoIdEnabled, chargeCategory, autoPadding } = req.body;
+        let { recipients, mediaUrl, broadcastType, targetGroups, watermarkText, autoIdEnabled, chargeCategory, autoPadding, messageDelay } = req.body;
+
+        // Section 13.1: Parse and validate message delay (in seconds from frontend → ms)
+        let delayMs = 1500; // default 1.5s
+        if (messageDelay !== undefined && messageDelay !== null && messageDelay !== '') {
+            const parsedDelay = parseInt(messageDelay);
+            if (!isNaN(parsedDelay) && parsedDelay >= 1) {
+                // Frontend sends seconds, convert to ms. Clamp to safe range (500ms - 30s)
+                delayMs = Math.min(Math.max(parsedDelay * 1000, 500), 30000);
+            }
+        }
         const platform = req.body.platform || 'WHATSAPP'; // Bug 5.1: Unified Telegram + WhatsApp
 
         // Section 6.4: Determine broadcast type
@@ -287,7 +297,9 @@ router.post('/', upload.single('media'), async (req, res, next) => {
                 // Section 6.5
                 chargeCategory: effectiveChargeCategory2,
                 // Auto Padding
-                autoPadding: autoPadding === true || autoPadding === 'true'
+                autoPadding: autoPadding === true || autoPadding === 'true',
+                // Section 13.1: Message delay between each send
+                messageDelay: delayMs
             }
         });
 
@@ -398,8 +410,8 @@ async function processBroadcast(whatsapp, broadcastId, deviceId, message, mediaU
                 failed++;
             }
 
-            // Delay between messages to avoid spam detection
-            await new Promise(r => setTimeout(r, 1500));
+            // Section 13.1: Configurable delay between messages
+            await new Promise(r => setTimeout(r, broadcast.messageDelay || 1500));
 
             // Check if campaign was cancelled mid-processing
             if ((sent + failed) % 10 === 0) {
@@ -439,7 +451,7 @@ async function processBroadcast(whatsapp, broadcastId, deviceId, message, mediaU
                     failed++;
                 }
 
-                await new Promise(r => setTimeout(r, 2000));
+                await new Promise(r => setTimeout(r, broadcast.messageDelay || 1500));
             }
         }
 
@@ -557,8 +569,8 @@ async function processTelegramBroadcast(broadcastId, telegramBotId, message, med
                 failed++;
             }
 
-            // Telegram rate limit: ~30 messages/second to different users
-            await new Promise(r => setTimeout(r, 500));
+            // Section 13.1: Configurable delay (Telegram default lower due to higher rate limits)
+            await new Promise(r => setTimeout(r, broadcast.messageDelay || 500));
 
             // Check cancellation every 10 messages
             if ((sent + failed) % 10 === 0) {

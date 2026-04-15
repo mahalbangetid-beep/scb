@@ -810,6 +810,9 @@ model Broadcast {
   // Auto Padding: adds invisible zero-width chars to make each message unique (anti-spam)
   autoPadding     Boolean   @default(false)
 
+  // Section 13.1: Configurable message delay (milliseconds between each message)
+  messageDelay    Int       @default(1500)
+
   device        Device?              @relation(fields: [deviceId], references: [id], onDelete: Cascade)
   telegramBot   TelegramBot?         @relation(fields: [telegramBotId], references: [id], onDelete: Cascade)
   recipients    BroadcastRecipient[]

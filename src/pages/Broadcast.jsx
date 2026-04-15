@@ -69,7 +69,8 @@ export default function Broadcast() {
         selectedGroups: [], // array of groupJid
         scheduleEnabled: false,
         scheduledAt: '',
-        autoPadding: false
+        autoPadding: false,
+        messageDelay: '2'
     })
 
     const fileInputRef = useRef(null)
@@ -302,7 +303,8 @@ export default function Broadcast() {
                     watermarkEnabled: marketingConfig?.watermarkEnabled || false,
                     watermarkText: marketingConfig?.defaultWatermark || '',
                     broadcastType: 'number', selectedGroups: [],
-                    scheduleEnabled: false, scheduledAt: ''
+                    scheduleEnabled: false, scheduledAt: '',
+                    autoPadding: false, messageDelay: '2'
                 })
                 setSubmitting(false)
                 return
@@ -327,6 +329,7 @@ export default function Broadcast() {
                 payload.append('autoIdEnabled', formData.autoIdEnabled)
                 payload.append('watermarkText', formData.watermarkEnabled ? (formData.watermarkText || '') : '')
                 payload.append('autoPadding', formData.autoPadding)
+                payload.append('messageDelay', formData.messageDelay || '2')
                 if (scheduledAt) payload.append('scheduledAt', scheduledAt)
 
                 await api.post('/broadcast', payload, {
@@ -342,7 +345,8 @@ export default function Broadcast() {
                     targetGroups: needsGroups ? formData.selectedGroups : undefined,
                     autoIdEnabled: formData.autoIdEnabled,
                     watermarkText: formData.watermarkEnabled ? (formData.watermarkText || '') : '',
-                    autoPadding: formData.autoPadding
+                    autoPadding: formData.autoPadding,
+                    messageDelay: formData.messageDelay || '2'
                 }
                 if (isWA) payload.deviceId = formData.deviceId
                 if (!isWA) payload.telegramBotId = formData.telegramBotId
@@ -363,7 +367,8 @@ export default function Broadcast() {
                 watermarkEnabled: marketingConfig?.watermarkEnabled || false,
                 watermarkText: marketingConfig?.defaultWatermark || '',
                 broadcastType: 'number', selectedGroups: [],
-                scheduleEnabled: false, scheduledAt: ''
+                scheduleEnabled: false, scheduledAt: '',
+                autoPadding: false, messageDelay: '2'
             })
         } catch (error) {
             console.error('Failed to start broadcast:', error)
@@ -489,7 +494,8 @@ export default function Broadcast() {
                                         watermarkEnabled: marketingConfig?.watermarkEnabled || false,
                                         watermarkText: marketingConfig?.defaultWatermark || '',
                                         broadcastType: 'number', selectedGroups: [],
-                                        scheduleEnabled: false, scheduledAt: ''
+                                        scheduleEnabled: false, scheduledAt: '',
+                                        autoPadding: false, messageDelay: '2'
                                     })
                                 }}>
                                     <X size={14} /> Cancel Edit
@@ -1049,6 +1055,42 @@ export default function Broadcast() {
                                     Invisible characters will be added to each message, making every message unique to avoid spam detection.
                                 </p>
                             )}
+                        </div>
+
+                        {/* Message Delay (Section 13.1) */}
+                        <div className="form-group" style={{
+                            padding: 'var(--spacing-md)',
+                            borderRadius: 'var(--radius-md)',
+                            border: '1px solid var(--border-color)',
+                            background: 'transparent'
+                        }}>
+                            <label className="form-label" style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: 'var(--spacing-sm)',
+                                marginBottom: 'var(--spacing-sm)'
+                            }}>
+                                <Clock size={16} style={{ color: '#f59e0b' }} />
+                                <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>Message Delay</span>
+                                <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 400 }}>(seconds between messages)</span>
+                            </label>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <input
+                                    type="number"
+                                    className="form-input"
+                                    min="1"
+                                    max="30"
+                                    step="1"
+                                    value={formData.messageDelay}
+                                    onChange={(e) => setFormData({ ...formData, messageDelay: e.target.value })}
+                                    style={{ maxWidth: '100px' }}
+                                />
+                                <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>seconds</span>
+                            </div>
+                            <div style={{ marginTop: '6px', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                                <Info size={12} style={{ display: 'inline', verticalAlign: 'middle', marginRight: '4px' }} />
+                                Recommended: 2-5 seconds. Lower values may trigger spam detection.
+                            </div>
                         </div>
 
                         {/* Schedule Toggle */}
