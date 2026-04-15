@@ -2300,7 +2300,7 @@ router.get('/panels', requireMasterAdmin, async (req, res, next) => {
 // ==================== SERVICE LIST MANAGEMENT (Section 3.2a) ====================
 
 // GET /api/admin/service-list - Get the admin-configured service list
-router.get('/service-list', requireAuth, async (req, res, next) => {
+router.get('/service-list', async (req, res, next) => {
     try {
         const userId = req.user.id;
 
@@ -2339,7 +2339,7 @@ router.get('/service-list', requireAuth, async (req, res, next) => {
 });
 
 // PUT /api/admin/service-list - Update the service list content
-router.put('/service-list', requireAuth, async (req, res, next) => {
+router.put('/service-list', async (req, res, next) => {
     try {
         const userId = req.user.id;
         const { content } = req.body;
@@ -2373,7 +2373,7 @@ router.put('/service-list', requireAuth, async (req, res, next) => {
 // ==================== CUSTOM COMMAND ALIASES MANAGEMENT (Section 3.2c) ====================
 
 // GET /api/admin/command-aliases - Get custom command aliases
-router.get('/command-aliases', requireAuth, async (req, res, next) => {
+router.get('/command-aliases', async (req, res, next) => {
     try {
         const userId = req.user.id;
         const commandParser = require('../services/commandParser');
@@ -2403,7 +2403,7 @@ router.get('/command-aliases', requireAuth, async (req, res, next) => {
 });
 
 // PUT /api/admin/command-aliases - Update custom command aliases
-router.put('/command-aliases', requireAuth, async (req, res, next) => {
+router.put('/command-aliases', async (req, res, next) => {
     try {
         const userId = req.user.id;
         const { aliases } = req.body;
