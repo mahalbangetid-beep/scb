@@ -18,7 +18,7 @@ const UserMappings = () => {
     const [currentPage, setCurrentPage] = useState(1);
     const [totalItems, setTotalItems] = useState(0);
     const [totalPages, setTotalPages] = useState(1);
-    const PAGE_SIZE = 50;
+    const PAGE_SIZE = 200;
     const searchTimerRef = useRef(null);
 
     // Bulk select

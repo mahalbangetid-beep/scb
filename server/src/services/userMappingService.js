@@ -172,7 +172,7 @@ class UserMappingService {
             where.isAutoSuspended = options.isAutoSuspended;
         }
 
-        const pageSize = options.limit || 50;
+        const pageSize = options.limit || 200;
         const offset = options.offset || 0;
 
         // Run data query + count query in parallel for performance
