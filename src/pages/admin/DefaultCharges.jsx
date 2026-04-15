@@ -4,7 +4,8 @@ import {
     MessageSquare, Smartphone, Bot, Globe, CreditCard,
     Zap, Package, RefreshCw,
     SendHorizontal, Users, Shield, Tag,
-    ToggleLeft, ToggleRight, ArrowRightLeft, Bell
+    ToggleLeft, ToggleRight, ArrowRightLeft, Bell,
+    ChevronDown, ChevronUp, Search, Filter, Clock, BarChart3
 } from 'lucide-react'
 import api from '../../services/api'
 
@@ -47,6 +48,15 @@ export default function DefaultCharges() {
     // Original charges for diff checking
     const [originalCharges, setOriginalCharges] = useState(null)
 
+    // Credit Deduction Log (Section 2.1)
+    const [logExpanded, setLogExpanded] = useState(false)
+    const [logLoading, setLogLoading] = useState(false)
+    const [logData, setLogData] = useState({ transactions: [], summary: { totalDeducted: 0, totalTransactions: 0 } })
+    const [logPagination, setLogPagination] = useState({ page: 1, total: 0, totalPages: 0 })
+    const [logFilter, setLogFilter] = useState({ type: 'all', search: '', from: '', to: '' })
+    const [summaryData, setSummaryData] = useState(null)
+    const [summaryLoading, setSummaryLoading] = useState(false)
+
     useEffect(() => {
         fetchCharges()
     }, [])
@@ -57,6 +67,54 @@ export default function DefaultCharges() {
             return () => clearTimeout(timer)
         }
     }, [success, error])
+
+    // Fetch deduction log when expanded or filter changes
+    useEffect(() => {
+        if (logExpanded) {
+            fetchDeductionLog()
+            fetchDeductionSummary()
+        }
+    }, [logExpanded, logFilter.type, logPagination.page])
+
+    const fetchDeductionLog = async (pageOverride) => {
+        try {
+            setLogLoading(true)
+            const p = pageOverride || logPagination.page
+            const params = new URLSearchParams({ page: p, limit: 20 })
+            if (logFilter.type && logFilter.type !== 'all') params.append('type', logFilter.type)
+            if (logFilter.search) params.append('search', logFilter.search)
+            if (logFilter.from) params.append('from', logFilter.from)
+            if (logFilter.to) params.append('to', logFilter.to)
+
+            const res = await api.get(`/admin/credit-deduction-log?${params.toString()}`)
+            const data = res.data || res
+            setLogData(data.data || data)
+            if (data.pagination) {
+                setLogPagination(prev => ({ ...prev, total: data.pagination.total, totalPages: data.pagination.totalPages }))
+            }
+        } catch (err) {
+            console.error('Failed to fetch deduction log:', err)
+        } finally {
+            setLogLoading(false)
+        }
+    }
+
+    const fetchDeductionSummary = async () => {
+        try {
+            setSummaryLoading(true)
+            const params = new URLSearchParams()
+            if (logFilter.from) params.append('from', logFilter.from)
+            if (logFilter.to) params.append('to', logFilter.to)
+
+            const res = await api.get(`/admin/credit-deduction-summary?${params.toString()}`)
+            const data = res.data || res
+            setSummaryData(data)
+        } catch (err) {
+            console.error('Failed to fetch deduction summary:', err)
+        } finally {
+            setSummaryLoading(false)
+        }
+    }
 
     const fetchCharges = async () => {
         try {
@@ -792,6 +850,217 @@ export default function DefaultCharges() {
                                 ))}
                             </tbody>
                         </table>
+                    </div>
+                )}
+            </div>
+
+            {/* Credit Deduction Log (Section 2.1) */}
+            <div className="dc-packages-section">
+                <div
+                    className="dc-section-header"
+                    style={{ cursor: 'pointer', userSelect: 'none' }}
+                    onClick={() => setLogExpanded(!logExpanded)}
+                >
+                    <div>
+                        <h2><BarChart3 size={22} /> Credit Deduction Log</h2>
+                        <p>Running log of credit deductions per message type for admin review</p>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        {logData.summary?.totalTransactions > 0 && (
+                            <span className="dc-badge">
+                                {logData.summary.totalTransactions} deductions • {logData.summary.totalDeducted.toFixed(2)} credits total
+                            </span>
+                        )}
+                        {logExpanded ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+                    </div>
+                </div>
+
+                {logExpanded && (
+                    <div>
+                        {/* Filters Row */}
+                        <div style={{
+                            display: 'flex', gap: '0.75rem', flexWrap: 'wrap',
+                            padding: '0.75rem 1rem', background: 'var(--bg-secondary)',
+                            borderRadius: 'var(--radius-md)', marginBottom: '1rem',
+                            alignItems: 'center', border: '1px solid var(--border-color)'
+                        }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                                <Filter size={14} style={{ color: 'var(--text-muted)' }} />
+                                <select
+                                    className="form-select"
+                                    value={logFilter.type}
+                                    onChange={e => {
+                                        setLogFilter(prev => ({ ...prev, type: e.target.value }))
+                                        setLogPagination(prev => ({ ...prev, page: 1 }))
+                                    }}
+                                    style={{ fontSize: '0.8rem', padding: '4px 8px', minWidth: '180px' }}
+                                >
+                                    <option value="all">All Types</option>
+                                    <optgroup label="WhatsApp">
+                                        {Object.entries(MESSAGE_TYPE_LABELS)
+                                            .filter(([, v]) => v.platform === 'wa')
+                                            .map(([key, v]) => (
+                                                <option key={key} value={key}>{v.label}</option>
+                                            ))}
+                                    </optgroup>
+                                    <optgroup label="Telegram">
+                                        {Object.entries(MESSAGE_TYPE_LABELS)
+                                            .filter(([, v]) => v.platform === 'tg')
+                                            .map(([key, v]) => (
+                                                <option key={key} value={key}>{v.label}</option>
+                                            ))}
+                                    </optgroup>
+                                </select>
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                                <Search size={14} style={{ color: 'var(--text-muted)' }} />
+                                <input
+                                    className="form-input"
+                                    placeholder="Search description..."
+                                    value={logFilter.search}
+                                    onChange={e => setLogFilter(prev => ({ ...prev, search: e.target.value }))}
+                                    onKeyDown={e => { if (e.key === 'Enter') { setLogPagination(prev => ({ ...prev, page: 1 })); fetchDeductionLog(1) } }}
+                                    style={{ fontSize: '0.8rem', padding: '4px 8px', maxWidth: '180px' }}
+                                />
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                                <Clock size={14} style={{ color: 'var(--text-muted)' }} />
+                                <input
+                                    type="date"
+                                    className="form-input"
+                                    value={logFilter.from}
+                                    onChange={e => setLogFilter(prev => ({ ...prev, from: e.target.value }))}
+                                    style={{ fontSize: '0.8rem', padding: '4px 8px' }}
+                                />
+                                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>→</span>
+                                <input
+                                    type="date"
+                                    className="form-input"
+                                    value={logFilter.to}
+                                    onChange={e => setLogFilter(prev => ({ ...prev, to: e.target.value }))}
+                                    style={{ fontSize: '0.8rem', padding: '4px 8px' }}
+                                />
+                            </div>
+                            <button
+                                className="dc-btn dc-btn-ghost"
+                                onClick={() => { setLogPagination(prev => ({ ...prev, page: 1 })); fetchDeductionLog(1); fetchDeductionSummary() }}
+                                style={{ fontSize: '0.8rem', padding: '4px 12px' }}
+                            >
+                                <RefreshCw size={14} /> Apply
+                            </button>
+                        </div>
+
+                        {/* Summary Breakdown */}
+                        {summaryData && summaryData.breakdown && summaryData.breakdown.length > 0 && (
+                            <div style={{
+                                marginBottom: '1rem', padding: '0.75rem 1rem',
+                                background: 'var(--bg-secondary)', borderRadius: 'var(--radius-md)',
+                                border: '1px solid var(--border-color)'
+                            }}>
+                                <h4 style={{ margin: '0 0 0.5rem 0', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                                    <BarChart3 size={14} /> Deduction Breakdown by Type
+                                    <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 400 }}>
+                                        ({summaryData.grandTotal.toFixed(2)} credits total)
+                                    </span>
+                                </h4>
+                                <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                                    {summaryData.breakdown.slice(0, 10).map(item => (
+                                        <div key={item.type} style={{
+                                            padding: '4px 10px', borderRadius: '20px',
+                                            background: 'var(--bg-primary)', border: '1px solid var(--border-color)',
+                                            fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '4px'
+                                        }}>
+                                            <span style={{ fontWeight: 600 }}>{item.type}</span>
+                                            <span style={{ color: 'var(--text-muted)' }}>×{item.count}</span>
+                                            <span style={{ color: '#ef4444', fontWeight: 600 }}>-{item.total.toFixed(1)}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Transactions Table */}
+                        {logLoading ? (
+                            <div className="dc-loading" style={{ minHeight: '150px' }}>
+                                <Loader2 className="dc-spinner" size={24} />
+                                <p style={{ fontSize: '0.85rem' }}>Loading deductions...</p>
+                            </div>
+                        ) : logData.transactions && logData.transactions.length > 0 ? (
+                            <>
+                                <div className="dc-table-wrapper">
+                                    <table className="dc-table">
+                                        <thead>
+                                            <tr>
+                                                <th>Time</th>
+                                                <th>User</th>
+                                                <th>Type / Description</th>
+                                                <th style={{ textAlign: 'right' }}>Amount</th>
+                                                <th style={{ textAlign: 'right' }}>Balance After</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {logData.transactions.map(tx => (
+                                                <tr key={tx.id}>
+                                                    <td style={{ fontSize: '0.75rem', whiteSpace: 'nowrap', color: 'var(--text-muted)' }}>
+                                                        {new Date(tx.createdAt).toLocaleString()}
+                                                    </td>
+                                                    <td>
+                                                        <span style={{ fontWeight: 600, fontSize: '0.8rem' }}>
+                                                            {tx.user?.username || tx.user?.name || tx.userId?.slice(0, 8)}
+                                                        </span>
+                                                    </td>
+                                                    <td>
+                                                        <span className="dc-type-label" style={{ fontSize: '0.8rem' }}>
+                                                            {tx.description}
+                                                        </span>
+                                                    </td>
+                                                    <td style={{ textAlign: 'right', color: '#ef4444', fontWeight: 600, fontSize: '0.85rem' }}>
+                                                        -{tx.amount.toFixed(2)}
+                                                    </td>
+                                                    <td style={{ textAlign: 'right', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                                                        {tx.balanceAfter.toFixed(2)}
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+
+                                {/* Pagination */}
+                                {logPagination.totalPages > 1 && (
+                                    <div style={{
+                                        display: 'flex', justifyContent: 'center', gap: '0.5rem',
+                                        padding: '0.75rem 0', alignItems: 'center'
+                                    }}>
+                                        <button
+                                            className="dc-btn dc-btn-ghost"
+                                            disabled={logPagination.page <= 1}
+                                            onClick={() => setLogPagination(prev => ({ ...prev, page: prev.page - 1 }))}
+                                            style={{ fontSize: '0.8rem', padding: '4px 10px' }}
+                                        >
+                                            ← Prev
+                                        </button>
+                                        <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                                            Page {logPagination.page} of {logPagination.totalPages}
+                                        </span>
+                                        <button
+                                            className="dc-btn dc-btn-ghost"
+                                            disabled={logPagination.page >= logPagination.totalPages}
+                                            onClick={() => setLogPagination(prev => ({ ...prev, page: prev.page + 1 }))}
+                                            style={{ fontSize: '0.8rem', padding: '4px 10px' }}
+                                        >
+                                            Next →
+                                        </button>
+                                    </div>
+                                )}
+                            </>
+                        ) : (
+                            <div className="dc-empty">
+                                <BarChart3 size={40} />
+                                <h4>No Deductions Found</h4>
+                                <p>No credit deductions match the current filters</p>
+                            </div>
+                        )}
                     </div>
                 )}
             </div>

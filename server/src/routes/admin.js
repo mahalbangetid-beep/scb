@@ -1374,6 +1374,123 @@ router.put('/charges', requireMasterAdmin, async (req, res, next) => {
     }
 });
 
+// ==================== CREDIT DEDUCTION LOG (Section 2.1) ====================
+// Running log of credit deductions per message type for admin review
+
+// GET /api/admin/credit-deduction-log - Global credit deduction log with filters
+router.get('/credit-deduction-log', requireMasterAdmin, async (req, res, next) => {
+    try {
+        const { page, limit, skip } = parsePagination(req.query);
+        const { type, userId, from, to, search } = req.query;
+
+        const where = { type: 'DEBIT' };
+
+        // Filter by user
+        if (userId) {
+            where.userId = userId;
+        }
+
+        // Filter by message type keyword in description
+        if (type && type !== 'all') {
+            where.description = { contains: type.replace(/_/g, ' '), mode: 'insensitive' };
+        }
+
+        // Search in description
+        if (search) {
+            where.description = { contains: search, mode: 'insensitive' };
+        }
+
+        // Date range filter
+        if (from || to) {
+            where.createdAt = {};
+            if (from) where.createdAt.gte = new Date(from);
+            if (to) {
+                const toDate = new Date(to);
+                toDate.setHours(23, 59, 59, 999);
+                where.createdAt.lte = toDate;
+            }
+        }
+
+        const [transactions, total, summary] = await Promise.all([
+            prisma.creditTransaction.findMany({
+                where,
+                orderBy: { createdAt: 'desc' },
+                take: limit,
+                skip,
+                include: {
+                    user: { select: { id: true, username: true, name: true, email: true } }
+                }
+            }),
+            prisma.creditTransaction.count({ where }),
+            // Summary: total deducted amount
+            prisma.creditTransaction.aggregate({
+                where,
+                _sum: { amount: true },
+                _count: true
+            })
+        ]);
+
+        paginatedResponse(res, {
+            transactions,
+            summary: {
+                totalDeducted: summary._sum.amount || 0,
+                totalTransactions: summary._count || 0
+            }
+        }, { page, limit, total });
+    } catch (error) {
+        next(error);
+    }
+});
+
+// GET /api/admin/credit-deduction-summary - Aggregate deductions by message type
+router.get('/credit-deduction-summary', requireMasterAdmin, async (req, res, next) => {
+    try {
+        const { from, to } = req.query;
+        const where = { type: 'DEBIT' };
+
+        if (from || to) {
+            where.createdAt = {};
+            if (from) where.createdAt.gte = new Date(from);
+            if (to) {
+                const toDate = new Date(to);
+                toDate.setHours(23, 59, 59, 999);
+                where.createdAt.lte = toDate;
+            }
+        }
+
+        // Get all debit transactions and group by description keyword
+        const transactions = await prisma.creditTransaction.findMany({
+            where,
+            select: { description: true, amount: true }
+        });
+
+        // Group by message type extracted from description
+        const byType = {};
+        for (const tx of transactions) {
+            // Description format: "WHATSAPP wa keyword response" or "TELEGRAM tg forward"
+            const key = tx.description || 'unknown';
+            if (!byType[key]) {
+                byType[key] = { count: 0, total: 0 };
+            }
+            byType[key].count++;
+            byType[key].total += tx.amount;
+        }
+
+        // Sort by total descending
+        const sorted = Object.entries(byType)
+            .map(([type, data]) => ({ type, count: data.count, total: Math.round(data.total * 100) / 100 }))
+            .sort((a, b) => b.total - a.total);
+
+        successResponse(res, {
+            breakdown: sorted,
+            totalTypes: sorted.length,
+            grandTotal: Math.round(sorted.reduce((sum, s) => sum + s.total, 0) * 100) / 100
+        });
+    } catch (error) {
+        next(error);
+    }
+});
+
 // ==================== INVOICE TEMPLATE (Master Admin Only) ====================
 
 // GET /api/admin/invoice-template - Get invoice template config
