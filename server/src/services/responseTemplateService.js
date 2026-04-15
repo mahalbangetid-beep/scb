@@ -662,6 +662,64 @@ class ResponseTemplateService {
                 template: `❌ *Error processing command*\n\n{error}\n\nPlease try again or contact support.`,
                 description: 'Error message when command processing fails in Telegram',
                 variables: ['error']
+            },
+
+            // ==================== ORDER ID SMART HANDLING (Section 3.1) ====================
+            'ORDER_ACTION_MENU': {
+                template: `🔢 *What would you like to do with order {order_id}?*\n\n1️⃣ Speed Up\n2️⃣ Refill\n3️⃣ Cancel\n4️⃣ Check Status\n\n_Reply with the number (1-4) to proceed._`,
+                description: 'Action menu shown when user sends a bare order ID without a command',
+                variables: ['order_id']
+            },
+
+            // ==================== .LIST COMMAND (Section 3.2a) ====================
+            'UTIL_LIST_DEFAULT': {
+                template: `📋 *Available Services*\n\nNo service list has been configured yet.\n\nPlease contact the admin to set up the services list.`,
+                description: 'Default response for .list command when no services are configured',
+                variables: []
+            },
+
+            // ==================== CUSTOM FOOTER PER COMMAND (Section 3.3) ====================
+            'BULK_FOOTER_CANCEL': {
+                template: `_Note: Cancellation may take up to 24 hours to be approved._`,
+                description: 'Custom footer text shown at the bottom of bulk cancel results only',
+                variables: []
+            },
+            'BULK_FOOTER_REFILL': {
+                template: `_Note: Refill requests are processed automatically. Please allow time for completion._`,
+                description: 'Custom footer text shown at the bottom of bulk refill results only',
+                variables: []
+            },
+            'BULK_FOOTER_SPEEDUP': {
+                template: `_Note: Speed-up requests help prioritize your order processing._`,
+                description: 'Custom footer text shown at the bottom of bulk speed-up results only',
+                variables: []
+            },
+            'BULK_FOOTER_STATUS': {
+                template: ``,
+                description: 'Custom footer text shown at the bottom of bulk status results only',
+                variables: []
+            },
+
+            // ==================== SMART REFILL RESULT PARSING (Section 3.6) ====================
+            'REFILL_RESULT_SUCCESS': {
+                template: `✅ Your order *{order_id}* has been refilled with *{quantity}* quantity.`,
+                description: 'Message sent to order owner when refill result is successful',
+                variables: ['order_id', 'quantity']
+            },
+            'REFILL_RESULT_OVERFLOW': {
+                template: `⚠️ Your order *{order_id}* does not need a refill (already has excess quantity).`,
+                description: 'Message sent to order owner when refill result shows overflow',
+                variables: ['order_id']
+            },
+            'REFILL_RESULT_RECENTLY': {
+                template: `⏳ Your order *{order_id}* was refilled recently. Please wait before requesting again.`,
+                description: 'Message sent to order owner when refill was recently done',
+                variables: ['order_id']
+            },
+            'REFILL_RESULT_FAILED': {
+                template: `❌ Your order *{order_id}* refill could not be completed: {reason}`,
+                description: 'Message sent to order owner when refill fails',
+                variables: ['order_id', 'reason']
             }
         };
     }

@@ -141,6 +141,13 @@ class BotMessageHandler {
             return { handled: false, type: 'reply_scope_private_only' };
         }
 
+        // ==================== KEYWORD-ONLY MODE (Section 3.2b) ====================
+        // When set to 'keyword_only', bot ONLY replies when a recognized keyword is matched.
+        // SMM commands and utility commands (.help, .ping) still work.
+        // All other messages are silently ignored (no fallback response).
+        // This flag is checked later after keyword matching to suppress fallback.
+        const isKeywordOnlyMode = replyScope === 'keyword_only';
+
         // ==================== SYSTEM BOT CHECKS ====================
         // Check if this device is a system bot and enforce restrictions
 
@@ -207,7 +214,7 @@ class BotMessageHandler {
                     // Group is NOT linked/active — but still allow utility commands
                     // (.groupid is essential to GET the JID needed for linking)
                     const cmdLower = message.toLowerCase().trim();
-                    const isUtilityCmd = ['.groupid', '/groupid', '.ping', '/ping', '.deviceid', '/deviceid', '.help', '/help', '.commands'].includes(cmdLower);
+                    const isUtilityCmd = ['.groupid', '/groupid', '.ping', '/ping', '.deviceid', '/deviceid', '.help', '/help', '.commands', '.list', '/list', '.services', '/services'].includes(cmdLower);
 
                     if (isUtilityCmd) {
                         console.log(`[BotHandler] System bot ${deviceId} - allowing utility command "${cmdLower}" in unlinked group ${groupJid}`);
@@ -627,6 +634,78 @@ class BotMessageHandler {
             }
         }
 
+        // ==================== ORDER ID SMART HANDLING (Section 3.1) ====================
+        // Check if user is responding to a pending action menu (1-4 selection)
+        const orderActionConversation = await require('./conversationStateService').getActiveConversation(
+            senderNumber, userId, 'ORDER_ACTION_MENU'
+        );
+        if (orderActionConversation && !isGroup) {
+            const selection = message.trim();
+            const orderId = orderActionConversation.context?.orderId;
+            if (orderId && ['1', '2', '3', '4'].includes(selection)) {
+                const actionMap = { '1': 'speedup', '2': 'refill', '3': 'cancel', '4': 'status' };
+                const selectedCommand = actionMap[selection];
+                console.log(`[BotHandler] Order action menu: user selected ${selection} (${selectedCommand}) for order ${orderId}`);
+
+                // Delete the conversation state
+                await prisma.conversationState.delete({ where: { id: orderActionConversation.id } }).catch(() => {});
+
+                // Process as a normal SMM command
+                const actionResult = await this.handleSmmCommand({
+                    userId, user, message: `${orderId} ${selectedCommand}`,
+                    senderNumber, deviceId, panelId, panelIds, platform, isGroup,
+                    groupJid: params.groupJid, isStaffOverride: params.isStaffOverride || false
+                });
+                if (params._systemBotSubscriptionId) {
+                    await this.incrementSystemBotUsage(params._systemBotSubscriptionId);
+                }
+                return actionResult;
+            }
+            // If not a valid selection, expire the old conversation and fall through
+            await prisma.conversationState.delete({ where: { id: orderActionConversation.id } }).catch(() => {});
+        }
+
+        // Check for bare order ID (number-only message, no command keyword)
+        // Only in DM — groups typically have too many random numbers
+        if (!isGroup && !isCommand) {
+            const trimmed = message.trim();
+            // Bare order ID: 3-20 digit number with no other text
+            if (/^\d{3,20}$/.test(trimmed)) {
+                console.log(`[BotHandler] Bare order ID detected: ${trimmed}, showing action menu`);
+
+                // Create conversation state for the action menu
+                try {
+                    const conversationStateService = require('./conversationStateService');
+                    await conversationStateService.createConversation({
+                        senderPhone: senderNumber,
+                        userId,
+                        platform,
+                        stateType: 'ORDER_ACTION_MENU',
+                        currentStep: 'AWAITING_SELECTION',
+                        context: { orderId: trimmed, deviceId, panelId },
+                        expiryMinutes: 5
+                    });
+
+                    const responseTemplateService = require('./responseTemplateService');
+                    const menuResponse = await responseTemplateService.getResponse(userId, 'ORDER_ACTION_MENU', { order_id: trimmed })
+                        || `🔢 *What would you like to do with order ${trimmed}?*\n\n1️⃣ Speed Up\n2️⃣ Refill\n3️⃣ Cancel\n4️⃣ Check Status\n\n_Reply with the number (1-4) to proceed._`;
+
+                    if (params._systemBotSubscriptionId) {
+                        await this.incrementSystemBotUsage(params._systemBotSubscriptionId);
+                    }
+
+                    return {
+                        handled: true,
+                        type: 'order_action_menu',
+                        response: menuResponse
+                    };
+                } catch (menuErr) {
+                    console.error('[BotHandler] Order action menu error:', menuErr.message);
+                    // Fall through to normal processing
+                }
+            }
+        }
+
         // Priority 1: Check if it's an SMM command
         if (isCommand) {
             const smmResult = await this.handleSmmCommand({
@@ -800,6 +879,15 @@ class BotMessageHandler {
             console.log('[BotHandler] Keyword response check failed:', kwError.message);
         }
 
+        // ==================== KEYWORD-ONLY MODE GUARD (Section 3.2b) ====================
+        // If keyword_only mode is active and no keyword matched, suppress fallback entirely.
+        // SMM commands and utility commands already returned above, so reaching here
+        // means the message didn't match anything meaningful.
+        if (isKeywordOnlyMode) {
+            console.log(`[BotHandler] Device ${deviceId} replyScope=keyword_only, no keyword matched — ignoring message`);
+            return { handled: false, type: 'keyword_only_no_match' };
+        }
+
         // Priority 4: Reply to all messages fallback (DMs only)
         // If enabled, bot will reply to unmatched DM messages with a fallback response.
         // Groups are excluded to prevent the bot from responding to every single message.
@@ -941,8 +1029,65 @@ class BotMessageHandler {
             return {
                 handled: true,
                 type: 'utility',
-                response: await responseTemplateService.getResponse(userId, 'UTIL_HELP') || `📚 *Available Commands*\n\n*Utility:*\n• \`.ping\` - Check bot status\n• \`.groupid\` - Get group ID (groups only)\n• \`.deviceid\` - Get device info\n• \`.help\` - Show this help\n\n*SMM Commands:*\n• \`[order_id] status\` - Check order status\n• \`[order_id] refill\` - Request refill\n• \`[order_id] cancel\` - Request cancel\n• \`status [order_id]\` - Alternative format\n\n*Support:*\n• \`ticket\` - View your tickets\n• \`ticket [TICKET_NUMBER]\` - Check ticket status`
+                response: await responseTemplateService.getResponse(userId, 'UTIL_HELP') || `📚 *Available Commands*\n\n*Utility:*\n• \`.ping\` - Check bot status\n• \`.groupid\` - Get group ID (groups only)\n• \`.deviceid\` - Get device info\n• \`.list\` - View service list\n• \`.help\` - Show this help\n\n*SMM Commands:*\n• \`[order_id] status\` - Check order status\n• \`[order_id] refill\` - Request refill\n• \`[order_id] cancel\` - Request cancel\n• \`status [order_id]\` - Alternative format\n\n*Support:*\n• \`ticket\` - View your tickets\n• \`ticket [TICKET_NUMBER]\` - Check ticket status`
             };
+        }
+
+        // ==================== .LIST COMMAND (Section 3.2a) ====================
+        // .list - Show admin-configured service list
+        if (cmd === '.list' || cmd === '/list' || cmd === '.services' || cmd === '/services') {
+            try {
+                // Check for user-specific list first, then system-wide
+                const userListSetting = await prisma.setting.findFirst({
+                    where: { userId, key: 'service_list' }
+                });
+
+                let listContent = null;
+                if (userListSetting && userListSetting.value) {
+                    try {
+                        const parsed = JSON.parse(userListSetting.value);
+                        listContent = parsed.content || parsed;
+                    } catch {
+                        listContent = userListSetting.value;
+                    }
+                }
+
+                // Fallback to system config
+                if (!listContent) {
+                    const systemList = await prisma.systemConfig.findUnique({
+                        where: { key: 'service_list' }
+                    });
+                    if (systemList && systemList.value) {
+                        try {
+                            const parsed = JSON.parse(systemList.value);
+                            listContent = parsed.content || parsed;
+                        } catch {
+                            listContent = systemList.value;
+                        }
+                    }
+                }
+
+                if (listContent && typeof listContent === 'string' && listContent.trim()) {
+                    return {
+                        handled: true,
+                        type: 'utility',
+                        response: listContent
+                    };
+                }
+
+                return {
+                    handled: true,
+                    type: 'utility',
+                    response: await responseTemplateService.getResponse(userId, 'UTIL_LIST_DEFAULT') || '📋 *Available Services*\n\nNo service list has been configured yet.\n\nPlease contact the admin to set up the services list.'
+                };
+            } catch (listErr) {
+                console.error('[BotHandler] .list command error:', listErr.message);
+                return {
+                    handled: true,
+                    type: 'utility',
+                    response: '❌ Unable to load service list. Please try again later.'
+                };
+            }
         }
 
         return { handled: false };
@@ -1690,6 +1835,130 @@ class BotMessageHandler {
         this._spamTracker.clear();
         console.log(`[BotHandler] Admin cleared all bans (${count} entries)`);
         return count;
+    }
+
+    // ==================== SMART REFILL RESULT PARSING (Section 3.6) ====================
+    /**
+     * Parse incoming refill result messages from provider bots
+     * Detects order ID, determines result type, and notifies the order owner
+     *
+     * Supported formats:
+     *   1754997 - Successfully refilled. Refill quantity: 5000.
+     *   2089587 - does not need a refill because Overflow +
+     *   1982933 - Successfully refilled with original quantity. Refill quantity: 10000.
+     *   1982988 - Recently Refilled.
+     *
+     * @param {string} message - The incoming provider message
+     * @param {string} userId - Owner user ID
+     * @param {string} deviceId - Device that received the message
+     * @param {string} platform - WHATSAPP or TELEGRAM
+     * @returns {Object|null} - { parsed: true, results: [...] } or null if not a refill result
+     */
+    parseRefillResultMessage(message) {
+        if (!message || typeof message !== 'string') return null;
+
+        // Split by newlines to handle multi-order results
+        const lines = message.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+        const results = [];
+
+        for (const line of lines) {
+            // Pattern: ORDER_ID - result text
+            const match = line.match(/^(\d{3,20})\s*[-–—]\s*(.+)$/i);
+            if (!match) continue;
+
+            const orderId = match[1];
+            const resultText = match[2].trim().toLowerCase();
+
+            let type = 'unknown';
+            let quantity = null;
+
+            if (resultText.includes('successfully refilled') || resultText.includes('success')) {
+                type = 'success';
+                // Extract quantity: "Refill quantity: 5000"
+                const qtyMatch = resultText.match(/(?:refill\s+)?quantity[:\s]*(\d+)/i);
+                if (qtyMatch) quantity = qtyMatch[1];
+            } else if (resultText.includes('overflow') || resultText.includes('does not need a refill')) {
+                type = 'overflow';
+            } else if (resultText.includes('recently refilled') || resultText.includes('recently')) {
+                type = 'recently';
+            } else if (resultText.includes('fail') || resultText.includes('error') || resultText.includes('cannot')) {
+                type = 'failed';
+            }
+
+            if (type !== 'unknown') {
+                results.push({ orderId, type, quantity, rawText: match[2].trim() });
+            }
+        }
+
+        return results.length > 0 ? { parsed: true, results } : null;
+    }
+
+    /**
+     * Process parsed refill results — look up order owners and send notifications
+     * @param {Array} results - From parseRefillResultMessage()
+     * @param {string} userId - The admin/owner user ID
+     * @param {string} deviceId - The device that received the message
+     * @param {string} platform - WHATSAPP or TELEGRAM
+     */
+    async processRefillResults(results, userId, deviceId, platform = 'WHATSAPP') {
+        if (!results || results.length === 0) return;
+
+        const responseTemplateService = require('./responseTemplateService');
+
+        for (const result of results) {
+            try {
+                // Find the order in DB
+                const order = await prisma.order.findFirst({
+                    where: { externalOrderId: result.orderId, userId },
+                    select: {
+                        id: true,
+                        externalOrderId: true,
+                        claimedByPhone: true,
+                        customerUsername: true,
+                        userId: true
+                    }
+                });
+
+                if (!order || !order.claimedByPhone) {
+                    console.log(`[BotHandler] Refill result: order ${result.orderId} not found or no claimed phone`);
+                    continue;
+                }
+
+                // Build notification message based on result type
+                let notifyMessage = null;
+                const variables = { order_id: result.orderId, quantity: result.quantity || '0', reason: result.rawText };
+
+                switch (result.type) {
+                    case 'success':
+                        notifyMessage = await responseTemplateService.getResponse(userId, 'REFILL_RESULT_SUCCESS', variables)
+                            || `✅ Your order *${result.orderId}* has been refilled with *${result.quantity || 'original'}* quantity.`;
+                        break;
+                    case 'overflow':
+                        notifyMessage = await responseTemplateService.getResponse(userId, 'REFILL_RESULT_OVERFLOW', variables)
+                            || `⚠️ Your order *${result.orderId}* does not need a refill (already has excess quantity).`;
+                        break;
+                    case 'recently':
+                        notifyMessage = await responseTemplateService.getResponse(userId, 'REFILL_RESULT_RECENTLY', variables)
+                            || `⏳ Your order *${result.orderId}* was refilled recently. Please wait before requesting again.`;
+                        break;
+                    case 'failed':
+                        notifyMessage = await responseTemplateService.getResponse(userId, 'REFILL_RESULT_FAILED', variables)
+                            || `❌ Your order *${result.orderId}* refill could not be completed: ${result.rawText}`;
+                        break;
+                }
+
+                if (notifyMessage && this.whatsappService) {
+                    try {
+                        await this.sendResponse(deviceId, order.claimedByPhone, notifyMessage);
+                        console.log(`[BotHandler] Refill result notification sent to ${order.claimedByPhone} for order ${result.orderId} (${result.type})`);
+                    } catch (sendErr) {
+                        console.error(`[BotHandler] Failed to send refill result notification:`, sendErr.message);
+                    }
+                }
+            } catch (err) {
+                console.error(`[BotHandler] Error processing refill result for ${result.orderId}:`, err.message);
+            }
+        }
     }
 }
 

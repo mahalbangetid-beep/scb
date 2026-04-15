@@ -2297,4 +2297,158 @@ router.get('/panels', requireMasterAdmin, async (req, res, next) => {
     }
 });
 
+// ==================== SERVICE LIST MANAGEMENT (Section 3.2a) ====================
+
+// GET /api/admin/service-list - Get the admin-configured service list
+router.get('/service-list', requireAuth, async (req, res, next) => {
+    try {
+        const userId = req.user.id;
+
+        // Check user-specific setting first
+        const userSetting = await prisma.setting.findFirst({
+            where: { userId, key: 'service_list' }
+        });
+
+        if (userSetting && userSetting.value) {
+            try {
+                const parsed = JSON.parse(userSetting.value);
+                return successResponse(res, { content: parsed.content || parsed, source: 'user' });
+            } catch {
+                return successResponse(res, { content: userSetting.value, source: 'user' });
+            }
+        }
+
+        // Fallback to system config
+        const systemSetting = await prisma.systemConfig.findUnique({
+            where: { key: 'service_list' }
+        });
+
+        if (systemSetting && systemSetting.value) {
+            try {
+                const parsed = JSON.parse(systemSetting.value);
+                return successResponse(res, { content: parsed.content || parsed, source: 'system' });
+            } catch {
+                return successResponse(res, { content: systemSetting.value, source: 'system' });
+            }
+        }
+
+        successResponse(res, { content: '', source: 'none' });
+    } catch (error) {
+        next(error);
+    }
+});
+
+// PUT /api/admin/service-list - Update the service list content
+router.put('/service-list', requireAuth, async (req, res, next) => {
+    try {
+        const userId = req.user.id;
+        const { content } = req.body;
+
+        if (typeof content !== 'string') {
+            throw new AppError('Content must be a string', 400);
+        }
+
+        // Store as user-specific setting
+        const existing = await prisma.setting.findFirst({
+            where: { userId, key: 'service_list' }
+        });
+
+        if (existing) {
+            await prisma.setting.update({
+                where: { id: existing.id },
+                data: { value: JSON.stringify({ content, updatedAt: new Date().toISOString() }) }
+            });
+        } else {
+            await prisma.setting.create({
+                data: { userId, key: 'service_list', value: JSON.stringify({ content, updatedAt: new Date().toISOString() }) }
+            });
+        }
+
+        successResponse(res, { message: 'Service list updated successfully' });
+    } catch (error) {
+        next(error);
+    }
+});
+
+// ==================== CUSTOM COMMAND ALIASES MANAGEMENT (Section 3.2c) ====================
+
+// GET /api/admin/command-aliases - Get custom command aliases
+router.get('/command-aliases', requireAuth, async (req, res, next) => {
+    try {
+        const userId = req.user.id;
+        const commandParser = require('../services/commandParser');
+
+        // Get user-specific custom aliases
+        const customSetting = await prisma.setting.findFirst({
+            where: { userId, key: 'custom_command_aliases' }
+        });
+
+        let customAliases = {};
+        if (customSetting && customSetting.value) {
+            try {
+                customAliases = JSON.parse(customSetting.value);
+            } catch { /* empty */ }
+        }
+
+        // Also return default aliases for reference
+        const defaults = {};
+        for (const [command, aliases] of Object.entries(commandParser.commands)) {
+            defaults[command] = [...aliases];
+        }
+
+        successResponse(res, { defaults, custom: customAliases });
+    } catch (error) {
+        next(error);
+    }
+});
+
+// PUT /api/admin/command-aliases - Update custom command aliases
+router.put('/command-aliases', requireAuth, async (req, res, next) => {
+    try {
+        const userId = req.user.id;
+        const { aliases } = req.body;
+
+        if (!aliases || typeof aliases !== 'object') {
+            throw new AppError('Aliases must be an object mapping command names to arrays of alias strings', 400);
+        }
+
+        // Validate: only allow known commands
+        const commandParser = require('../services/commandParser');
+        const validCommands = Object.keys(commandParser.commands);
+        const cleaned = {};
+
+        for (const [command, aliasList] of Object.entries(aliases)) {
+            if (!validCommands.includes(command.toLowerCase())) continue;
+            if (!Array.isArray(aliasList)) continue;
+            cleaned[command.toLowerCase()] = aliasList
+                .filter(a => typeof a === 'string' && a.trim())
+                .map(a => a.trim().toLowerCase());
+        }
+
+        // Store as user setting
+        const existing = await prisma.setting.findFirst({
+            where: { userId, key: 'custom_command_aliases' }
+        });
+
+        if (existing) {
+            await prisma.setting.update({
+                where: { id: existing.id },
+                data: { value: JSON.stringify(cleaned) }
+            });
+        } else {
+            await prisma.setting.create({
+                data: { userId, key: 'custom_command_aliases', value: JSON.stringify(cleaned) }
+            });
+        }
+
+        // Clear command parser cache for this user
+        commandParser._userLookupCache.delete(userId);
+        commandParser._userLookupCacheExpiry.delete(userId);
+
+        successResponse(res, { message: 'Command aliases updated successfully', aliases: cleaned });
+    } catch (error) {
+        next(error);
+    }
+});
+
 module.exports = router;

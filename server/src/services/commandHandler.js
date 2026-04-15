@@ -1636,6 +1636,18 @@ class CommandHandlerService {
             }
 
             message += `\n━━━━━━━━━━━━━━━━\nTotal: ${responses.length} | ✅ ${successful.length} | ❌ ${failed.length}`;
+
+            // ==================== CUSTOM FOOTER PER COMMAND (Section 3.3) ====================
+            if (userId) {
+                try {
+                    const footerKey = `BULK_FOOTER_${command.toUpperCase()}`;
+                    const footer = await responseTemplateService.getResponse(userId, footerKey);
+                    if (footer && footer.trim()) {
+                        message += `\n\n${footer}`;
+                    }
+                } catch (footerErr) { /* non-critical */ }
+            }
+
             return message;
         }
 
@@ -1832,6 +1844,17 @@ class CommandHandlerService {
         const summary = await getLabel('BULK_SUMMARY', { total: responses.length.toString(), success_count: queued.length.toString(), failed_count: totalFailed.toString() })
             || `━━━━━━━━━━━━━━━━\nTotal: ${responses.length} | ✅ ${queued.length} | ❌ ${totalFailed}`;
         message += `\n${summary}`;
+
+        // ==================== CUSTOM FOOTER PER COMMAND (Section 3.3) ====================
+        if (userId) {
+            try {
+                const footerKey = `BULK_FOOTER_${command.toUpperCase()}`;
+                const footer = await responseTemplateService.getResponse(userId, footerKey);
+                if (footer && footer.trim()) {
+                    message += `\n\n${footer}`;
+                }
+            } catch (footerErr) { /* non-critical */ }
+        }
 
         return message;
     }
