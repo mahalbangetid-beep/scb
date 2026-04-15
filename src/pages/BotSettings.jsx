@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Settings, Shield, Zap, MessageSquare, AlertTriangle, RotateCcw, Save, ChevronDown, ChevronRight, Bell, Package, Users, Search, Phone, ShieldAlert, Plus, Trash2, UserCheck } from 'lucide-react';
+import { Settings, Shield, Zap, MessageSquare, AlertTriangle, RotateCcw, Save, ChevronDown, ChevronRight, Bell, Package, Users, Search, Phone, ShieldAlert, Plus, Trash2, UserCheck, Ban } from 'lucide-react';
 import api from '../services/api';
 import ScopeSelector from '../components/ScopeSelector';
 import CommandAliasEditor from '../components/CommandAliasEditor';
@@ -775,6 +775,9 @@ Example: 12345 status`}
                     )}
                 </Section>
 
+                {/* Blocked/Suspended Users (Section 3.5) */}
+                <BlockedUsersSection setError={setError} setSuccess={setSuccess} />
+
                 {/* Mass/Bulk Order Templates (Section 18) */}
                 <Section
                     id="massTemplates"
@@ -1292,6 +1295,119 @@ Total: {total} | ✅ {success_count} | ❌ {failed_count}`}
           color: var(--warning-color, #f59e0b);
         }
       `}</style>
+        </div>
+    );
+};
+
+// ==================== BLOCKED USERS SECTION (Section 3.5) ====================
+const BlockedUsersSection = ({ setError, setSuccess }) => {
+    const [blockedUsers, setBlockedUsers] = useState([]);
+    const [loading, setLoading] = useState(false);
+    const [expanded, setExpanded] = useState(true);
+    const [unblockingId, setUnblockingId] = useState(null);
+
+    useEffect(() => {
+        fetchBlockedUsers();
+    }, []);
+
+    const fetchBlockedUsers = async () => {
+        try {
+            setLoading(true);
+            const response = await api.get('/user-mappings/my-blocked-status');
+            setBlockedUsers(response.data?.blocked || []);
+        } catch (err) {
+            console.error('Failed to load blocked status:', err);
+            setBlockedUsers([]);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleSelfUnblock = async (mappingId) => {
+        if (unblockingId) return;
+        setUnblockingId(mappingId);
+        try {
+            await api.post('/user-mappings/self-unblock', { mappingId });
+            setBlockedUsers(prev => prev.filter(b => b.id !== mappingId));
+            setSuccess('Successfully unblocked! Bot will respond to you again.');
+            setTimeout(() => setSuccess(''), 3000);
+        } catch (err) {
+            setError(err.response?.data?.message || 'Failed to unblock');
+        } finally {
+            setUnblockingId(null);
+        }
+    };
+
+    return (
+        <div className="settings-section">
+            <div className="section-header" onClick={() => setExpanded(prev => !prev)}>
+                <div className="section-title">
+                    <Ban size={20} />
+                    <span>Blocked/Suspended Users{blockedUsers.length > 0 ? ` (${blockedUsers.length})` : ''}</span>
+                    {blockedUsers.length > 0 && <span className="badge badge-danger" style={{ fontSize: '0.7rem', padding: '2px 8px' }}>{blockedUsers.length} blocked</span>}
+                </div>
+                {expanded ? <ChevronDown size={20} /> : <ChevronRight size={20} />}
+            </div>
+            {expanded && (
+                <p className="section-description">Users blocked due to spam or manual admin action. You can unblock yourself here.</p>
+            )}
+            {expanded && (
+                <div className="section-content">
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '0.75rem' }}>
+                        <button
+                            className="btn btn-secondary"
+                            onClick={fetchBlockedUsers}
+                            disabled={loading}
+                            style={{ fontSize: '0.8rem', padding: '0.375rem 0.75rem' }}
+                        >
+                            {loading ? 'Loading...' : '🔄 Refresh'}
+                        </button>
+                    </div>
+
+                    {loading ? (
+                        <div style={{ textAlign: 'center', padding: '1.5rem', color: 'var(--text-secondary)' }}>
+                            <div className="spinner-small" style={{ margin: '0 auto 0.5rem', borderTopColor: 'var(--primary-color)', borderColor: 'var(--border-color)' }}></div>
+                            Loading blocked users...
+                        </div>
+                    ) : blockedUsers.length === 0 ? (
+                        <div style={{ textAlign: 'center', padding: '1.5rem 0', color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
+                            ✅ No blocked users. Everyone can use the bot normally.
+                        </div>
+                    ) : (
+                        <div className="spam-bans-list">
+                            {blockedUsers.map((user) => (
+                                <div key={user.id} className="spam-ban-item">
+                                    <div className="spam-ban-info">
+                                        <span className="spam-ban-phone">
+                                            👤 {user.panelUsername}
+                                            {user.whatsappNumbers?.length > 0 && (
+                                                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginLeft: '8px' }}>
+                                                    📱 {user.whatsappNumbers.join(', ')}
+                                                </span>
+                                            )}
+                                        </span>
+                                        <span className="spam-ban-remaining">
+                                            {user.suspendReason || 'Blocked'}
+                                            {user.suspendedAt && (
+                                                <> · Since {new Date(user.suspendedAt).toLocaleDateString()}</>
+                                            )}
+                                        </span>
+                                    </div>
+                                    <button
+                                        className="btn btn-ghost"
+                                        onClick={() => handleSelfUnblock(user.id)}
+                                        disabled={unblockingId === user.id}
+                                        style={{ fontSize: '0.8rem', padding: '0.25rem 0.625rem', color: 'var(--success-color)' }}
+                                        title="Unblock this user — bot will respond again"
+                                    >
+                                        {unblockingId === user.id ? '...' : '✅ Unblock'}
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            )}
         </div>
     );
 };

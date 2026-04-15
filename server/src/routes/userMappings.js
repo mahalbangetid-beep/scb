@@ -396,4 +396,81 @@ router.post('/:id/unsuspend', async (req, res, next) => {
     }
 });
 
+// ==================== BLOCKED USER MANAGEMENT (Section 3.5) ====================
+
+/**
+ * GET /api/user-mappings/my-blocked-status
+ * User checks if any of their own mappings are blocked/suspended
+ * Returns a list of their own blocked mappings (user-side view)
+ */
+router.get('/my-blocked-status', async (req, res, next) => {
+    try {
+        const prisma = require('../utils/prisma');
+        const userId = req.effectiveUserId;
+
+        const blockedMappings = await prisma.userWhatsAppMapping.findMany({
+            where: {
+                userId,
+                isAutoSuspended: true
+            },
+            select: {
+                id: true,
+                panelUsername: true,
+                whatsappNumbers: true,
+                isAutoSuspended: true,
+                suspendReason: true,
+                suspendedAt: true,
+                spamCount: true
+            }
+        });
+
+        // Parse whatsappNumbers JSON
+        const parsed = blockedMappings.map(m => ({
+            ...m,
+            whatsappNumbers: (() => {
+                try { return JSON.parse(m.whatsappNumbers || '[]'); } catch { return []; }
+            })()
+        }));
+
+        successResponse(res, { blocked: parsed, count: parsed.length });
+    } catch (error) {
+        next(error);
+    }
+});
+
+/**
+ * POST /api/user-mappings/self-unblock
+ * User removes themselves from the blocked list
+ * Only works on their OWN mappings (not other users')
+ */
+router.post('/self-unblock', async (req, res, next) => {
+    try {
+        const userId = req.effectiveUserId;
+        const { mappingId } = req.body;
+
+        if (!mappingId) {
+            throw new AppError('mappingId is required', 400);
+        }
+
+        // Verify the mapping belongs to this user
+        const mapping = await userMappingService.unsuspendMapping(mappingId, userId);
+        const parsed = userMappingService.parseMapping(mapping);
+
+        // Also clear in-memory spam ban
+        try {
+            const botMessageHandler = require('../services/botMessageHandler');
+            const phones = parsed.whatsappNumbers || [];
+            for (const phone of phones) {
+                botMessageHandler.unbanUser(userId, phone);
+            }
+        } catch (e) {
+            console.error('[UserMapping] Self-unblock: failed to clear in-memory ban:', e.message);
+        }
+
+        successResponse(res, parsed, 'Successfully unblocked');
+    } catch (error) {
+        next(error);
+    }
+});
+
 module.exports = router;

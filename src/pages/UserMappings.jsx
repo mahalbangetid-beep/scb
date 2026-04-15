@@ -11,6 +11,7 @@ const UserMappings = () => {
     const [editingItem, setEditingItem] = useState(null);
     const [searchQuery, setSearchQuery] = useState('');
     const [selectedPanel, setSelectedPanel] = useState('all');
+    const [showBlockedOnly, setShowBlockedOnly] = useState(false);
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
 
@@ -72,7 +73,7 @@ const UserMappings = () => {
         }
         setCurrentPage(1);
         fetchData(1, searchQuery);
-    }, [selectedPanel]);
+    }, [selectedPanel, showBlockedOnly]);
 
     // Server-side search with debounce
     const handleSearchChange = (value) => {
@@ -112,6 +113,9 @@ const UserMappings = () => {
             }
             if (selectedPanel && selectedPanel !== 'all' && selectedPanel !== 'orphan') {
                 params.panelId = selectedPanel;
+            }
+            if (showBlockedOnly) {
+                params.suspended = 'true';
             }
             const [mappingsRes, statsRes] = await Promise.all([
                 api.get('/user-mappings', { params }),
@@ -370,11 +374,11 @@ const UserMappings = () => {
                             <span className="stat-label">Bot Enabled</span>
                         </div>
                     </div>
-                    <div className="stat-card danger">
+                    <div className="stat-card danger" style={{ cursor: 'pointer', outline: showBlockedOnly ? '2px solid var(--danger)' : 'none' }} onClick={() => setShowBlockedOnly(prev => !prev)} title="Click to filter blocked users">
                         <div className="stat-icon"><Ban size={24} /></div>
                         <div className="stat-info">
                             <span className="stat-value">{stats.suspended}</span>
-                            <span className="stat-label">Blocked</span>
+                            <span className="stat-label">{showBlockedOnly ? '✕ Showing Blocked' : 'Blocked'}</span>
                         </div>
                     </div>
                 </div>
@@ -454,6 +458,15 @@ const UserMappings = () => {
                             <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginLeft: 'auto', whiteSpace: 'nowrap' }}>
                                 {totalItems} users found
                             </span>
+                        )}
+                        {showBlockedOnly && (
+                            <button
+                                className="btn btn-sm"
+                                style={{ marginLeft: '0.5rem', background: 'var(--danger)', color: '#fff', border: 'none', fontSize: '0.75rem', padding: '4px 10px', borderRadius: '6px', cursor: 'pointer' }}
+                                onClick={() => setShowBlockedOnly(false)}
+                            >
+                                <X size={12} /> Clear Blocked Filter
+                            </button>
                         )}
                     </div>
 
