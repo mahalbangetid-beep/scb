@@ -33,7 +33,8 @@ import {
     Megaphone,
     Hash,
     UsersRound,
-    Layers
+    Layers,
+    Receipt
 } from 'lucide-react'
 import api from '../services/api'
 import { useTheme } from '../contexts/ThemeContext'
@@ -116,6 +117,7 @@ const adminNavigation = [
     { name: 'System Settings', icon: Settings, path: '/admin/settings' },
     { name: 'SEO Settings', icon: Globe, path: '/admin/seo-settings' },
     { name: 'Invoice Template', icon: FileText, path: '/admin/invoice-template' },
+    { name: 'Transaction Logs', icon: Receipt, path: '/admin/transaction-logs' },
 ]
 
 // Staff navigation - map permissions to pages

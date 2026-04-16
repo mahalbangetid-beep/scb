@@ -3,7 +3,7 @@ import {
     CreditCard, CheckCircle2, XCircle, Clock, Eye,
     Loader2, AlertCircle, X, Search, DollarSign,
     TrendingUp, Calendar, ChevronLeft, ChevronRight,
-    ArrowUpDown, User, Hash, RefreshCw
+    ArrowUpDown, User, Hash, RefreshCw, Download, Plus
 } from 'lucide-react'
 import api from '../../services/api'
 
@@ -25,6 +25,12 @@ export default function PaymentManagement() {
     const [rejectReason, setRejectReason] = useState('')
     const [stats, setStats] = useState({ completed: 0, pending: 0, rejected: 0, all: 0 })
     const [refreshKey, setRefreshKey] = useState(0)
+    const [showAddPaymentModal, setShowAddPaymentModal] = useState(false)
+    const [addPaymentForm, setAddPaymentForm] = useState({ userId: '', amount: '', type: 'credit', walletType: 'USD', description: '' })
+    const [addPaymentLoading, setAddPaymentLoading] = useState(false)
+    const [usersList, setUsersList] = useState([])
+    const [usersLoading, setUsersLoading] = useState(false)
+    const [exportLoading, setExportLoading] = useState(false)
 
     useEffect(() => {
         fetchPayments()
@@ -188,6 +194,76 @@ export default function PaymentManagement() {
         }
     }
 
+    // Export CSV
+    const handleExportCSV = async () => {
+        setExportLoading(true)
+        try {
+            const params = new URLSearchParams()
+            if (statusFilter) params.append('status', statusFilter)
+            if (dateFrom) params.append('dateFrom', dateFrom)
+            if (dateTo) params.append('dateTo', dateTo)
+            if (searchQuery.trim()) params.append('username', searchQuery.trim())
+
+            const response = await fetch(`/api/wallet/admin/payments/export?${params}`, {
+                headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+            })
+            if (!response.ok) throw new Error('Export failed')
+            const blob = await response.blob()
+            const url = window.URL.createObjectURL(blob)
+            const a = document.createElement('a')
+            a.href = url
+            a.download = `payments_export_${new Date().toISOString().slice(0,10)}.csv`
+            a.click()
+            window.URL.revokeObjectURL(url)
+            setSuccess('CSV exported successfully')
+        } catch (err) {
+            setError(err.message || 'Export failed')
+        } finally {
+            setExportLoading(false)
+        }
+    }
+
+    // Load users for Add Payment modal
+    const fetchUsers = async () => {
+        if (usersList.length > 0) return
+        setUsersLoading(true)
+        try {
+            const res = await api.get('/admin/users?limit=500')
+            setUsersList(res.data || [])
+        } catch {
+            setUsersList([])
+        } finally {
+            setUsersLoading(false)
+        }
+    }
+
+    // Submit manual adjustment
+    const handleAddPayment = async () => {
+        if (!addPaymentForm.userId || !addPaymentForm.amount) {
+            setError('User and amount are required')
+            return
+        }
+        setAddPaymentLoading(true)
+        try {
+            const res = await api.post('/wallet/admin/manual-adjustment', {
+                userId: addPaymentForm.userId,
+                amount: parseFloat(addPaymentForm.amount),
+                type: addPaymentForm.type,
+                walletType: addPaymentForm.walletType,
+                description: addPaymentForm.description
+            })
+            setSuccess(res.message || `Manual ${addPaymentForm.type} applied`)
+            setShowAddPaymentModal(false)
+            setAddPaymentForm({ userId: '', amount: '', type: 'credit', walletType: 'USD', description: '' })
+            fetchPayments()
+            fetchStats()
+        } catch (err) {
+            setError(err.error?.message || err.message || 'Failed to process')
+        } finally {
+            setAddPaymentLoading(false)
+        }
+    }
+
     const formatCurrency = (amount) => `$${(amount || 0).toFixed(2)}`
     const formatDate = (date) => {
         const d = new Date(date)
@@ -248,9 +324,17 @@ export default function PaymentManagement() {
                         <p>Monitor and manage all payment transactions</p>
                     </div>
                 </div>
-                <button className="pm-btn pm-btn-ghost" onClick={() => { setPagination(p => ({ ...p, page: 1 })); setRefreshKey(k => k + 1); fetchStats() }}>
-                    <RefreshCw size={16} /> Refresh
-                </button>
+                <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                    <button className="pm-btn pm-btn-ghost" onClick={handleExportCSV} disabled={exportLoading}>
+                        <Download size={16} /> {exportLoading ? 'Exporting...' : 'Export CSV'}
+                    </button>
+                    <button className="pm-btn" style={{ background: 'linear-gradient(135deg, #6366f1, #4f46e5)', color: '#fff' }} onClick={() => { setShowAddPaymentModal(true); fetchUsers() }}>
+                        <Plus size={16} /> Add Payment
+                    </button>
+                    <button className="pm-btn pm-btn-ghost" onClick={() => { setPagination(p => ({ ...p, page: 1 })); setRefreshKey(k => k + 1); fetchStats() }}>
+                        <RefreshCw size={16} /> Refresh
+                    </button>
+                </div>
             </div>
 
             {/* Notifications */}
@@ -714,6 +798,106 @@ export default function PaymentManagement() {
                                     </div>
                                 </div>
                             )}
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Add Payment Modal (Section 4.3) */}
+            {showAddPaymentModal && (
+                <div className="pm-modal-overlay" onClick={() => setShowAddPaymentModal(false)}>
+                    <div className="pm-modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 480 }}>
+                        <div className="pm-modal-header">
+                            <h2>Manual Credit / Debit</h2>
+                            <button className="pm-modal-close" onClick={() => setShowAddPaymentModal(false)}>
+                                <X size={20} />
+                            </button>
+                        </div>
+                        <div className="pm-modal-body">
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                                <div>
+                                    <label style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 4, display: 'block' }}>User</label>
+                                    {usersLoading ? (
+                                        <div style={{ padding: 8, color: 'var(--text-muted)', fontSize: '0.85rem' }}>Loading users...</div>
+                                    ) : (
+                                        <select
+                                            style={{ width: '100%', padding: '0.6rem', borderRadius: 8, border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', color: 'var(--text-primary)', fontSize: '0.875rem' }}
+                                            value={addPaymentForm.userId}
+                                            onChange={e => setAddPaymentForm(p => ({ ...p, userId: e.target.value }))}
+                                        >
+                                            <option value="">Select user...</option>
+                                            {usersList.map(u => (
+                                                <option key={u.id} value={u.id}>{u.username || u.name} ({u.email})</option>
+                                            ))}
+                                        </select>
+                                    )}
+                                </div>
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                                    <div>
+                                        <label style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 4, display: 'block' }}>Type</label>
+                                        <select
+                                            style={{ width: '100%', padding: '0.6rem', borderRadius: 8, border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', color: 'var(--text-primary)', fontSize: '0.875rem' }}
+                                            value={addPaymentForm.type}
+                                            onChange={e => setAddPaymentForm(p => ({ ...p, type: e.target.value }))}
+                                        >
+                                            <option value="credit">➕ Credit (Add)</option>
+                                            <option value="debit">➖ Debit (Deduct)</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 4, display: 'block' }}>Wallet</label>
+                                        <select
+                                            style={{ width: '100%', padding: '0.6rem', borderRadius: 8, border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', color: 'var(--text-primary)', fontSize: '0.875rem' }}
+                                            value={addPaymentForm.walletType}
+                                            onChange={e => setAddPaymentForm(p => ({ ...p, walletType: e.target.value }))}
+                                        >
+                                            <option value="USD">Wallet (USD)</option>
+                                            <option value="SUPPORT">Support Credit</option>
+                                            <option value="TELEGRAM">Telegram Credit</option>
+                                            <option value="WHATSAPP">WhatsApp Marketing Credit</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div>
+                                    <label style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 4, display: 'block' }}>Amount (USD)</label>
+                                    <input
+                                        type="number"
+                                        step="0.01"
+                                        min="0.01"
+                                        placeholder="0.00"
+                                        style={{ width: '100%', padding: '0.6rem', borderRadius: 8, border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', color: 'var(--text-primary)', fontSize: '0.875rem' }}
+                                        value={addPaymentForm.amount}
+                                        onChange={e => setAddPaymentForm(p => ({ ...p, amount: e.target.value }))}
+                                    />
+                                </div>
+                                <div>
+                                    <label style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 4, display: 'block' }}>Description (optional)</label>
+                                    <textarea
+                                        rows={2}
+                                        placeholder="Reason for adjustment..."
+                                        style={{ width: '100%', padding: '0.6rem', borderRadius: 8, border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', color: 'var(--text-primary)', fontSize: '0.875rem', resize: 'vertical', fontFamily: 'inherit' }}
+                                        value={addPaymentForm.description}
+                                        onChange={e => setAddPaymentForm(p => ({ ...p, description: e.target.value }))}
+                                    />
+                                </div>
+                            </div>
+                            <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1.25rem', justifyContent: 'flex-end' }}>
+                                <button className="pm-btn pm-btn-ghost" onClick={() => setShowAddPaymentModal(false)}>Cancel</button>
+                                <button
+                                    className="pm-btn"
+                                    style={{
+                                        background: addPaymentForm.type === 'credit'
+                                            ? 'linear-gradient(135deg, #10b981, #059669)'
+                                            : 'linear-gradient(135deg, #ef4444, #dc2626)',
+                                        color: '#fff'
+                                    }}
+                                    onClick={handleAddPayment}
+                                    disabled={addPaymentLoading || !addPaymentForm.userId || !addPaymentForm.amount}
+                                >
+                                    {addPaymentLoading ? <Loader2 className="pm-spinner" size={16} /> : <DollarSign size={16} />}
+                                    {addPaymentLoading ? 'Processing...' : `${addPaymentForm.type === 'credit' ? 'Add' : 'Deduct'} $${addPaymentForm.amount || '0.00'}`}
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </div>

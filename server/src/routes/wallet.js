@@ -632,6 +632,261 @@ router.get('/admin/payments', requireAdmin, async (req, res, next) => {
     }
 });
 
+// GET /api/wallet/admin/payments/export - Export payments as CSV (Section 4.3)
+router.get('/admin/payments/export', requireAdmin, async (req, res, next) => {
+    try {
+        const { status, dateFrom, dateTo, username } = req.query;
+
+        // Build filter for Payment table
+        const paymentWhere = {};
+        if (status) paymentWhere.status = status;
+        if (username) {
+            paymentWhere.user = {
+                OR: [
+                    { username: { contains: username, mode: 'insensitive' } },
+                    { name: { contains: username, mode: 'insensitive' } },
+                    { email: { contains: username, mode: 'insensitive' } }
+                ]
+            };
+        }
+        if (dateFrom || dateTo) {
+            paymentWhere.createdAt = {};
+            if (dateFrom) paymentWhere.createdAt.gte = new Date(dateFrom);
+            if (dateTo) {
+                const to = new Date(dateTo);
+                to.setHours(23, 59, 59, 999);
+                paymentWhere.createdAt.lte = to;
+            }
+        }
+
+        // Build same filter for WalletTransaction
+        const walletWhere = {};
+        if (status) walletWhere.status = status;
+        if (username) {
+            walletWhere.user = {
+                OR: [
+                    { username: { contains: username, mode: 'insensitive' } },
+                    { name: { contains: username, mode: 'insensitive' } },
+                    { email: { contains: username, mode: 'insensitive' } }
+                ]
+            };
+        }
+        if (dateFrom || dateTo) {
+            walletWhere.createdAt = {};
+            if (dateFrom) walletWhere.createdAt.gte = new Date(dateFrom);
+            if (dateTo) {
+                const to = new Date(dateTo);
+                to.setHours(23, 59, 59, 999);
+                walletWhere.createdAt.lte = to;
+            }
+        }
+
+        const [payments, walletTxs] = await Promise.all([
+            prisma.payment.findMany({
+                where: paymentWhere,
+                include: { user: { select: { username: true, name: true, email: true } } },
+                orderBy: { createdAt: 'desc' },
+                take: 5000
+            }),
+            prisma.walletTransaction.findMany({
+                where: walletWhere,
+                include: { user: { select: { username: true, name: true, email: true } } },
+                orderBy: { createdAt: 'desc' },
+                take: 5000
+            })
+        ]);
+
+        // Merge and sort
+        const allRecords = [
+            ...payments.map(p => ({
+                date: new Date(p.createdAt).toISOString(),
+                username: p.user?.username || p.user?.name || '',
+                email: p.user?.email || '',
+                amount: p.amount,
+                method: p.method || '',
+                status: p.status,
+                reference: p.reference || '',
+                transactionId: p.transactionId || '',
+                source: 'Payment'
+            })),
+            ...walletTxs.map(w => {
+                let meta = {};
+                try { meta = JSON.parse(w.metadata || '{}'); } catch {}
+                return {
+                    date: new Date(w.createdAt).toISOString(),
+                    username: w.user?.username || w.user?.name || '',
+                    email: w.user?.email || '',
+                    amount: w.amount,
+                    method: w.gateway || '',
+                    status: w.status,
+                    reference: w.gatewayRef || '',
+                    transactionId: meta.refId || w.gatewayRef || '',
+                    source: 'WalletTransaction'
+                };
+            })
+        ].sort((a, b) => new Date(b.date) - new Date(a.date));
+
+        // Build CSV
+        const csvHeader = 'Date,Username,Email,Amount,Method,Status,Reference,TransactionID,Source\n';
+        const csvRows = allRecords.map(r =>
+            `"${r.date}","${r.username}","${r.email}",${r.amount},"${r.method}","${r.status}","${r.reference}","${r.transactionId}","${r.source}"`
+        ).join('\n');
+
+        res.setHeader('Content-Type', 'text/csv');
+        res.setHeader('Content-Disposition', `attachment; filename="payments_export_${new Date().toISOString().slice(0,10)}.csv"`);
+        res.send(csvHeader + csvRows);
+    } catch (error) {
+        next(error);
+    }
+});
+
+// POST /api/wallet/admin/manual-adjustment - Manual credit/debit (Section 4.3)
+router.post('/admin/manual-adjustment', requireMasterAdmin, async (req, res, next) => {
+    try {
+        const { userId, amount, type, walletType, description } = req.body;
+
+        if (!userId) throw new AppError('userId is required', 400);
+        if (!amount || amount <= 0) throw new AppError('amount must be a positive number', 400);
+        if (!type || !['credit', 'debit'].includes(type)) throw new AppError('type must be credit or debit', 400);
+
+        const validWalletTypes = ['USD', 'SUPPORT', 'TELEGRAM', 'WHATSAPP'];
+        const wallet = (walletType || 'USD').toUpperCase();
+        if (!validWalletTypes.includes(wallet)) throw new AppError(`walletType must be one of: ${validWalletTypes.join(', ')}`, 400);
+
+        // Verify user exists
+        const targetUser = await prisma.user.findUnique({
+            where: { id: userId },
+            select: { id: true, username: true, creditBalance: true }
+        });
+        if (!targetUser) throw new AppError('User not found', 404);
+
+        // For now, only USD wallet is supported (main creditBalance)
+        const balanceBefore = targetUser.creditBalance || 0;
+        const adjustmentAmount = type === 'debit' ? -amount : amount;
+        const balanceAfter = balanceBefore + adjustmentAmount;
+
+        if (balanceAfter < 0) throw new AppError('Insufficient balance for deduction', 400);
+
+        const result = await prisma.$transaction(async (tx) => {
+            await tx.user.update({
+                where: { id: userId },
+                data: { creditBalance: balanceAfter }
+            });
+
+            const txRecord = await tx.creditTransaction.create({
+                data: {
+                    userId,
+                    type: type === 'credit' ? 'CREDIT' : 'DEBIT',
+                    amount: amount,
+                    balanceBefore,
+                    balanceAfter,
+                    description: description || `Manual ${type} by admin (${req.user.username})`,
+                    reference: `MANUAL_${req.user.id}_${Date.now()}`
+                }
+            });
+
+            // Also create a Payment record so it shows in payment management
+            const paymentRecord = await tx.payment.create({
+                data: {
+                    userId,
+                    amount: type === 'credit' ? amount : -amount,
+                    method: 'MANUAL',
+                    status: 'COMPLETED',
+                    reference: txRecord.reference,
+                    transactionId: `MANUAL-${Date.now()}`,
+                    completedAt: new Date(),
+                    processedAt: new Date(),
+                    processedBy: req.user.id,
+                    notes: description || `Manual ${type} by ${req.user.username}`
+                }
+            });
+
+            return { txRecord, paymentRecord, balanceAfter };
+        });
+
+        // Send payment notification (fire-and-forget)
+        try {
+            const userNotificationService = require('../services/userNotificationService');
+            userNotificationService.sendPaymentNotification(req.effectiveUserId, targetUser.username, {
+                amount, type, method: 'Manual Admin',
+                newBalance: result.balanceAfter, currency: 'USD'
+            }).catch(() => {});
+        } catch {}
+
+        successResponse(res, {
+            success: true,
+            user: targetUser.username,
+            type,
+            amount,
+            walletType: wallet,
+            balanceBefore,
+            balanceAfter: result.balanceAfter,
+            transactionId: result.txRecord.id
+        }, `Manual ${type} of $${amount.toFixed(2)} applied to ${targetUser.username}`);
+    } catch (error) {
+        next(error);
+    }
+});
+
+// GET /api/wallet/admin/transaction-logs - Credit transaction logs (Section 4.4)
+router.get('/admin/transaction-logs', requireAdmin, async (req, res, next) => {
+    try {
+        const { page, limit, skip } = parsePagination(req.query);
+        const { type, startDate, endDate } = req.query;
+
+        const where = {};
+        if (type && ['CREDIT', 'DEBIT'].includes(type.toUpperCase())) {
+            where.type = type.toUpperCase();
+        }
+        if (startDate || endDate) {
+            where.createdAt = {};
+            if (startDate) where.createdAt.gte = new Date(startDate);
+            if (endDate) where.createdAt.lte = new Date(endDate);
+        }
+
+        const [transactions, total, creditSum, debitSum] = await Promise.all([
+            prisma.creditTransaction.findMany({
+                where,
+                include: {
+                    user: {
+                        select: { id: true, username: true, name: true, email: true }
+                    }
+                },
+                orderBy: { createdAt: 'desc' },
+                take: limit,
+                skip
+            }),
+            prisma.creditTransaction.count({ where }),
+            prisma.creditTransaction.aggregate({
+                where: { ...where, type: 'CREDIT' },
+                _sum: { amount: true }
+            }),
+            prisma.creditTransaction.aggregate({
+                where: { ...where, type: 'DEBIT' },
+                _sum: { amount: true }
+            })
+        ]);
+
+        res.json({
+            success: true,
+            data: transactions,
+            pagination: {
+                page,
+                limit,
+                total,
+                totalPages: Math.ceil(total / limit)
+            },
+            stats: {
+                totalCredit: creditSum._sum.amount || 0,
+                totalDebit: debitSum._sum.amount || 0,
+                count: total
+            }
+        });
+    } catch (error) {
+        next(error);
+    }
+});
+
 // PUT /api/wallet/admin/payments/:id/approve - Approve payment (Admin)
 router.put('/admin/payments/:id/approve', requireAdmin, async (req, res, next) => {
     try {
