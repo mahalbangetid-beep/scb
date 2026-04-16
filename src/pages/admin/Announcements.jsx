@@ -102,145 +102,112 @@ export default function Announcements() {
 
     if (loading) {
         return (
-            <div className="page-content" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '400px' }}>
-                <Loader2 size={48} className="animate-spin" style={{ color: 'var(--primary-500)' }} />
+            <div className="ann-loading">
+                <Loader2 size={48} className="ann-spinner" />
             </div>
         )
     }
 
     return (
-        <div className="page-content">
+        <div className="ann-page">
             {/* Page Header */}
-            <div className="page-header" style={{ position: 'relative', zIndex: 2 }}>
+            <div className="ann-header">
                 <div>
-                    <h1 className="page-title">Announcements</h1>
-                    <p className="page-subtitle" style={{ marginBottom: 0 }}>
-                        Create global notices displayed to all users on their dashboard
-                    </p>
+                    <h1>Announcements</h1>
+                    <span className="ann-subtitle">Create global notices displayed to all users on their dashboard</span>
                 </div>
-                <div style={{ display: 'flex', gap: 'var(--spacing-sm)' }}>
-                    <button className="btn btn-secondary btn-sm" onClick={fetchAnnouncements}>
+                <div className="ann-header-actions">
+                    <button className="ann-btn ann-btn-ghost" onClick={fetchAnnouncements}>
                         <RefreshCw size={14} /> Refresh
                     </button>
-                    <button className="btn btn-primary" onClick={openCreate}>
+                    <button className="ann-btn ann-btn-primary" onClick={openCreate}>
                         <Plus size={16} /> New Announcement
                     </button>
                 </div>
             </div>
 
             {/* Stats */}
-            <div style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
-                gap: 'var(--spacing-md)',
-                marginBottom: 'var(--spacing-lg)'
-            }}>
-                <div className="stat-card">
-                    <div className="stat-card-header">
-                        <div className="stat-icon primary"><Megaphone size={20} /></div>
+            <div className="ann-stats">
+                <div className="ann-stat-card">
+                    <div className="ann-stat-icon" style={{ background: 'linear-gradient(135deg, #6366f1, #4f46e5)' }}>
+                        <Megaphone size={20} />
                     </div>
-                    <div className="stat-value">{announcements.length}</div>
-                    <div className="stat-label">Total</div>
+                    <div className="ann-stat-info">
+                        <span className="ann-stat-label">Total</span>
+                        <span className="ann-stat-value">{announcements.length}</span>
+                    </div>
                 </div>
-                <div className="stat-card">
-                    <div className="stat-card-header">
-                        <div className="stat-icon success"><Eye size={20} /></div>
+                <div className="ann-stat-card">
+                    <div className="ann-stat-icon" style={{ background: 'linear-gradient(135deg, #10b981, #059669)' }}>
+                        <Eye size={20} />
                     </div>
-                    <div className="stat-value">{announcements.filter(a => a.isActive && !isExpired(a)).length}</div>
-                    <div className="stat-label">Active</div>
+                    <div className="ann-stat-info">
+                        <span className="ann-stat-label">Active</span>
+                        <span className="ann-stat-value">{announcements.filter(a => a.isActive && !isExpired(a)).length}</span>
+                    </div>
                 </div>
-                <div className="stat-card">
-                    <div className="stat-card-header">
-                        <div className="stat-icon warning"><Clock size={20} /></div>
+                <div className="ann-stat-card">
+                    <div className="ann-stat-icon" style={{ background: 'linear-gradient(135deg, #eab308, #ca8a04)' }}>
+                        <Clock size={20} />
                     </div>
-                    <div className="stat-value">{announcements.filter(a => isExpired(a)).length}</div>
-                    <div className="stat-label">Expired</div>
+                    <div className="ann-stat-info">
+                        <span className="ann-stat-label">Expired</span>
+                        <span className="ann-stat-value">{announcements.filter(a => isExpired(a)).length}</span>
+                    </div>
                 </div>
             </div>
 
             {/* Announcements List */}
-            <div className="card">
-                <div className="card-header">
-                    <div>
-                        <h3 className="card-title">All Announcements</h3>
-                        <p className="card-subtitle">Manage global notices for user dashboards</p>
-                    </div>
+            <div className="ann-card">
+                <div className="ann-card-header">
+                    <h3>All Announcements</h3>
+                    <span>Manage global notices for user dashboards</span>
                 </div>
 
                 {announcements.length === 0 ? (
-                    <div style={{ textAlign: 'center', padding: 'var(--spacing-2xl)', color: 'var(--text-muted)' }}>
-                        <Megaphone size={48} style={{ opacity: 0.2, marginBottom: '12px' }} />
+                    <div className="ann-empty">
+                        <Megaphone size={48} style={{ opacity: 0.2 }} />
                         <p>No announcements created yet</p>
-                        <button className="btn btn-primary btn-sm" onClick={openCreate} style={{ marginTop: '12px' }}>
+                        <button className="ann-btn ann-btn-primary" onClick={openCreate}>
                             <Plus size={14} /> Create First Announcement
                         </button>
                     </div>
                 ) : (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-md)', padding: 'var(--spacing-md)' }}>
+                    <div className="ann-list">
                         {announcements.map(ann => (
-                            <div key={ann.id} style={{
-                                padding: 'var(--spacing-md) var(--spacing-lg)',
-                                background: 'var(--bg-tertiary)',
-                                borderRadius: 'var(--radius-lg)',
-                                border: `1px solid ${ann.isActive && !isExpired(ann) ? 'rgba(99,102,241,0.3)' : 'var(--border-color)'}`,
-                                opacity: ann.isActive && !isExpired(ann) ? 1 : 0.6,
-                                transition: 'all 0.2s'
-                            }}>
-                                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 'var(--spacing-md)' }}>
-                                    <div style={{
-                                        width: '40px', height: '40px', borderRadius: '50%',
-                                        background: ann.isActive && !isExpired(ann)
-                                            ? 'linear-gradient(135deg, #6366f1, #a855f7)'
-                                            : 'var(--bg-secondary)',
-                                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                        flexShrink: 0
-                                    }}>
-                                        <Megaphone size={18} color={ann.isActive && !isExpired(ann) ? '#fff' : 'var(--text-muted)'} />
+                            <div key={ann.id} className={`ann-item ${ann.isActive && !isExpired(ann) ? 'active' : 'inactive'}`}>
+                                <div className="ann-item-content">
+                                    <div className={`ann-item-icon ${ann.isActive && !isExpired(ann) ? 'active' : ''}`}>
+                                        <Megaphone size={18} />
                                     </div>
-                                    <div style={{ flex: 1, minWidth: 0 }}>
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--spacing-sm)', marginBottom: '4px' }}>
-                                            <span style={{ fontWeight: 700, fontSize: '0.95rem' }}>{ann.title}</span>
+                                    <div className="ann-item-body">
+                                        <div className="ann-item-title">
+                                            <span>{ann.title}</span>
                                             {ann.isActive && !isExpired(ann) ? (
-                                                <span className="badge badge-success" style={{ fontSize: '0.65rem' }}>
-                                                    <Eye size={10} /> Active
-                                                </span>
+                                                <span className="ann-badge ann-badge-success"><Eye size={10} /> Active</span>
                                             ) : isExpired(ann) ? (
-                                                <span className="badge badge-warning" style={{ fontSize: '0.65rem' }}>
-                                                    <Clock size={10} /> Expired
-                                                </span>
+                                                <span className="ann-badge ann-badge-warning"><Clock size={10} /> Expired</span>
                                             ) : (
-                                                <span className="badge badge-neutral" style={{ fontSize: '0.65rem' }}>
-                                                    <EyeOff size={10} /> Inactive
-                                                </span>
+                                                <span className="ann-badge ann-badge-neutral"><EyeOff size={10} /> Inactive</span>
                                             )}
                                         </div>
-                                        <div style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: 1.5, marginBottom: '6px' }}>
-                                            {ann.body}
-                                        </div>
-                                        <div style={{ display: 'flex', gap: 'var(--spacing-md)', fontSize: '0.7rem', color: 'var(--text-muted)' }}>
+                                        <div className="ann-item-text">{ann.body}</div>
+                                        <div className="ann-item-meta">
                                             <span>By {ann.createdBy || 'admin'}</span>
                                             <span>Created {new Date(ann.createdAt).toLocaleDateString()}</span>
                                             {ann.expiresAt && (
-                                                <span style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
-                                                    <Calendar size={10} />
-                                                    Expires {new Date(ann.expiresAt).toLocaleDateString()}
-                                                </span>
+                                                <span><Calendar size={10} /> Expires {new Date(ann.expiresAt).toLocaleDateString()}</span>
                                             )}
                                         </div>
                                     </div>
-                                    <div style={{ display: 'flex', gap: 'var(--spacing-xs)', flexShrink: 0 }}>
-                                        <button
-                                            className="btn btn-ghost btn-sm"
-                                            onClick={() => handleToggle(ann)}
-                                            title={ann.isActive ? 'Deactivate' : 'Activate'}
-                                        >
+                                    <div className="ann-item-actions">
+                                        <button className="ann-btn-icon" onClick={() => handleToggle(ann)} title={ann.isActive ? 'Deactivate' : 'Activate'}>
                                             {ann.isActive ? <EyeOff size={14} /> : <Eye size={14} />}
                                         </button>
-                                        <button className="btn btn-ghost btn-sm" onClick={() => openEdit(ann)} title="Edit">
+                                        <button className="ann-btn-icon" onClick={() => openEdit(ann)} title="Edit">
                                             <Edit3 size={14} />
                                         </button>
-                                        <button className="btn btn-ghost btn-sm" onClick={() => handleDelete(ann)} title="Delete"
-                                            style={{ color: 'var(--error)' }}>
+                                        <button className="ann-btn-icon ann-btn-danger" onClick={() => handleDelete(ann)} title="Delete">
                                             <Trash2 size={14} />
                                         </button>
                                     </div>
@@ -253,18 +220,18 @@ export default function Announcements() {
 
             {/* Create/Edit Modal */}
             {showModal && (
-                <div className="modal-overlay" onClick={() => setShowModal(false)}>
-                    <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '520px' }}>
+                <div className="modal-overlay open" onClick={() => setShowModal(false)}>
+                    <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '520px' }}>
                         <div className="modal-header">
-                            <h3 className="modal-title">
+                            <h2>
                                 <Megaphone size={18} />
-                                {editing ? 'Edit Announcement' : 'New Announcement'}
-                            </h3>
-                            <button className="btn btn-ghost btn-sm" onClick={() => setShowModal(false)}>
-                                <X size={16} />
+                                {editing ? ' Edit Announcement' : ' New Announcement'}
+                            </h2>
+                            <button className="modal-close" onClick={() => setShowModal(false)}>
+                                <X size={20} />
                             </button>
                         </div>
-                        <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-md)' }}>
+                        <div className="modal-body">
                             <div className="form-group">
                                 <label className="form-label">Title *</label>
                                 <input
@@ -299,7 +266,7 @@ export default function Announcements() {
                                 </span>
                             </div>
                         </div>
-                        <div className="modal-footer">
+                        <div className="modal-actions" style={{ padding: '1rem 1.5rem', display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
                             <button className="btn btn-secondary" onClick={() => setShowModal(false)}>Cancel</button>
                             <button
                                 className="btn btn-primary"
@@ -312,6 +279,69 @@ export default function Announcements() {
                     </div>
                 </div>
             )}
+
+            <style>{annStyles}</style>
         </div>
     )
 }
+
+const annStyles = `
+    .ann-page { padding: 0; }
+    .ann-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.5rem; flex-wrap: wrap; gap: 1rem; }
+    .ann-header h1 { font-size: 1.75rem; font-weight: 700; color: var(--text-primary); margin: 0; }
+    .ann-subtitle { font-size: 0.875rem; color: var(--text-secondary); }
+    .ann-header-actions { display: flex; gap: 0.5rem; }
+
+    .ann-btn { display: inline-flex; align-items: center; gap: 0.4rem; padding: 0.5rem 1rem; border-radius: 8px; font-size: 0.85rem; font-weight: 600; border: none; cursor: pointer; font-family: inherit; transition: all 0.15s; }
+    .ann-btn-primary { background: linear-gradient(135deg, #3b82f6, #2563eb); color: white; }
+    .ann-btn-primary:hover { opacity: 0.9; transform: translateY(-1px); }
+    .ann-btn-ghost { background: var(--bg-tertiary); color: var(--text-secondary); border: 1px solid var(--border-color); }
+    .ann-btn-ghost:hover { background: var(--bg-card-hover); color: var(--text-primary); }
+
+    .ann-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1rem; margin-bottom: 1.5rem; }
+    .ann-stat-card { display: flex; align-items: center; gap: 1rem; padding: 1rem 1.25rem; background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 12px; }
+    .ann-stat-icon { width: 40px; height: 40px; border-radius: 10px; display: flex; align-items: center; justify-content: center; color: white; flex-shrink: 0; }
+    .ann-stat-info { display: flex; flex-direction: column; }
+    .ann-stat-label { font-size: 0.78rem; color: var(--text-secondary); }
+    .ann-stat-value { font-size: 1.25rem; font-weight: 700; color: var(--text-primary); }
+
+    .ann-card { background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 14px; overflow: hidden; }
+    .ann-card-header { padding: 1rem 1.5rem; border-bottom: 1px solid var(--border-color); }
+    .ann-card-header h3 { font-size: 1rem; font-weight: 600; color: var(--text-primary); margin: 0; }
+    .ann-card-header span { font-size: 0.8rem; color: var(--text-secondary); }
+
+    .ann-empty { text-align: center; padding: 3rem; color: var(--text-muted); display: flex; flex-direction: column; align-items: center; gap: 0.75rem; }
+    .ann-empty p { margin: 0; }
+
+    .ann-list { display: flex; flex-direction: column; }
+    .ann-item { padding: 1rem 1.5rem; border-bottom: 1px solid var(--border-color); transition: background 0.15s; }
+    .ann-item:last-child { border-bottom: none; }
+    .ann-item:hover { background: var(--bg-secondary); }
+    .ann-item.inactive { opacity: 0.6; }
+    .ann-item-content { display: flex; align-items: flex-start; gap: 1rem; }
+
+    .ann-item-icon { width: 36px; height: 36px; border-radius: 50%; background: var(--bg-secondary); display: flex; align-items: center; justify-content: center; flex-shrink: 0; color: var(--text-muted); }
+    .ann-item-icon.active { background: linear-gradient(135deg, #6366f1, #a855f7); color: white; }
+
+    .ann-item-body { flex: 1; min-width: 0; }
+    .ann-item-title { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 4px; }
+    .ann-item-title > span:first-child { font-weight: 700; font-size: 0.95rem; }
+    .ann-item-text { font-size: 0.82rem; color: var(--text-secondary); line-height: 1.5; margin-bottom: 6px; }
+    .ann-item-meta { display: flex; gap: 1rem; font-size: 0.7rem; color: var(--text-muted); flex-wrap: wrap; }
+    .ann-item-meta span { display: flex; align-items: center; gap: 3px; }
+
+    .ann-badge { padding: 2px 8px; border-radius: 20px; font-size: 0.65rem; font-weight: 600; display: inline-flex; align-items: center; gap: 3px; }
+    .ann-badge-success { background: rgba(16,185,129,0.1); color: #10b981; }
+    .ann-badge-warning { background: rgba(234,179,8,0.1); color: #eab308; }
+    .ann-badge-neutral { background: rgba(156,163,175,0.1); color: #9ca3af; }
+
+    .ann-item-actions { display: flex; gap: 4px; flex-shrink: 0; }
+    .ann-btn-icon { background: none; border: 1px solid var(--border-color); border-radius: 6px; padding: 6px; cursor: pointer; color: var(--text-secondary); transition: all 0.15s; display: flex; align-items: center; }
+    .ann-btn-icon:hover { background: var(--bg-tertiary); color: var(--text-primary); }
+    .ann-btn-danger { color: #ef4444; }
+    .ann-btn-danger:hover { background: rgba(239,68,68,0.08); color: #ef4444; }
+
+    .ann-loading { display: flex; align-items: center; justify-content: center; min-height: 400px; }
+    @keyframes ann-spin { to { transform: rotate(360deg); } }
+    .ann-spinner { animation: ann-spin 1s linear infinite; color: var(--primary-500); }
+`
