@@ -13,6 +13,11 @@ const { activityLogService, ACTIONS, CATEGORIES } = require('../services/activit
 const messageCreditService = require('../services/messageCreditService');
 const crypto = require('crypto');
 
+// Generate a unique 8-char referral code
+const generateReferralCode = () => {
+    return crypto.randomBytes(4).toString('hex').toUpperCase();
+};
+
 /**
  * Generate JWT Token
  */
@@ -76,7 +81,8 @@ router.post('/register', authLimiter, async (req, res, next) => {
             whatsappNumber,
             telegramUsername,
             smmPanelUrl,
-            panelApiKey
+            panelApiKey,
+            referralCode: refCode
         } = req.body;
 
         // Validation
@@ -161,6 +167,29 @@ router.post('/register', authLimiter, async (req, res, next) => {
             defaultCredit = parseFloat(process.env.DEFAULT_USER_CREDIT) || 0;
         }
 
+        // Resolve referral (Section 6.7)
+        let referrerId = null;
+        const incomingRefCode = refCode || req.query.ref;
+        if (incomingRefCode) {
+            try {
+                const referrer = await prisma.user.findFirst({
+                    where: { referralCode: incomingRefCode.toUpperCase(), status: 'ACTIVE' },
+                    select: { id: true }
+                });
+                if (referrer) referrerId = referrer.id;
+            } catch { /* silently ignore invalid ref codes */ }
+        }
+
+        // Generate unique referral code for this user
+        let newRefCode = generateReferralCode();
+        let refAttempts = 0;
+        while (refAttempts < 5) {
+            const exists = await prisma.user.findUnique({ where: { referralCode: newRefCode } });
+            if (!exists) break;
+            newRefCode = generateReferralCode();
+            refAttempts++;
+        }
+
         // Create user
         const user = await prisma.user.create({
             data: {
@@ -183,7 +212,9 @@ router.post('/register', authLimiter, async (req, res, next) => {
                 freeSupportGiven: false,
                 freeWhatsappGiven: false,
                 freeTelegramGiven: false,
-                registrationIp
+                registrationIp,
+                referralCode: newRefCode,
+                ...(referrerId && { referredBy: referrerId })
             },
             select: {
                 id: true,
@@ -199,6 +230,7 @@ router.post('/register', authLimiter, async (req, res, next) => {
                 supportCredits: true,
                 whatsappCredits: true,
                 telegramCredits: true,
+                referralCode: true,
                 createdAt: true
             }
         });
@@ -420,6 +452,7 @@ router.get('/me', authenticate, async (req, res, next) => {
                 whatsappCredits: true,
                 telegramCredits: true,
                 discountRate: true,
+                referralCode: true,
                 lastLoginAt: true,
                 createdAt: true,
                 updatedAt: true,

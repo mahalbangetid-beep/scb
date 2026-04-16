@@ -963,6 +963,51 @@ router.put('/admin/payments/:id/approve', requireAdmin, async (req, res, next) =
                 }).catch(e => console.log('[Wallet] Payment notification failed:', e.message));
             }
         } catch (notifErr) { /* non-critical */ }
+
+        // Section 6.7: Affiliate commission — credit referrer on payment
+        try {
+            const payingUser = await prisma.user.findUnique({
+                where: { id: result.payment.userId },
+                select: { referredBy: true }
+            });
+            if (payingUser?.referredBy) {
+                // Get commission percentage from SystemConfig
+                const commConfig = await prisma.systemConfig.findUnique({
+                    where: { key: 'affiliate_commission_pct' }
+                });
+                const commissionPct = commConfig ? parseFloat(JSON.parse(commConfig.value)) : 0;
+                if (commissionPct > 0) {
+                    const commissionAmount = parseFloat((result.payment.amount * commissionPct / 100).toFixed(2));
+                    if (commissionAmount >= 0.01) {
+                        const referrer = await prisma.user.findUnique({
+                            where: { id: payingUser.referredBy },
+                            select: { creditBalance: true, status: true }
+                        });
+                        if (referrer && referrer.status === 'ACTIVE') {
+                            const refBalBefore = referrer.creditBalance || 0;
+                            await prisma.user.update({
+                                where: { id: payingUser.referredBy },
+                                data: { creditBalance: { increment: commissionAmount } }
+                            });
+                            await prisma.creditTransaction.create({
+                                data: {
+                                    userId: payingUser.referredBy,
+                                    type: 'CREDIT',
+                                    amount: commissionAmount,
+                                    balanceBefore: refBalBefore,
+                                    balanceAfter: refBalBefore + commissionAmount,
+                                    description: `Affiliate commission (${commissionPct}%) from referral payment`,
+                                    reference: `AFFILIATE_${result.payment.id}`
+                                }
+                            });
+                            console.log(`[Affiliate] Credited $${commissionAmount} to referrer ${payingUser.referredBy}`);
+                        }
+                    }
+                }
+            }
+        } catch (affErr) {
+            console.error('[Affiliate] Commission error (non-critical):', affErr.message);
+        }
     } catch (error) {
         next(error);
     }

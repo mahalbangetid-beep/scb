@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import {
     Settings, Save, Loader2, AlertCircle, CheckCircle2, X,
     DollarSign, MessageSquare, Shield, Globe, Bell, Smartphone,
-    CreditCard, Clock, Lock, Mail, Users, Zap, Database, Image, Upload, Trash2
+    CreditCard, Clock, Lock, Mail, Users, Zap, Database, Image, Upload, Trash2, Gift
 } from 'lucide-react'
 import api from '../../services/api'
 
@@ -44,7 +44,10 @@ export default function SystemSettings() {
         // Branding
         frontendLogo: '',
         backendLogo: '',
-        favicon: ''
+        favicon: '',
+
+        // Affiliate
+        affiliate_commission_pct: 0
     })
 
     // Billing mode state (separate from regular settings)
@@ -62,7 +65,8 @@ export default function SystemSettings() {
         { id: 'pricing', label: 'Pricing & Rates', icon: DollarSign, color: '#22c55e' },
         { id: 'platform', label: 'Platform', icon: Globe, color: '#3b82f6' },
         { id: 'security', label: 'Security', icon: Shield, color: '#a855f7' },
-        { id: 'notifications', label: 'Notifications', icon: Bell, color: '#f59e0b' }
+        { id: 'notifications', label: 'Notifications', icon: Bell, color: '#f59e0b' },
+        { id: 'affiliate', label: 'Affiliate', icon: Gift, color: '#ec4899' }
     ]
 
     useEffect(() => {
@@ -106,7 +110,8 @@ export default function SystemSettings() {
                 autoSuspendOnZeroBalance: mapConfig('notifications', 'autoSuspendOnZeroBalance', false),
                 frontendLogo: mapConfig('branding', 'frontendLogo', ''),
                 backendLogo: mapConfig('branding', 'backendLogo', ''),
-                favicon: mapConfig('branding', 'favicon', '')
+                favicon: mapConfig('branding', 'favicon', ''),
+                affiliate_commission_pct: mapConfig('affiliate', 'affiliate_commission_pct', 0)
             })
 
             // Set billing mode
@@ -159,7 +164,8 @@ export default function SystemSettings() {
                 { key: 'autoSuspendOnZeroBalance', value: settings.autoSuspendOnZeroBalance, category: 'notifications' },
                 { key: 'frontendLogo', value: settings.frontendLogo, category: 'branding' },
                 { key: 'backendLogo', value: settings.backendLogo, category: 'branding' },
-                { key: 'favicon', value: settings.favicon, category: 'branding' }
+                { key: 'favicon', value: settings.favicon, category: 'branding' },
+                { key: 'affiliate_commission_pct', value: settings.affiliate_commission_pct, category: 'affiliate' }
             ]
 
             for (const item of configItems) {
@@ -960,6 +966,61 @@ export default function SystemSettings() {
                                         </span>
                                         <span className="toggle-desc">Automatically suspend users when balance reaches $0</span>
                                     </div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Affiliate Section (6.7) */}
+                    {activeSection === 'affiliate' && (
+                        <div className="section-content animate-in">
+                            <div className="section-header">
+                                <div className="section-icon" style={{ background: 'rgba(236, 72, 153, 0.1)', color: '#ec4899' }}>
+                                    <Gift size={24} />
+                                </div>
+                                <div>
+                                    <h2>Affiliate Program</h2>
+                                    <p>Configure referral commissions and affiliate settings</p>
+                                </div>
+                            </div>
+
+                            <div className="config-card highlight">
+                                <div className="card-header">
+                                    <DollarSign size={20} />
+                                    <h3>Commission Rate</h3>
+                                </div>
+                                <p className="card-desc">
+                                    When a referred user makes a payment, this percentage of the payment amount 
+                                    is automatically credited to the referrer's wallet.
+                                </p>
+
+                                <div className="input-group large">
+                                    <label>Affiliate Commission (%)</label>
+                                    <div className="input-with-suffix">
+                                        <input
+                                            type="number"
+                                            value={settings.affiliate_commission_pct}
+                                            onChange={(e) => updateSetting('affiliate_commission_pct', parseFloat(e.target.value) || 0)}
+                                            step="0.5"
+                                            min="0"
+                                            max="50"
+                                        />
+                                        <span className="suffix">%</span>
+                                    </div>
+                                    <span className="input-hint">Set to 0 to disable affiliate commissions. Recommended: 5-15%</span>
+                                </div>
+                            </div>
+
+                            <div className="config-card">
+                                <div className="card-header">
+                                    <Users size={20} />
+                                    <h3>How It Works</h3>
+                                </div>
+                                <div style={{ fontSize: '0.85rem', lineHeight: 1.8, color: 'var(--text-secondary)' }}>
+                                    <p>1. Every user gets a unique <strong>referral code</strong> on their dashboard.</p>
+                                    <p>2. They share their referral link: <code>yoursite.com/register?ref=CODE</code></p>
+                                    <p>3. When the referred user registers AND makes a payment, the referrer earns <strong>{settings.affiliate_commission_pct}%</strong> commission.</p>
+                                    <p>4. Commission is automatically added to the referrer's wallet balance.</p>
                                 </div>
                             </div>
                         </div>

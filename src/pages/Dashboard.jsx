@@ -80,6 +80,8 @@ export default function Dashboard() {
     const [lastRefresh, setLastRefresh] = useState(null)
     const [activitySearch, setActivitySearch] = useState('')
     const [supportLinks, setSupportLinks] = useState({ whatsapp: '', telegram: '' })
+    const [referralCode, setReferralCode] = useState('')
+    const [refCopied, setRefCopied] = useState(false)
 
     // Fetch support links once
     useEffect(() => {
@@ -89,6 +91,10 @@ export default function Dashboard() {
             const wa = platform.find(i => i.key === 'supportWhatsapp')?.value || ''
             const tg = platform.find(i => i.key === 'supportTelegram')?.value || ''
             setSupportLinks({ whatsapp: wa, telegram: tg })
+        }).catch(() => {})
+        // Fetch referral code
+        api.get('/auth/me').then(res => {
+            setReferralCode(res.data?.referralCode || '')
         }).catch(() => {})
     }, [])
 
@@ -638,6 +644,45 @@ export default function Dashboard() {
                     </div>
                 </div>
             </div>
+
+            {/* Referral Card (Section 6.7) */}
+            {referralCode && (
+                <div className="card" style={{ marginTop: 'var(--spacing-lg)' }}>
+                    <div className="card-header">
+                        <div>
+                            <h3 className="card-title" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                🎁 Invite & Earn
+                            </h3>
+                            <p className="card-subtitle">Share your referral link to earn commission on their payments</p>
+                        </div>
+                    </div>
+                    <div style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 'var(--spacing-sm)',
+                        padding: 'var(--spacing-sm) var(--spacing-md)',
+                        background: 'var(--bg-tertiary)',
+                        borderRadius: 'var(--radius-md)',
+                        fontFamily: 'monospace',
+                        fontSize: '0.8rem'
+                    }}>
+                        <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {`${window.location.origin}/register?ref=${referralCode}`}
+                        </span>
+                        <button
+                            className="btn btn-primary btn-sm"
+                            style={{ flexShrink: 0, fontSize: '0.75rem', padding: '0.3rem 0.6rem' }}
+                            onClick={() => {
+                                navigator.clipboard.writeText(`${window.location.origin}/register?ref=${referralCode}`)
+                                setRefCopied(true)
+                                setTimeout(() => setRefCopied(false), 2000)
+                            }}
+                        >
+                            {refCopied ? '✓ Copied' : 'Copy Link'}
+                        </button>
+                    </div>
+                </div>
+            )}
 
             {/* Floating Support Icons (Section 6.6) */}
             {(supportLinks.whatsapp || supportLinks.telegram) && (

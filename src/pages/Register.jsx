@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { Mail, Lock, User, Loader2, ArrowRight, ShieldCheck, AlertCircle, Phone, MessageCircle, Globe, Key, ChevronDown, ChevronUp } from 'lucide-react'
 import api from '../services/api'
 
@@ -19,6 +19,8 @@ export default function Register() {
     const [error, setError] = useState(null)
     const [showOptional, setShowOptional] = useState(false)
     const navigate = useNavigate()
+    const [searchParams] = useSearchParams()
+    const refCode = searchParams.get('ref') || ''
 
     const handleSubmit = async (e) => {
         e.preventDefault()
@@ -50,7 +52,8 @@ export default function Register() {
                 whatsappNumber: formData.whatsappNumber || undefined,
                 telegramUsername: formData.telegramUsername || undefined,
                 smmPanelUrl: formData.smmPanelUrl || undefined,
-                panelApiKey: formData.panelApiKey || undefined
+                panelApiKey: formData.panelApiKey || undefined,
+                ...(refCode && { referralCode: refCode })
             })
 
             // On register success, we automatically login if API returns token
@@ -83,6 +86,23 @@ export default function Register() {
                     <div className="auth-error animate-shake">
                         <AlertCircle size={16} />
                         <span>{error}</span>
+                    </div>
+                )}
+
+                {refCode && (
+                    <div style={{
+                        padding: '0.6rem 0.75rem',
+                        background: 'rgba(236, 72, 153, 0.1)',
+                        border: '1px solid rgba(236, 72, 153, 0.3)',
+                        borderRadius: '8px',
+                        fontSize: '0.8rem',
+                        color: '#ec4899',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        marginBottom: '0.5rem'
+                    }}>
+                        🎁 Referred by code: <strong>{refCode}</strong>
                     </div>
                 )}
 

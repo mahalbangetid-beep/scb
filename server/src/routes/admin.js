@@ -2451,4 +2451,97 @@ router.put('/command-aliases', async (req, res, next) => {
     }
 });
 
+// ==================== AFFILIATE SYSTEM (Section 6.7) ====================
+
+// GET /api/admin/affiliate/stats - Affiliate overview stats
+router.get('/affiliate/stats', async (req, res, next) => {
+    try {
+        // Total users with referrals
+        const totalReferrals = await prisma.user.count({
+            where: { referredBy: { not: null } }
+        });
+
+        // Total commission paid
+        const commissionTxns = await prisma.creditTransaction.findMany({
+            where: { reference: { startsWith: 'AFFILIATE_' } },
+            select: { amount: true }
+        });
+        const totalCommission = commissionTxns.reduce((sum, t) => sum + t.amount, 0);
+
+        // Top referrers
+        const topReferrers = await prisma.user.findMany({
+            where: {
+                referrals: { some: {} }
+            },
+            select: {
+                id: true,
+                username: true,
+                referralCode: true,
+                _count: { select: { referrals: true } }
+            },
+            orderBy: { referrals: { _count: 'desc' } },
+            take: 10
+        });
+
+        // Get commission per referrer
+        const referrerStats = [];
+        for (const ref of topReferrers) {
+            const txns = await prisma.creditTransaction.findMany({
+                where: { userId: ref.id, reference: { startsWith: 'AFFILIATE_' } },
+                select: { amount: true }
+            });
+            referrerStats.push({
+                id: ref.id,
+                username: ref.username,
+                referralCode: ref.referralCode,
+                totalReferrals: ref._count.referrals,
+                totalEarned: txns.reduce((s, t) => s + t.amount, 0)
+            });
+        }
+
+        // Get commission config
+        const commConfig = await prisma.systemConfig.findUnique({
+            where: { key: 'affiliate_commission_pct' }
+        });
+        const commissionPct = commConfig ? parseFloat(JSON.parse(commConfig.value)) : 0;
+
+        successResponse(res, {
+            totalReferrals,
+            totalCommission: parseFloat(totalCommission.toFixed(2)),
+            commissionPct,
+            topReferrers: referrerStats
+        });
+    } catch (error) {
+        next(error);
+    }
+});
+
+// GET /api/admin/affiliate/history - Paginated affiliate commission history
+router.get('/affiliate/history', async (req, res, next) => {
+    try {
+        const page = parseInt(req.query.page) || 1;
+        const limit = parseInt(req.query.limit) || 20;
+        const skip = (page - 1) * limit;
+
+        const [transactions, total] = await Promise.all([
+            prisma.creditTransaction.findMany({
+                where: { reference: { startsWith: 'AFFILIATE_' } },
+                include: {
+                    user: { select: { id: true, username: true, email: true } }
+                },
+                orderBy: { createdAt: 'desc' },
+                take: limit,
+                skip
+            }),
+            prisma.creditTransaction.count({
+                where: { reference: { startsWith: 'AFFILIATE_' } }
+            })
+        ]);
+
+        paginatedResponse(res, transactions, { page, limit, total });
+    } catch (error) {
+        next(error);
+    }
+});
+
 module.exports = router;

@@ -72,6 +72,12 @@ model User {
   twoFactorEnabled Boolean @default(false)
   twoFactorSecret  String? // Encrypted TOTP secret
 
+  // Affiliate/Referral System (Section 6.7)
+  referralCode     String?  @unique // Unique referral code for this user
+  referredBy       String?  // ID of user who referred this user
+  referrer         User?    @relation("Referrals", fields: [referredBy], references: [id], onDelete: SetNull)
+  referrals        User[]   @relation("Referrals") // Users referred by this user
+
   // Relations
   apiKeys                   ApiKey[]
   devices                   Device[]
