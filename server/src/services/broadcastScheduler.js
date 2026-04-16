@@ -71,8 +71,9 @@ async function processBroadcast(broadcastId) {
     const marketingService = require('./marketingService');
     const broadcastUserId = broadcast.device?.userId || null;
 
-    // Get configurable message delay (admin can set per-user)
-    const messageDelay = await getUserBroadcastDelay(broadcastUserId, 'WHATSAPP');
+    // Section 13.1 fix: Use per-campaign messageDelay first (set at broadcast time),
+    // fallback to global user setting, then platform defaults
+    const messageDelay = broadcast.messageDelay || await getUserBroadcastDelay(broadcastUserId, 'WHATSAPP');
     const groupDelay = Math.max(messageDelay, DEFAULT_GROUP_DELAY); // Groups need at least 2s
 
     // Note: status is already set to 'processing' by checkScheduledBroadcasts()
@@ -257,7 +258,8 @@ async function processScheduledTelegramBroadcast(broadcast) {
     const visibleWatermark = broadcast.watermarkText;
     const autoIdPrefix = broadcast.autoIdPrefix || '';
     const broadcastUserId = broadcast.telegramBot?.userId || null;
-    const tgDelay = await getUserBroadcastDelay(broadcastUserId, 'TELEGRAM');
+    // Section 13.1 fix: Use per-campaign delay first, fallback to global
+    const tgDelay = broadcast.messageDelay || await getUserBroadcastDelay(broadcastUserId, 'TELEGRAM');
     const autoPadding = broadcast.autoPadding;
 
     const ZWC_CHARS = ['\u200B', '\u200C', '\u200D', '\u2060', '\uFEFF'];

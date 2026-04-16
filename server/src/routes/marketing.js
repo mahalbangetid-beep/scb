@@ -44,7 +44,8 @@ router.get('/config', async (req, res, next) => {
             countryCode: config.countryCode,
             ownDeviceRate: config.ownDeviceRate,
             systemBotRate: config.systemBotRate,
-            telegramRate: config.telegramRate
+            telegramRate: config.telegramRate,
+            defaultMessageDelay: config.defaultMessageDelay
         }, 'Marketing config retrieved');
     } catch (error) {
         next(error);
@@ -65,7 +66,8 @@ router.put('/config', async (req, res, next) => {
             countryCode: updated.countryCode,
             ownDeviceRate: updated.ownDeviceRate,
             systemBotRate: updated.systemBotRate,
-            telegramRate: updated.telegramRate
+            telegramRate: updated.telegramRate,
+            defaultMessageDelay: updated.defaultMessageDelay
         }, 'Marketing config updated');
     } catch (error) {
         next(error);

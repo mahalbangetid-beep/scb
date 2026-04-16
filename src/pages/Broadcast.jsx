@@ -129,7 +129,9 @@ export default function Broadcast() {
                 autoIdEnabled: cfg.autoIdEnabled !== false,
                 autoIdPrefix: cfg.autoIdPrefix || '',
                 watermarkEnabled: cfg.watermarkEnabled || false,
-                watermarkText: cfg.defaultWatermark || ''
+                watermarkText: cfg.defaultWatermark || '',
+                // Section 13.1: Sync default message delay from config
+                messageDelay: String(cfg.defaultMessageDelay || 2)
             }))
         } catch (error) {
             console.error('Failed to fetch marketing config:', error)

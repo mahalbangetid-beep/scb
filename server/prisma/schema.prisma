@@ -849,6 +849,9 @@ model MarketingConfig {
   systemBotRate     Float   @default(1)     // Credits per message for system bot
   telegramRate      Float   @default(1)     // Credits per message for telegram
 
+  // Section 13.1: Default message delay (seconds) between each broadcast message
+  defaultMessageDelay Int   @default(2)     // Synced to Broadcast form as initial value
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

@@ -35,7 +35,8 @@ class MarketingService {
                     removeDuplicates: true,
                     ownDeviceRate: 1,
                     systemBotRate: 1,
-                    telegramRate: 1
+                    telegramRate: 1,
+                    defaultMessageDelay: 2
                 }
             });
         }
@@ -54,7 +55,8 @@ class MarketingService {
             'autoIdEnabled', 'autoIdPrefix', 'autoIdCounter',
             'watermarkEnabled', 'defaultWatermark', 'watermarkTemplates',
             'removeDuplicates', 'countryCode',
-            'ownDeviceRate', 'systemBotRate', 'telegramRate'
+            'ownDeviceRate', 'systemBotRate', 'telegramRate',
+            'defaultMessageDelay'
         ];
 
         const data = {};
