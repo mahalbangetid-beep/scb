@@ -118,6 +118,7 @@ const adminNavigation = [
     { name: 'SEO Settings', icon: Globe, path: '/admin/seo-settings' },
     { name: 'Invoice Template', icon: FileText, path: '/admin/invoice-template' },
     { name: 'Transaction Logs', icon: Receipt, path: '/admin/transaction-logs' },
+    { name: 'Announcements', icon: Megaphone, path: '/admin/announcements' },
 ]
 
 // Staff navigation - map permissions to pages

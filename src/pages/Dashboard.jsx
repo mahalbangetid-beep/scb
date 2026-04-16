@@ -24,7 +24,9 @@ import {
     CreditCard,
     ChevronRight,
     Package,
-    Search
+    Search,
+    Megaphone,
+    X
 } from 'lucide-react'
 import api from '../services/api'
 import { formatDistanceToNow } from 'date-fns'
@@ -82,8 +84,9 @@ export default function Dashboard() {
     const [supportLinks, setSupportLinks] = useState({ whatsapp: '', telegram: '' })
     const [referralCode, setReferralCode] = useState('')
     const [refCopied, setRefCopied] = useState(false)
+    const [announcements, setAnnouncements] = useState([])
 
-    // Fetch support links once
+    // Fetch support links + announcements once
     useEffect(() => {
         api.get('/admin/config').then(res => {
             const d = res.data || {}
@@ -95,6 +98,10 @@ export default function Dashboard() {
         // Fetch referral code
         api.get('/auth/me').then(res => {
             setReferralCode(res.data?.referralCode || '')
+        }).catch(() => {})
+        // Fetch announcements (Section 6.4)
+        api.get('/settings/announcements').then(res => {
+            setAnnouncements(res.data || [])
         }).catch(() => {})
     }, [])
 
@@ -172,6 +179,55 @@ export default function Dashboard() {
                     </button>
                 </div>
             </div>
+
+            {/* Announcement Banner (Section 6.4) */}
+            {announcements.length > 0 && announcements.map(ann => (
+                <div key={ann.id} style={{
+                    marginBottom: 'var(--spacing-md)',
+                    padding: 'var(--spacing-md) var(--spacing-lg)',
+                    background: 'linear-gradient(135deg, rgba(99,102,241,0.15), rgba(168,85,247,0.12))',
+                    border: '1px solid rgba(99,102,241,0.3)',
+                    borderRadius: 'var(--radius-lg)',
+                    display: 'flex',
+                    alignItems: 'flex-start',
+                    gap: 'var(--spacing-md)',
+                    animation: 'fadeIn 0.3s ease'
+                }}>
+                    <div style={{
+                        width: '36px', height: '36px', borderRadius: '50%',
+                        background: 'linear-gradient(135deg, #6366f1, #a855f7)',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        flexShrink: 0
+                    }}>
+                        <Megaphone size={18} color="#fff" />
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: '2px' }}>{ann.title}</div>
+                        <div style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>{ann.body}</div>
+                        {ann.expiresAt && (
+                            <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '4px' }}>
+                                Expires: {new Date(ann.expiresAt).toLocaleDateString()}
+                            </div>
+                        )}
+                    </div>
+                    <button
+                        onClick={() => {
+                            api.post(`/settings/announcements/${ann.id}/dismiss`).catch(() => {})
+                            setAnnouncements(prev => prev.filter(a => a.id !== ann.id))
+                        }}
+                        style={{
+                            background: 'none', border: 'none', cursor: 'pointer',
+                            color: 'var(--text-muted)', padding: '4px', flexShrink: 0,
+                            borderRadius: 'var(--radius-sm)', transition: 'color 0.15s'
+                        }}
+                        onMouseEnter={e => e.currentTarget.style.color = 'var(--text-primary)'}
+                        onMouseLeave={e => e.currentTarget.style.color = 'var(--text-muted)'}
+                        title="Dismiss"
+                    >
+                        <X size={16} />
+                    </button>
+                </div>
+            ))}
 
             {/* Credit & Device Quick Stats */}
             <div style={{

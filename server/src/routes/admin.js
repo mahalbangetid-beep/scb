@@ -2544,4 +2544,112 @@ router.get('/affiliate/history', async (req, res, next) => {
     }
 });
 
+// ==================== ANNOUNCEMENTS (Section 6.4) ====================
+
+const crypto = require('crypto');
+
+// GET /api/admin/announcements - Get all announcements
+router.get('/announcements', async (req, res, next) => {
+    try {
+        const config = await prisma.systemConfig.findUnique({
+            where: { key: 'admin_announcements' }
+        });
+        const announcements = config ? JSON.parse(config.value) : [];
+        successResponse(res, announcements);
+    } catch (error) {
+        next(error);
+    }
+});
+
+// POST /api/admin/announcements - Create announcement
+router.post('/announcements', async (req, res, next) => {
+    try {
+        const { title, body, expiresAt } = req.body;
+
+        if (!title || !body) {
+            throw new AppError('Title and body are required', 400);
+        }
+
+        const config = await prisma.systemConfig.findUnique({
+            where: { key: 'admin_announcements' }
+        });
+        const announcements = config ? JSON.parse(config.value) : [];
+
+        const newAnnouncement = {
+            id: crypto.randomUUID(),
+            title,
+            body,
+            expiresAt: expiresAt || null,
+            isActive: true,
+            createdBy: req.user.username,
+            createdAt: new Date().toISOString()
+        };
+
+        announcements.unshift(newAnnouncement);
+
+        await prisma.systemConfig.upsert({
+            where: { key: 'admin_announcements' },
+            update: { value: JSON.stringify(announcements) },
+            create: { key: 'admin_announcements', value: JSON.stringify(announcements), category: 'notifications' }
+        });
+
+        createdResponse(res, newAnnouncement, 'Announcement created');
+    } catch (error) {
+        next(error);
+    }
+});
+
+// PUT /api/admin/announcements/:id - Update announcement
+router.put('/announcements/:id', async (req, res, next) => {
+    try {
+        const { title, body, expiresAt, isActive } = req.body;
+        const config = await prisma.systemConfig.findUnique({
+            where: { key: 'admin_announcements' }
+        });
+        const announcements = config ? JSON.parse(config.value) : [];
+        const idx = announcements.findIndex(a => a.id === req.params.id);
+        if (idx === -1) {
+            throw new AppError('Announcement not found', 404);
+        }
+
+        if (title !== undefined) announcements[idx].title = title;
+        if (body !== undefined) announcements[idx].body = body;
+        if (expiresAt !== undefined) announcements[idx].expiresAt = expiresAt;
+        if (isActive !== undefined) announcements[idx].isActive = isActive;
+
+        await prisma.systemConfig.update({
+            where: { key: 'admin_announcements' },
+            data: { value: JSON.stringify(announcements) }
+        });
+
+        successResponse(res, announcements[idx], 'Announcement updated');
+    } catch (error) {
+        next(error);
+    }
+});
+
+// DELETE /api/admin/announcements/:id - Delete announcement
+router.delete('/announcements/:id', async (req, res, next) => {
+    try {
+        const config = await prisma.systemConfig.findUnique({
+            where: { key: 'admin_announcements' }
+        });
+        const announcements = config ? JSON.parse(config.value) : [];
+        const filtered = announcements.filter(a => a.id !== req.params.id);
+
+        if (filtered.length === announcements.length) {
+            throw new AppError('Announcement not found', 404);
+        }
+
+        await prisma.systemConfig.update({
+            where: { key: 'admin_announcements' },
+            data: { value: JSON.stringify(filtered) }
+        });
+
+        successResponse(res, null, 'Announcement deleted');
+    } catch (error) {
+        next(error);
+    }
+});
+
 module.exports = router;

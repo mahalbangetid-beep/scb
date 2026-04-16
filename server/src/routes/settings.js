@@ -684,6 +684,63 @@ router.delete('/spam-bans', async (req, res, next) => {
     }
 });
 
+// ==================== ANNOUNCEMENTS (Section 6.4 — User-facing) ====================
+
+// GET /api/settings/announcements - Get active announcements for current user
+router.get('/announcements', async (req, res, next) => {
+    try {
+        // Get all announcements from SystemConfig
+        const config = await prisma.systemConfig.findUnique({
+            where: { key: 'admin_announcements' }
+        });
+        const allAnnouncements = config ? JSON.parse(config.value) : [];
+
+        // Get user's dismissed announcements
+        const dismissedSetting = await prisma.setting.findUnique({
+            where: { key_userId: { key: 'dismissed_announcements', userId: req.user.id } }
+        });
+        const dismissedIds = dismissedSetting ? JSON.parse(dismissedSetting.value) : [];
+
+        // Filter: active, not expired, not dismissed
+        const now = new Date();
+        const active = allAnnouncements.filter(a => {
+            if (!a.isActive) return false;
+            if (a.expiresAt && new Date(a.expiresAt) < now) return false;
+            if (dismissedIds.includes(a.id)) return false;
+            return true;
+        });
+
+        successResponse(res, active);
+    } catch (error) {
+        next(error);
+    }
+});
+
+// POST /api/settings/announcements/:id/dismiss - Dismiss an announcement
+router.post('/announcements/:id/dismiss', async (req, res, next) => {
+    try {
+        const announcementId = req.params.id;
+        const dismissedSetting = await prisma.setting.findUnique({
+            where: { key_userId: { key: 'dismissed_announcements', userId: req.user.id } }
+        });
+        const dismissedIds = dismissedSetting ? JSON.parse(dismissedSetting.value) : [];
+
+        if (!dismissedIds.includes(announcementId)) {
+            dismissedIds.push(announcementId);
+        }
+
+        await prisma.setting.upsert({
+            where: { key_userId: { key: 'dismissed_announcements', userId: req.user.id } },
+            update: { value: JSON.stringify(dismissedIds) },
+            create: { key: 'dismissed_announcements', value: JSON.stringify(dismissedIds), userId: req.user.id }
+        });
+
+        successResponse(res, null, 'Announcement dismissed');
+    } catch (error) {
+        next(error);
+    }
+});
+
 // ==================== WILDCARD ROUTES (MUST BE LAST) ====================
 // These routes use /:key which would match any path segment.
 // ALL specific named routes (e.g. /bot-security, /binance, /bot-toggles,
@@ -691,7 +748,7 @@ router.delete('/spam-bans', async (req, res, next) => {
 // Do NOT add new named routes below this comment.
 
 // Reserved route prefixes — /:key must not match these
-const RESERVED_PREFIXES = ['stats', 'bot-security', 'binance', 'bot-toggles', 'staff-override-groups', 'cleanup-cooldowns', 'spam-bans'];
+const RESERVED_PREFIXES = ['stats', 'bot-security', 'binance', 'bot-toggles', 'staff-override-groups', 'cleanup-cooldowns', 'spam-bans', 'announcements'];
 
 // GET /api/settings/:key - Get specific setting (MUST BE AFTER NAMED ROUTES)
 router.get('/:key', async (req, res, next) => {
