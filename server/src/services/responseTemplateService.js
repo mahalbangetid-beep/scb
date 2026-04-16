@@ -781,6 +781,49 @@ class ResponseTemplateService {
     }
 
     /**
+     * Get a localized response — tries language-specific template first,
+     * then falls back to default English template.
+     * Section 12.1 — Multi-Language Support
+     * 
+     * @param {string} userId - User ID
+     * @param {string} command - Template key (e.g., 'STATUS_SUCCESS')
+     * @param {Object} variables - Template variables
+     * @param {string} language - Language code from languageDetectionService (e.g., 'hi', 'ne', 'ar')
+     * @returns {string|null} Formatted response
+     */
+    async getLocalizedResponse(userId, command, variables = {}, language = 'en') {
+        if (language && language !== 'en') {
+            // Try language-specific template first (e.g., STATUS_SUCCESS_HI)
+            const langSuffix = language.replace('-', '_').toUpperCase();
+            const localizedKey = `${command}_${langSuffix}`;
+            const localizedTemplate = await this.getTemplate(userId, localizedKey);
+            if (localizedTemplate) {
+                return this.formatTemplate(localizedTemplate, variables);
+            }
+        }
+        // Fall back to default (English)
+        return this.getResponse(userId, command, variables);
+    }
+
+    /**
+     * Detect language of incoming message and return a localized response.
+     * Convenience method combining language detection + localized template lookup.
+     * 
+     * @param {string} userId - User ID
+     * @param {string} command - Template key
+     * @param {Object} variables - Template variables
+     * @param {string} incomingMessage - The original message (for language detection)
+     * @returns {Object} { response: string, detectedLanguage: { language, confidence, name } }
+     */
+    async detectAndRespond(userId, command, variables = {}, incomingMessage = '') {
+        const languageDetectionService = require('./languageDetectionService');
+        const detected = languageDetectionService.detect(incomingMessage);
+        const response = await this.getLocalizedResponse(userId, command, variables, detected.language);
+        return { response, detectedLanguage: detected };
+    }
+
+
+    /**
      * Get all templates for a user (custom + defaults)
      */
     async getAllTemplates(userId) {

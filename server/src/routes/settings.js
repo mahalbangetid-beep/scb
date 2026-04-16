@@ -684,6 +684,18 @@ router.delete('/spam-bans', async (req, res, next) => {
     }
 });
 
+// ==================== LANGUAGE DETECTION (Section 12.1) ====================
+
+// GET /api/settings/supported-languages - Get supported languages for templates
+router.get('/supported-languages', async (req, res, next) => {
+    try {
+        const languageDetectionService = require('../services/languageDetectionService');
+        successResponse(res, languageDetectionService.getSupportedLanguages());
+    } catch (error) {
+        next(error);
+    }
+});
+
 // ==================== ANNOUNCEMENTS (Section 6.4 — User-facing) ====================
 
 // GET /api/settings/announcements - Get active announcements for current user
@@ -748,7 +760,7 @@ router.post('/announcements/:id/dismiss', async (req, res, next) => {
 // Do NOT add new named routes below this comment.
 
 // Reserved route prefixes — /:key must not match these
-const RESERVED_PREFIXES = ['stats', 'bot-security', 'binance', 'bot-toggles', 'staff-override-groups', 'cleanup-cooldowns', 'spam-bans', 'announcements'];
+const RESERVED_PREFIXES = ['stats', 'bot-security', 'binance', 'bot-toggles', 'staff-override-groups', 'cleanup-cooldowns', 'spam-bans', 'announcements', 'supported-languages'];
 
 // GET /api/settings/:key - Get specific setting (MUST BE AFTER NAMED ROUTES)
 router.get('/:key', async (req, res, next) => {
