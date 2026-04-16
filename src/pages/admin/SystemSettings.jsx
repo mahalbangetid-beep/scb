@@ -26,6 +26,9 @@ export default function SystemSettings() {
         platformName: 'SMMChatBot',
         supportEmail: '',
         supportWhatsapp: '',
+        supportTelegram: '',
+        googleAnalyticsId: '',
+        googleSearchConsoleTag: '',
         maintenanceMode: false,
 
         // Security
@@ -91,6 +94,9 @@ export default function SystemSettings() {
                 platformName: mapConfig('platform', 'platformName', 'SMMChatBot'),
                 supportEmail: mapConfig('platform', 'supportEmail', ''),
                 supportWhatsapp: mapConfig('platform', 'supportWhatsapp', ''),
+                supportTelegram: mapConfig('platform', 'supportTelegram', ''),
+                googleAnalyticsId: mapConfig('platform', 'googleAnalyticsId', ''),
+                googleSearchConsoleTag: mapConfig('platform', 'googleSearchConsoleTag', ''),
                 maintenanceMode: mapConfig('platform', 'maintenanceMode', false),
                 maxLoginAttempts: mapConfig('security', 'maxLoginAttempts', 5),
                 sessionTimeout: mapConfig('security', 'sessionTimeout', 24),
@@ -141,6 +147,9 @@ export default function SystemSettings() {
                 { key: 'platformName', value: settings.platformName, category: 'platform' },
                 { key: 'supportEmail', value: settings.supportEmail, category: 'platform' },
                 { key: 'supportWhatsapp', value: settings.supportWhatsapp, category: 'platform' },
+                { key: 'supportTelegram', value: settings.supportTelegram, category: 'platform' },
+                { key: 'googleAnalyticsId', value: settings.googleAnalyticsId, category: 'platform' },
+                { key: 'googleSearchConsoleTag', value: settings.googleSearchConsoleTag, category: 'platform' },
                 { key: 'maintenanceMode', value: settings.maintenanceMode, category: 'platform' },
                 { key: 'maxLoginAttempts', value: settings.maxLoginAttempts, category: 'security' },
                 { key: 'sessionTimeout', value: settings.sessionTimeout, category: 'security' },
@@ -570,7 +579,7 @@ export default function SystemSettings() {
                                     <Mail size={20} />
                                     <h3>Support Contact</h3>
                                 </div>
-                                <p className="card-desc">Contact information for user support</p>
+                                <p className="card-desc">Contact information for user support. WhatsApp and Telegram links display as clickable icons on the user dashboard.</p>
 
                                 <div className="input-grid cols-2">
                                     <div className="input-group">
@@ -591,8 +600,54 @@ export default function SystemSettings() {
                                             className="full-input"
                                             value={settings.supportWhatsapp}
                                             onChange={(e) => updateSetting('supportWhatsapp', e.target.value)}
-                                            placeholder="+62812345678"
+                                            placeholder="+62812345678 or https://wa.me/62812345678"
                                         />
+                                    </div>
+
+                                    <div className="input-group">
+                                        <label>Support Telegram</label>
+                                        <input
+                                            type="text"
+                                            className="full-input"
+                                            value={settings.supportTelegram}
+                                            onChange={(e) => updateSetting('supportTelegram', e.target.value)}
+                                            placeholder="@username or https://t.me/username"
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Google Integrations — Section 6.6 */}
+                            <div className="config-card">
+                                <div className="card-header">
+                                    <Globe size={20} />
+                                    <h3>Google Integrations</h3>
+                                </div>
+                                <p className="card-desc">Google Analytics and Search Console configuration</p>
+
+                                <div className="input-grid cols-2">
+                                    <div className="input-group">
+                                        <label>Google Analytics Tracking ID</label>
+                                        <input
+                                            type="text"
+                                            className="full-input"
+                                            value={settings.googleAnalyticsId}
+                                            onChange={(e) => updateSetting('googleAnalyticsId', e.target.value)}
+                                            placeholder="G-XXXXXXXXXX or UA-XXXXXXXXX-X"
+                                        />
+                                        <span className="input-hint">Leave empty to disable tracking</span>
+                                    </div>
+
+                                    <div className="input-group">
+                                        <label>Google Search Console Tag</label>
+                                        <input
+                                            type="text"
+                                            className="full-input"
+                                            value={settings.googleSearchConsoleTag}
+                                            onChange={(e) => updateSetting('googleSearchConsoleTag', e.target.value)}
+                                            placeholder="Meta tag content value"
+                                        />
+                                        <span className="input-hint">Verification meta tag content</span>
                                     </div>
                                 </div>
                             </div>

@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import {
     Users, Search, Filter, MoreVertical, Ban, CheckCircle2,
     DollarSign, Edit3, Trash2, X, Loader2, AlertCircle,
-    Mail, Phone, Calendar, Shield, CreditCard, Activity, LogIn
+    Mail, Phone, Calendar, Shield, CreditCard, Activity, LogIn, Eye, Clock, Globe, Percent
 } from 'lucide-react'
 import api from '../../services/api'
 
@@ -21,6 +21,9 @@ export default function UserManagement() {
     const [actionLoading, setActionLoading] = useState(false)
     const [creditAmount, setCreditAmount] = useState('')
     const [creditReason, setCreditReason] = useState('')
+    const [loginHistory, setLoginHistory] = useState([])
+    const [loginHistLoading, setLoginHistLoading] = useState(false)
+    const [discountEdit, setDiscountEdit] = useState('')
 
     useEffect(() => {
         fetchUsers()
@@ -169,6 +172,39 @@ export default function UserManagement() {
         } catch (err) {
             console.error('[Impersonate] Error:', err)
             setError(err.error?.message || err.message || 'Failed to impersonate user')
+        } finally {
+            setActionLoading(false)
+        }
+    }
+
+    const handleViewDetails = async (user) => {
+        setSelectedUser(user)
+        setModalType('details')
+        setShowModal(true)
+        setDiscountEdit(String(user.discountRate || 0))
+        // Fetch login history
+        setLoginHistLoading(true)
+        try {
+            const res = await api.get(`/admin/users/${user.id}/login-history?limit=20`)
+            setLoginHistory(res.data || [])
+        } catch {
+            setLoginHistory([])
+        } finally {
+            setLoginHistLoading(false)
+        }
+    }
+
+    const handleSaveDiscount = async () => {
+        if (!selectedUser) return
+        setActionLoading(true)
+        try {
+            await api.put(`/admin/users/${selectedUser.id}`, {
+                discountRate: parseFloat(discountEdit) || 0
+            })
+            setSuccess('Discount rate updated')
+            fetchUsers()
+        } catch (err) {
+            setError(err.error?.message || err.message || 'Failed to update discount')
         } finally {
             setActionLoading(false)
         }
@@ -340,6 +376,13 @@ export default function UserManagement() {
                                         <td>{new Date(user.createdAt).toLocaleDateString()}</td>
                                         <td>
                                             <div className="action-buttons">
+                                                <button
+                                                    className="btn btn-ghost btn-sm"
+                                                    onClick={() => handleViewDetails(user)}
+                                                    title="View Details"
+                                                >
+                                                    <Eye size={16} />
+                                                </button>
                                                 <button
                                                     className="btn btn-ghost btn-sm btn-impersonate"
                                                     onClick={() => handleImpersonate(user)}
@@ -516,6 +559,102 @@ export default function UserManagement() {
                                         <button className="btn btn-success" onClick={handleActivate} disabled={actionLoading}>
                                             {actionLoading ? <Loader2 className="animate-spin" size={18} /> : 'Activate User'}
                                         </button>
+                                    </div>
+                                </div>
+                            )}
+
+                            {modalType === 'details' && selectedUser && (
+                                <div>
+                                    {/* User Info Grid */}
+                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '1.25rem' }}>
+                                        <div style={{ padding: '0.6rem', background: 'var(--bg-secondary)', borderRadius: '8px' }}>
+                                            <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 600 }}>Username</div>
+                                            <div style={{ fontWeight: 600 }}>@{selectedUser.username}</div>
+                                        </div>
+                                        <div style={{ padding: '0.6rem', background: 'var(--bg-secondary)', borderRadius: '8px' }}>
+                                            <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 600 }}>Email</div>
+                                            <div style={{ fontSize: '0.85rem' }}>{selectedUser.email}</div>
+                                        </div>
+                                        <div style={{ padding: '0.6rem', background: 'var(--bg-secondary)', borderRadius: '8px' }}>
+                                            <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 600 }}>Balance</div>
+                                            <div style={{ fontWeight: 700, color: 'var(--primary-500)' }}>${(selectedUser.creditBalance || 0).toFixed(2)}</div>
+                                        </div>
+                                        <div style={{ padding: '0.6rem', background: 'var(--bg-secondary)', borderRadius: '8px' }}>
+                                            <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 600 }}>Status / Role</div>
+                                            <div style={{ display: 'flex', gap: '0.4rem', marginTop: 2 }}>{getStatusBadge(selectedUser.status)} {getRoleBadge(selectedUser.role)}</div>
+                                        </div>
+                                        <div style={{ padding: '0.6rem', background: 'var(--bg-secondary)', borderRadius: '8px' }}>
+                                            <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 600 }}>Joined</div>
+                                            <div style={{ fontSize: '0.85rem' }}>{new Date(selectedUser.createdAt).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}</div>
+                                        </div>
+                                        <div style={{ padding: '0.6rem', background: 'var(--bg-secondary)', borderRadius: '8px' }}>
+                                            <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 600 }}>Last Login</div>
+                                            <div style={{ fontSize: '0.85rem' }}>{selectedUser.lastLoginAt ? new Date(selectedUser.lastLoginAt).toLocaleString() : 'Never'}</div>
+                                        </div>
+                                    </div>
+
+                                    {/* Discount Rate */}
+                                    <div style={{ padding: '0.75rem', background: 'var(--bg-secondary)', borderRadius: '10px', marginBottom: '1.25rem' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                                            <Percent size={14} />
+                                            <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Discount Rate (%)</span>
+                                        </div>
+                                        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                                            <input
+                                                type="number"
+                                                step="0.1"
+                                                min="0"
+                                                max="100"
+                                                value={discountEdit}
+                                                onChange={e => setDiscountEdit(e.target.value)}
+                                                style={{ flex: 1, padding: '0.4rem 0.6rem', border: '1px solid var(--border-color)', borderRadius: '6px', background: 'var(--bg-primary)', color: 'var(--text-primary)', fontSize: '0.85rem' }}
+                                            />
+                                            <button
+                                                className="btn btn-primary btn-sm"
+                                                onClick={handleSaveDiscount}
+                                                disabled={actionLoading}
+                                                style={{ fontSize: '0.78rem', padding: '0.4rem 0.75rem' }}
+                                            >
+                                                {actionLoading ? <Loader2 className="animate-spin" size={14} /> : 'Save'}
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    {/* Login History */}
+                                    <div style={{ marginBottom: '0.75rem' }}>
+                                        <h4 style={{ margin: '0 0 0.5rem', fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                                            <Clock size={14} /> Sign-in History
+                                        </h4>
+                                        {loginHistLoading ? (
+                                            <div style={{ padding: '1rem', textAlign: 'center', color: 'var(--text-muted)' }}>
+                                                <Loader2 className="animate-spin" size={18} />
+                                            </div>
+                                        ) : loginHistory.length === 0 ? (
+                                            <div style={{ padding: '0.75rem', background: 'var(--bg-secondary)', borderRadius: '8px', fontSize: '0.85rem', color: 'var(--text-muted)', textAlign: 'center' }}>
+                                                No login history found
+                                            </div>
+                                        ) : (
+                                            <div style={{ maxHeight: '200px', overflowY: 'auto', borderRadius: '10px', border: '1px solid var(--border-color)' }}>
+                                                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem' }}>
+                                                    <thead>
+                                                        <tr style={{ background: 'var(--bg-tertiary)' }}>
+                                                            <th style={{ padding: '0.4rem 0.6rem', textAlign: 'left', fontWeight: 600, color: 'var(--text-secondary)' }}>Date</th>
+                                                            <th style={{ padding: '0.4rem 0.6rem', textAlign: 'left', fontWeight: 600, color: 'var(--text-secondary)' }}>IP Address</th>
+                                                            <th style={{ padding: '0.4rem 0.6rem', textAlign: 'left', fontWeight: 600, color: 'var(--text-secondary)' }}>Device</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        {loginHistory.map((l, i) => (
+                                                            <tr key={l.id || i} style={{ borderBottom: '1px solid var(--border-color)' }}>
+                                                                <td style={{ padding: '0.4rem 0.6rem', whiteSpace: 'nowrap' }}>{new Date(l.createdAt).toLocaleString()}</td>
+                                                                <td style={{ padding: '0.4rem 0.6rem', fontFamily: 'monospace', fontSize: '0.75rem' }}>{l.ip || l.ipAddress || '—'}</td>
+                                                                <td style={{ padding: '0.4rem 0.6rem', maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={l.userAgent || l.device || ''}>{l.device || l.userAgent?.substring(0, 40) || '—'}</td>
+                                                            </tr>
+                                                        ))}
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
                             )}
