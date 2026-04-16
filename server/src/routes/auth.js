@@ -402,6 +402,22 @@ router.post('/login', authLimiter, async (req, res, next) => {
         // Generate token
         const token = generateToken(user.id);
 
+        // Section 14: Check if admin enforces 2FA and user hasn't set it up
+        let requires2FASetup = false;
+        if (!user.twoFactorEnabled) {
+            try {
+                const enforce2FAConfig = await prisma.systemConfig.findUnique({
+                    where: { key: 'enforce2FA' }
+                });
+                if (enforce2FAConfig?.value) {
+                    const enforced = JSON.parse(enforce2FAConfig.value);
+                    if (enforced === true || enforced === 'true') {
+                        requires2FASetup = true;
+                    }
+                }
+            } catch { /* non-critical */ }
+        }
+
         successResponse(res, {
             user: {
                 id: user.id,
@@ -417,11 +433,13 @@ router.post('/login', authLimiter, async (req, res, next) => {
                 telegramCredits: user.telegramCredits || 0,
                 whatsappNumber: user.whatsappNumber,
                 telegramUsername: user.telegramUsername,
+                twoFactorEnabled: user.twoFactorEnabled || false,
                 ...(user.role === 'STAFF' && user.staffPermissions ? {
                     staffPermissions: user.staffPermissions.map(p => ({ permission: p.permission, canView: p.canView, canEdit: p.canEdit, canDelete: p.canDelete }))
                 } : {})
             },
-            token
+            token,
+            ...(requires2FASetup && { requires2FASetup: true })
         }, 'Login successful');
     } catch (error) {
         next(error);

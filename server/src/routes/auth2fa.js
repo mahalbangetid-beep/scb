@@ -60,8 +60,19 @@ router.post('/setup', async (req, res, next) => {
         // Generate new TOTP secret
         const secret = otplib.generateSecret();
 
+        // Get app name from admin config, fallback to env/default
+        let appName = process.env.APP_NAME || 'DICREWA';
+        try {
+            const appNameConfig = await prisma.systemConfig.findUnique({
+                where: { key: 'twoFactorAppName' }
+            });
+            if (appNameConfig?.value) {
+                const parsed = JSON.parse(appNameConfig.value);
+                if (parsed) appName = parsed;
+            }
+        } catch { /* use default */ }
+
         // Create otpauth URL for QR code
-        const appName = process.env.APP_NAME || 'DICREWA';
         const otpauthUrl = otplib.generateURI({ label: user.email || user.username, issuer: appName, secret, type: 'totp' });
 
         // Generate QR code as data URL

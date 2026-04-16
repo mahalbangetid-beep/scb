@@ -35,6 +35,8 @@ export default function SystemSettings() {
         maxLoginAttempts: 5,
         sessionTimeout: 24,
         requireEmailVerification: false,
+        enforce2FA: false,
+        twoFactorAppName: 'DICREWA',
 
         // Notifications
         emailNotifications: true,
@@ -105,6 +107,8 @@ export default function SystemSettings() {
                 maxLoginAttempts: mapConfig('security', 'maxLoginAttempts', 5),
                 sessionTimeout: mapConfig('security', 'sessionTimeout', 24),
                 requireEmailVerification: mapConfig('security', 'requireEmailVerification', false),
+                enforce2FA: mapConfig('security', 'enforce2FA', false),
+                twoFactorAppName: mapConfig('security', 'twoFactorAppName', 'DICREWA'),
                 emailNotifications: mapConfig('notifications', 'emailNotifications', true),
                 lowBalanceThreshold: mapConfig('notifications', 'lowBalanceThreshold', 5.00),
                 autoSuspendOnZeroBalance: mapConfig('notifications', 'autoSuspendOnZeroBalance', false),
@@ -159,6 +163,8 @@ export default function SystemSettings() {
                 { key: 'maxLoginAttempts', value: settings.maxLoginAttempts, category: 'security' },
                 { key: 'sessionTimeout', value: settings.sessionTimeout, category: 'security' },
                 { key: 'requireEmailVerification', value: settings.requireEmailVerification, category: 'security' },
+                { key: 'enforce2FA', value: settings.enforce2FA, category: 'security' },
+                { key: 'twoFactorAppName', value: settings.twoFactorAppName, category: 'security' },
                 { key: 'emailNotifications', value: settings.emailNotifications, category: 'notifications' },
                 { key: 'lowBalanceThreshold', value: settings.lowBalanceThreshold, category: 'notifications' },
                 { key: 'autoSuspendOnZeroBalance', value: settings.autoSuspendOnZeroBalance, category: 'notifications' },
@@ -889,6 +895,42 @@ export default function SystemSettings() {
                                         <span className="toggle-label">Require Email Verification</span>
                                         <span className="toggle-desc">New users must verify their email before accessing features</span>
                                     </div>
+                                </div>
+                            </div>
+
+                            {/* Two-Factor Authentication Admin Config (Section 14) */}
+                            <div className="config-card">
+                                <div className="card-header">
+                                    <Shield size={20} />
+                                    <h3>Two-Factor Authentication (Google Authenticator)</h3>
+                                </div>
+                                <p className="card-desc">Configure platform-wide 2FA settings. Users enable 2FA from their Settings → Security page using Google Authenticator or any TOTP app.</p>
+
+                                <div className="toggle-row">
+                                    <label className="toggle-switch">
+                                        <input
+                                            type="checkbox"
+                                            checked={settings.enforce2FA}
+                                            onChange={(e) => updateSetting('enforce2FA', e.target.checked)}
+                                        />
+                                        <span className="toggle-slider"></span>
+                                    </label>
+                                    <div className="toggle-info">
+                                        <span className={`toggle-label ${settings.enforce2FA ? 'warning' : ''}`}>Enforce 2FA for All Users</span>
+                                        <span className="toggle-desc">When enabled, users must set up 2FA on their next login. Recommended for high-security environments.</span>
+                                    </div>
+                                </div>
+
+                                <div className="input-group" style={{ marginTop: 'var(--spacing-md)' }}>
+                                    <label>App Display Name (Issuer)</label>
+                                    <input
+                                        type="text"
+                                        className="full-input"
+                                        value={settings.twoFactorAppName}
+                                        onChange={(e) => updateSetting('twoFactorAppName', e.target.value)}
+                                        placeholder="DICREWA"
+                                    />
+                                    <span className="input-hint">Name shown in Google Authenticator app when users scan the QR code</span>
                                 </div>
                             </div>
                         </div>

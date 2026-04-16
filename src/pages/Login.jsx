@@ -38,6 +38,12 @@ export default function Login() {
             localStorage.setItem('token', res.data.token)
             localStorage.setItem('user', JSON.stringify(res.data.user))
 
+            // Section 14: Redirect to settings if admin enforces 2FA setup
+            if (res.data.requires2FASetup) {
+                navigate('/settings', { state: { enforce2FA: true }, replace: true })
+                return
+            }
+
             // Success animation/delay
             const from = location.state?.from?.pathname || '/dashboard';
             setTimeout(() => {

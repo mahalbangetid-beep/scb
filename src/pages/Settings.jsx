@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useLocation } from 'react-router-dom'
 import {
     Settings as SettingsIcon,
     User,
@@ -214,6 +215,14 @@ export default function Settings() {
         load()
     }, [])
 
+    // Section 14: Auto-switch to security tab when enforce2FA redirect
+    const location = useLocation()
+    useEffect(() => {
+        if (location.state?.enforce2FA) {
+            setActiveSection('security')
+        }
+    }, [location.state])
+
     const handleSaveGeneral = async () => {
         setSubmitting(true)
         setError(null)
@@ -329,6 +338,23 @@ export default function Settings() {
                 <div style={{ padding: 'var(--spacing-md)', background: 'var(--error-light)', borderRadius: 'var(--radius-lg)', marginBottom: 'var(--spacing-lg)', display: 'flex', alignItems: 'center', gap: 'var(--spacing-md)' }}>
                     <AlertCircle size={20} style={{ color: 'var(--error)' }} />
                     <span style={{ color: 'var(--error)' }}>{error}</span>
+                </div>
+            )}
+
+            {location.state?.enforce2FA && !twoFA.enabled && (
+                <div style={{
+                    padding: 'var(--spacing-md)',
+                    background: 'rgba(245, 158, 11, 0.1)',
+                    border: '1px solid rgba(245, 158, 11, 0.3)',
+                    borderRadius: 'var(--radius-lg)',
+                    marginBottom: 'var(--spacing-lg)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 'var(--spacing-md)',
+                    color: '#f59e0b'
+                }}>
+                    <Shield size={20} />
+                    <span><strong>Two-Factor Authentication Required</strong> — Your administrator requires you to enable 2FA before continuing. Please set it up below.</span>
                 </div>
             )}
 
