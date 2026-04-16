@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Users, Plus, Edit2, Trash2, UserCheck, Phone, AlertTriangle, Zap, X, RefreshCw, Search, ToggleRight, ToggleLeft, MessageSquare, StickyNote, Ban, CheckCircle, Hash, Send, CheckSquare, Square, Globe } from 'lucide-react';
+import { Users, Plus, Edit2, Trash2, UserCheck, Phone, AlertTriangle, Zap, X, RefreshCw, Search, ToggleRight, ToggleLeft, MessageSquare, StickyNote, Ban, CheckCircle, Hash, Send, CheckSquare, Square, Globe, Download, Upload } from 'lucide-react';
 import api from '../services/api';
 
 const UserMappings = () => {
@@ -25,6 +25,9 @@ const UserMappings = () => {
     // Bulk select
     const [selectedIds, setSelectedIds] = useState(new Set());
     const [bulkDeleting, setBulkDeleting] = useState(false);
+    const [exportLoading, setExportLoading] = useState(false);
+    const [importLoading, setImportLoading] = useState(false);
+    const importFileRef = useRef(null);
 
     // Notes modal
     const [showNotesModal, setShowNotesModal] = useState(false);
@@ -226,6 +229,101 @@ const UserMappings = () => {
         }
     };
 
+    // Export CSV (Section 5.2)
+    const handleExportCSV = async () => {
+        setExportLoading(true);
+        try {
+            const params = new URLSearchParams();
+            if (selectedPanel && selectedPanel !== 'all' && selectedPanel !== 'orphan') {
+                params.append('panelId', selectedPanel);
+            }
+            const response = await fetch(`/api/user-mappings/export?${params}`, {
+                headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+            });
+            if (!response.ok) throw new Error('Export failed');
+            const blob = await response.blob();
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `user_mappings_${new Date().toISOString().slice(0, 10)}.csv`;
+            a.click();
+            window.URL.revokeObjectURL(url);
+            setSuccess('CSV exported successfully');
+        } catch (err) {
+            setError(err.message || 'Export failed');
+        } finally {
+            setExportLoading(false);
+        }
+    };
+
+    // Import CSV (Section 5.2)
+    const handleImportCSV = async (e) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        // Reset input so same file can be re-selected
+        e.target.value = '';
+
+        setImportLoading(true);
+        try {
+            const text = await file.text();
+            const lines = text.split('\n').filter(l => l.trim());
+            if (lines.length < 2) throw new Error('CSV file must have a header row and data rows');
+
+            // Parse header
+            const header = lines[0].split(',').map(h => h.replace(/"/g, '').trim().toLowerCase());
+            const usernameIdx = header.findIndex(h => h.includes('username') || h === 'name');
+            const phoneIdx = header.findIndex(h => h.includes('whatsapp') || h.includes('phone'));
+            const telegramIdx = header.findIndex(h => h.includes('telegram'));
+            const panelIdx = header.findIndex(h => h.includes('panelid') || h.includes('panel_id'));
+            const emailIdx = header.findIndex(h => h.includes('email'));
+
+            if (usernameIdx < 0) throw new Error('CSV must have a "Username" column');
+
+            // Parse rows
+            const mappingsToImport = [];
+            for (let i = 1; i < lines.length; i++) {
+                // Simple CSV parsing (handles quoted fields)
+                const row = lines[i].match(/("([^"]*)")|([^,]+)/g)?.map(v => v.replace(/^"|"$/g, '').trim()) || [];
+                const username = row[usernameIdx];
+                if (!username) continue;
+
+                const mapping = { panelUsername: username };
+                if (phoneIdx >= 0 && row[phoneIdx]) {
+                    // Support semicolon-separated phones
+                    mapping.whatsappNumbers = row[phoneIdx].split(/[;|]/).map(p => p.trim()).filter(Boolean);
+                }
+                if (telegramIdx >= 0 && row[telegramIdx]) mapping.telegramId = row[telegramIdx];
+                if (panelIdx >= 0 && row[panelIdx]) mapping.panelId = row[panelIdx];
+                if (emailIdx >= 0 && row[emailIdx]) mapping.panelEmail = row[emailIdx];
+
+                mappingsToImport.push(mapping);
+            }
+
+            if (mappingsToImport.length === 0) throw new Error('No valid mappings found in CSV');
+
+            // Send in batches of 100
+            let totalSuccess = 0;
+            let totalFailed = 0;
+            for (let i = 0; i < mappingsToImport.length; i += 100) {
+                const batch = mappingsToImport.slice(i, i + 100);
+                try {
+                    const res = await api.post('/user-mappings/bulk-import', { mappings: batch });
+                    totalSuccess += res.data?.success || batch.length;
+                    totalFailed += res.data?.failed || 0;
+                } catch {
+                    totalFailed += batch.length;
+                }
+            }
+
+            setSuccess(`Imported ${totalSuccess} of ${mappingsToImport.length} mappings${totalFailed > 0 ? ` (${totalFailed} failed)` : ''}`);
+            fetchData();
+        } catch (err) {
+            setError(err.message || 'Import failed');
+        } finally {
+            setImportLoading(false);
+        }
+    };
+
     const handleToggleBot = async (id) => {
         try {
             await api.post(`/user-mappings/${id}/toggle-bot`);
@@ -341,6 +439,19 @@ const UserMappings = () => {
                     <p className="header-subtitle">Map panel usernames to WhatsApp numbers for bot validation</p>
                 </div>
                 <div className="header-actions">
+                    <button className="btn btn-secondary" onClick={handleExportCSV} disabled={exportLoading} title="Export to CSV">
+                        <Download size={16} /> {exportLoading ? 'Exporting...' : 'Export'}
+                    </button>
+                    <button className="btn btn-secondary" onClick={() => importFileRef.current?.click()} disabled={importLoading} title="Import from CSV">
+                        <Upload size={16} /> {importLoading ? 'Importing...' : 'Import'}
+                    </button>
+                    <input
+                        type="file"
+                        ref={importFileRef}
+                        accept=".csv"
+                        style={{ display: 'none' }}
+                        onChange={handleImportCSV}
+                    />
                     <button className="btn btn-secondary" onClick={() => { fetchData(); fetchPanels(); }}>
                         <RefreshCw size={16} /> Refresh
                     </button>

@@ -62,6 +62,43 @@ router.get('/stats', async (req, res, next) => {
     }
 });
 
+/**
+ * GET /api/user-mappings/export
+ * Export all mappings as CSV (Section 5.2)
+ * Supports optional ?panelId= filter
+ */
+router.get('/export', async (req, res, next) => {
+    try {
+        const prisma = require('../utils/prisma');
+        const { panelId } = req.query;
+
+        const where = { userId: req.effectiveUserId };
+        if (panelId) where.panelId = panelId;
+
+        const mappings = await prisma.userPanelMapping.findMany({
+            where,
+            orderBy: { createdAt: 'desc' },
+            take: 10000
+        });
+
+        // Build CSV
+        const csvHeader = 'Username,WhatsAppNumbers,TelegramID,PanelID,PanelEmail,Verified,BotEnabled,Blocked,SpamCount,GroupIDs,CreatedAt\n';
+        const csvRows = mappings.map(m => {
+            let phones = '';
+            try { phones = JSON.parse(m.whatsappNumbers || '[]').join('; '); } catch { phones = ''; }
+            let groups = '';
+            try { groups = JSON.parse(m.groupIds || '[]').join('; '); } catch { groups = ''; }
+            return `"${m.panelUsername || ''}","${phones}","${m.telegramId || ''}","${m.panelId || ''}","${m.panelEmail || ''}",${m.isVerified},${m.isBotEnabled},${m.isAutoSuspended},${m.spamCount || 0},"${groups}","${new Date(m.createdAt).toISOString()}"`;
+        }).join('\n');
+
+        res.setHeader('Content-Type', 'text/csv');
+        res.setHeader('Content-Disposition', `attachment; filename="user_mappings_export_${new Date().toISOString().slice(0,10)}.csv"`);
+        res.send(csvHeader + csvRows);
+    } catch (error) {
+        next(error);
+    }
+});
+
 // ==================== BLOCKED USER MANAGEMENT (Section 3.5) ====================
 // IMPORTANT: These static routes MUST be before /:id to prevent Express param collision
 
