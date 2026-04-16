@@ -86,12 +86,22 @@ class TicketAutomationService {
             }
         });
 
+
         // Try to sync with panel if API supports it
         if (panelId) {
             await this.syncToPanel(ticket, panelId).catch(err => {
                 console.log('[TicketAutomation] Panel sync failed:', err.message);
             });
         }
+
+        // Section 8.1: Auto-forward ticket to provider WA/Telegram group
+        setImmediate(async () => {
+            try {
+                await this.forwardTicketToProvider(userId, ticket, data);
+            } catch (fwdErr) {
+                console.warn('[TicketAutomation] Auto-forward failed:', fwdErr.message);
+            }
+        });
 
         console.log(`[TicketAutomation] Created ticket #${ticketNumber} for user ${userId}`);
 
@@ -434,6 +444,168 @@ class TicketAutomationService {
         } catch (logErr) {
             console.warn('[TicketAutomation] Failed to log sync:', logErr.message);
         }
+    }
+
+    /**
+     * Section 8.1: Forward ticket to provider WA/Telegram group
+     * - Checks allowTicketAutoForward toggle
+     * - Extracts order ID from ticket
+     * - Forwards complaint details to provider group OR creates provider panel ticket
+     * - Sends confirmation (handled elsewhere via auto-reply)
+     */
+    async forwardTicketToProvider(userId, ticket, originalData) {
+        try {
+            // Check if auto-forward is enabled for this user
+            const botFeatureService = require('./botFeatureService');
+            const toggles = await botFeatureService.getToggles(userId);
+            if (!toggles.allowTicketAutoForward) {
+                console.log(`[TicketAutomation] Auto-forward disabled for user ${userId}`);
+                return null;
+            }
+
+            // Determine target provider from ticket context
+            let providerName = null;
+
+            // Try to find provider from associated order
+            if (ticket.orderId || ticket.orderExternalId) {
+                const order = ticket.orderId
+                    ? await prisma.order.findUnique({ where: { id: ticket.orderId }, select: { providerName: true, panelId: true } })
+                    : await prisma.order.findFirst({ where: { externalOrderId: ticket.orderExternalId, userId }, select: { providerName: true, panelId: true } });
+
+                if (order?.providerName) {
+                    providerName = order.providerName;
+                }
+            }
+
+            // Find matching ProviderConfig for forwarding destination
+            const noProviderValues = ['n/a', '0', 'none', 'manual', ''];
+            const isManual = !providerName || noProviderValues.includes(providerName.toLowerCase());
+            const searchNames = isManual ? ['MANUAL', 'manual', 'default'] : [providerName, 'MANUAL', 'default'];
+
+            const providerConfig = await prisma.providerConfig.findFirst({
+                where: {
+                    userId,
+                    providerName: { in: searchNames },
+                    isActive: true
+                }
+            });
+
+            if (!providerConfig) {
+                console.log(`[TicketAutomation] No provider config found for ticket forward (provider: ${providerName || 'none'})`);
+                return null;
+            }
+
+            // Build ticket notification message for provider group
+            const ticketMsg = this._buildProviderTicketMessage(ticket, providerName);
+
+            let sent = false;
+
+            // Forward via WhatsApp (group or number)
+            const targetJid = providerConfig.whatsappGroupJid
+                ? (providerConfig.whatsappGroupJid.includes('@') ? providerConfig.whatsappGroupJid : `${providerConfig.whatsappGroupJid}@g.us`)
+                : providerConfig.whatsappNumber
+                    ? `${providerConfig.whatsappNumber.replace(/\D/g, '')}@s.whatsapp.net`
+                    : null;
+
+            if (targetJid) {
+                let sendDeviceId = providerConfig.deviceId || null;
+
+                if (!sendDeviceId) {
+                    const connectedDevice = await prisma.device.findFirst({
+                        where: { userId, status: 'connected' },
+                        select: { id: true }
+                    });
+                    if (connectedDevice) sendDeviceId = connectedDevice.id;
+                }
+
+                if (sendDeviceId) {
+                    try {
+                        const groupForwardingService = require('./groupForwarding');
+                        if (groupForwardingService.whatsappService) {
+                            await groupForwardingService.whatsappService.sendMessage(sendDeviceId, targetJid, ticketMsg);
+                            sent = true;
+                            console.log(`[TicketAutomation] ✅ Ticket #${ticket.ticketNumber} forwarded to WA provider group`);
+                        }
+                    } catch (waErr) {
+                        console.warn('[TicketAutomation] WA forward failed:', waErr.message);
+                    }
+                }
+            }
+
+            // Forward via Telegram if configured
+            if (providerConfig.telegramChatId) {
+                try {
+                    const telegramService = require('./telegram');
+                    const firstBot = await prisma.telegramBot.findFirst({
+                        where: { userId, status: 'connected' },
+                        select: { id: true },
+                        orderBy: { createdAt: 'asc' }
+                    });
+                    if (firstBot) {
+                        await telegramService.sendMessage(firstBot.id, providerConfig.telegramChatId, ticketMsg, { parseMode: undefined });
+                        sent = true;
+                        console.log(`[TicketAutomation] ✅ Ticket #${ticket.ticketNumber} forwarded to Telegram provider group`);
+                    }
+                } catch (tgErr) {
+                    console.warn('[TicketAutomation] Telegram forward failed:', tgErr.message);
+                }
+            }
+
+            // Log forwarding in ticket messages
+            if (sent) {
+                try {
+                    const messages = this.safeJSONParse(ticket.messages, []);
+                    messages.push({
+                        type: 'SYSTEM',
+                        content: `📤 Ticket auto-forwarded to provider group "${providerConfig.alias || providerConfig.providerName}"`,
+                        timestamp: new Date().toISOString()
+                    });
+                    await prisma.ticket.update({
+                        where: { id: ticket.id },
+                        data: { messages: JSON.stringify(messages) }
+                    });
+                } catch (_) { /* non-critical */ }
+            }
+
+            return { success: sent, provider: providerConfig.providerName };
+        } catch (err) {
+            console.warn('[TicketAutomation] forwardTicketToProvider error:', err.message);
+            return null;
+        }
+    }
+
+    /**
+     * Build complaint message for provider group from ticket
+     */
+    _buildProviderTicketMessage(ticket, providerName) {
+        const parts = [
+            `🎫 *SUPPORT TICKET*`,
+            ``,
+            `📋 Ticket: #${ticket.ticketNumber}`,
+            `📌 Subject: ${ticket.subject || 'Support Request'}`,
+            `🏷️ Category: ${ticket.category || 'GENERAL'}`,
+            `⚡ Priority: ${ticket.priority || 'NORMAL'}`
+        ];
+
+        if (ticket.orderExternalId) {
+            parts.push(`📦 Order ID: ${ticket.orderExternalId}`);
+        }
+        if (providerName) {
+            parts.push(`🔗 Provider: ${providerName}`);
+        }
+        if (ticket.customerUsername) {
+            parts.push(`👤 Customer: ${ticket.customerUsername}`);
+        }
+
+        const messages = this.safeJSONParse(ticket.messages, []);
+        const firstMsg = messages.find(m => m.type === 'CUSTOMER');
+        if (firstMsg) {
+            parts.push(``, `━━━━━━━━━━━━━━━`, `💬 *Message:*`, firstMsg.content);
+        }
+
+        parts.push(``, `📅 ${new Date().toLocaleString()}`);
+
+        return parts.join('\n');
     }
 
     /**

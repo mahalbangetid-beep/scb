@@ -28,6 +28,7 @@ class BotFeatureService {
             allowPaymentVerification: false,
             allowAccountDetailsViaBot: false,
             allowTicketAutoReply: false,
+            allowTicketAutoForward: false,
 
             // Command toggles (all enabled by default)
             allowRefillCommand: true,
@@ -437,7 +438,8 @@ class BotFeatureService {
             { key: 'allowLinkUpdateViaBot', label: 'Order Link Update via Bot', danger: 'medium' },
             { key: 'allowPaymentVerification', label: 'Payment Verification via Bot', danger: 'low' },
             { key: 'allowAccountDetailsViaBot', label: 'Account Details via Bot', danger: 'low' },
-            { key: 'allowTicketAutoReply', label: 'Ticket Auto-Reply', danger: 'medium' }
+            { key: 'allowTicketAutoReply', label: 'Ticket Auto-Reply', danger: 'medium' },
+            { key: 'allowTicketAutoForward', label: 'Ticket Auto-Forward to Provider', danger: 'medium' }
         ];
 
         return highRiskFeatures.map(feature => ({
