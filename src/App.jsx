@@ -4,6 +4,7 @@ import { Menu } from 'lucide-react'
 import { ThemeProvider } from './contexts/ThemeContext'
 import Sidebar from './components/Sidebar'
 import ImpersonationBanner from './components/ImpersonationBanner'
+import GoogleIntegrations from './components/GoogleIntegrations'
 import Dashboard from './pages/Dashboard'
 import Devices from './pages/Devices'
 import Broadcast from './pages/Broadcast'
@@ -43,6 +44,11 @@ import ProviderAliases from './pages/ProviderAliases'
 import GuaranteeRules from './pages/GuaranteeRules'
 import FonepayUser from './pages/FonepayUser'
 import PanelBackupUser from './pages/PanelBackupUser'
+// Public SEO Pages (Section 10.2)
+import FeaturesPage from './pages/public/FeaturesPage'
+import HowItWorksPage from './pages/public/HowItWorksPage'
+import PricingPage from './pages/public/PricingPage'
+import FaqPage from './pages/public/FaqPage'
 import './styles/landing.css'
 // Admin Pages
 import UserManagement from './pages/admin/UserManagement'
@@ -176,8 +182,9 @@ function AppContent() {
 
   // Hide sidebar on login, register, and landing pages
   const isAuthPage = ['/login', '/register', '/'].includes(location.pathname);
+  const isPublicPage = ['/features', '/how-it-works', '/pricing', '/faq'].includes(location.pathname);
   const isLandingPage = location.pathname === '/';
-  const showSidebar = token && !isAuthPage;
+  const showSidebar = token && !isAuthPage && !isPublicPage;
 
   // Inject admin-configured verification meta tags (e.g. Cryptomus) into <head>
   useEffect(() => {
@@ -218,6 +225,7 @@ function AppContent() {
   return (
     <div className="app-layout">
       <ImpersonationBanner />
+      <GoogleIntegrations />
       {/* Mobile hamburger button — hidden on desktop via CSS */}
       {showSidebar && (
         <button
@@ -249,6 +257,11 @@ function AppContent() {
           <Route path="/" element={token ? <Navigate to={getHomePage()} replace /> : <LandingPage />} />
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
+          {/* Public SEO Pages — Section 10.2 */}
+          <Route path="/features" element={<FeaturesPage />} />
+          <Route path="/how-it-works" element={<HowItWorksPage />} />
+          <Route path="/pricing" element={<PricingPage />} />
+          <Route path="/faq" element={<FaqPage />} />
 
           {/* Protected Routes */}
           <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />

@@ -797,11 +797,35 @@
 }
 
 .pricing-cards-slider {
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
+    display: flex;
     gap: 20px;
     max-width: 1100px;
     margin: 0 auto;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    scroll-behavior: smooth;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 12px;
+    /* Hide scrollbar but keep functionality */
+    scrollbar-width: thin;
+    scrollbar-color: rgba(22, 163, 74, 0.3) transparent;
+}
+
+.pricing-cards-slider::-webkit-scrollbar {
+    height: 6px;
+}
+
+.pricing-cards-slider::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.pricing-cards-slider::-webkit-scrollbar-thumb {
+    background: rgba(22, 163, 74, 0.3);
+    border-radius: 3px;
+}
+
+.pricing-cards-slider::-webkit-scrollbar-thumb:hover {
+    background: rgba(22, 163, 74, 0.5);
 }
 
 .pricing-slide-card {
@@ -812,6 +836,10 @@
     transition: all 0.3s ease;
     display: flex;
     flex-direction: column;
+    min-width: 250px;
+    max-width: 280px;
+    flex-shrink: 0;
+    scroll-snap-align: start;
 }
 
 .pricing-slide-card:hover {
@@ -1351,7 +1379,7 @@
     }
 
     .pricing-cards-slider {
-        grid-template-columns: repeat(2, 1fr);
+        /* Carousel: keep flex scroll on tablet */
     }
 
     .broadcast-content {
@@ -1442,7 +1470,7 @@
     }
 
     .pricing-cards-slider {
-        grid-template-columns: 1fr;
+        /* Carousel: single-scroll on mobile, cards already min-width */
     }
 
     /* Broadcast cards: 1 column */

@@ -75,4 +75,32 @@ router.get('/head-tags', async (req, res, next) => {
     }
 });
 
+/**
+ * GET /api/public/google-integrations
+ * Returns Google Analytics ID and Search Console tag for frontend embedding.
+ * Section 10.3 — No authentication required.
+ */
+router.get('/google-integrations', async (req, res, next) => {
+    try {
+        const prisma = require('../utils/prisma');
+        const settings = await prisma.setting.findMany({
+            where: {
+                key: { in: ['googleAnalyticsId', 'googleSearchConsoleTag'] },
+                category: 'platform'
+            },
+            select: { key: true, value: true }
+        });
+
+        const result = {};
+        for (const s of settings) {
+            result[s.key] = s.value || '';
+        }
+
+        successResponse(res, result);
+    } catch (error) {
+        // Fail silently — don't break page rendering
+        res.json({ success: true, data: {} });
+    }
+});
+
 module.exports = router;

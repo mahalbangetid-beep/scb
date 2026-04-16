@@ -250,10 +250,10 @@ const LandingPage = () => {
                         <span className="logo-text">SMMChatBot</span>
                     </div>
                     <div className="nav-links">
-                        <a href="#features">Features</a>
-                        <a href="#how-it-works">How It Works</a>
-                        <a href="#pricing">Pricing</a>
-                        <a href="#faq">FAQ</a>
+                        <a href="/features">Features</a>
+                        <a href="/how-it-works">How It Works</a>
+                        <a href="/pricing">Pricing</a>
+                        <a href="/faq">FAQ</a>
                     </div>
                     <div className="nav-actions">
                         <button className="btn-ghost" onClick={() => navigate('/login')}>Sign In</button>
@@ -726,10 +726,10 @@ const LandingPage = () => {
                         </div>
                         <div className="footer-links">
                             <h4>Product</h4>
-                            <a href="#features">Features</a>
-                            <a href="#pricing">Pricing</a>
-                            <a href="#how-it-works">How It Works</a>
-                            <a href="#">API Docs</a>
+                            <a href="/features">Features</a>
+                            <a href="/pricing">Pricing</a>
+                            <a href="/how-it-works">How It Works</a>
+                            <a href="/faq">FAQ</a>
                         </div>
                         <div className="footer-links">
                             <h4>Company</h4>
