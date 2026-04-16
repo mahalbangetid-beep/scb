@@ -69,6 +69,7 @@ import SeoSettings from './pages/admin/SeoSettings'
 import InvoiceTemplate from './pages/admin/InvoiceTemplate'
 import TransactionLogs from './pages/admin/TransactionLogs'
 import Announcements from './pages/admin/Announcements'
+import DeviceSubscriptions from './pages/admin/DeviceSubscriptions'
 import useSeoMeta from './hooks/useSeoMeta'
 import './index.css'
 
@@ -322,6 +323,7 @@ function AppContent() {
           <Route path="/admin/invoice-template" element={<AdminRoute><InvoiceTemplate /></AdminRoute>} />
           <Route path="/admin/transaction-logs" element={<AdminRoute><TransactionLogs /></AdminRoute>} />
           <Route path="/admin/announcements" element={<AdminRoute><Announcements /></AdminRoute>} />
+          <Route path="/admin/device-subscriptions" element={<AdminRoute><DeviceSubscriptions /></AdminRoute>} />
 
           {/* Catch all */}
           <Route path="*" element={<Navigate to="/" replace />} />

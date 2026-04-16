@@ -2544,6 +2544,126 @@ router.get('/affiliate/history', async (req, res, next) => {
     }
 });
 
+// ==================== DEVICE SUBSCRIPTION ADMIN (Section 9.2) ====================
+
+// GET /api/admin/device-subscriptions - List all device subscriptions
+router.get('/device-subscriptions', async (req, res, next) => {
+    try {
+        const { status, resourceType, limit = 50, page = 1 } = req.query;
+        const where = {};
+        if (status) where.status = status;
+        if (resourceType) where.resourceType = resourceType;
+
+        const skip = (parseInt(page) - 1) * parseInt(limit);
+        const [subscriptions, total] = await Promise.all([
+            prisma.monthlySubscription.findMany({
+                where,
+                orderBy: { nextBillingDate: 'asc' },
+                take: parseInt(limit),
+                skip,
+                include: {
+                    user: { select: { id: true, name: true, email: true, username: true } }
+                }
+            }),
+            prisma.monthlySubscription.count({ where })
+        ]);
+
+        // Enrich with device info
+        const enriched = await Promise.all(subscriptions.map(async (sub) => {
+            let device = null;
+            if (sub.resourceType === 'DEVICE') {
+                device = await prisma.device.findUnique({
+                    where: { id: sub.resourceId },
+                    select: { id: true, name: true, phone: true, status: true }
+                });
+            }
+            return { ...sub, device };
+        }));
+
+        successResponse(res, { subscriptions: enriched, total, page: parseInt(page), limit: parseInt(limit) });
+    } catch (error) {
+        next(error);
+    }
+});
+
+// GET /api/admin/device-subscriptions/stats - Subscription statistics
+router.get('/device-subscriptions/stats', async (req, res, next) => {
+    try {
+        const [active, expired, paused, cancelled, total, revenue] = await Promise.all([
+            prisma.monthlySubscription.count({ where: { status: 'ACTIVE' } }),
+            prisma.monthlySubscription.count({ where: { status: 'EXPIRED' } }),
+            prisma.monthlySubscription.count({ where: { status: 'PAUSED' } }),
+            prisma.monthlySubscription.count({ where: { status: 'CANCELLED' } }),
+            prisma.monthlySubscription.count(),
+            prisma.monthlySubscription.aggregate({
+                where: { status: 'ACTIVE' },
+                _sum: { monthlyFee: true }
+            })
+        ]);
+
+        successResponse(res, {
+            active, expired, paused, cancelled, total,
+            monthlyRevenue: revenue._sum?.monthlyFee || 0
+        });
+    } catch (error) {
+        next(error);
+    }
+});
+
+// PUT /api/admin/device-subscriptions/:id/extend - Extend subscription expiry
+router.put('/device-subscriptions/:id/extend', async (req, res, next) => {
+    try {
+        const { days } = req.body;
+        if (!days || days < 1 || days > 365) {
+            throw new AppError('Days must be between 1 and 365', 400);
+        }
+
+        const sub = await prisma.monthlySubscription.findUnique({ where: { id: req.params.id } });
+        if (!sub) throw new AppError('Subscription not found', 404);
+
+        const currentDate = sub.nextBillingDate > new Date() ? sub.nextBillingDate : new Date();
+        const newDate = new Date(currentDate);
+        newDate.setDate(newDate.getDate() + parseInt(days));
+
+        const updated = await prisma.monthlySubscription.update({
+            where: { id: req.params.id },
+            data: {
+                nextBillingDate: newDate,
+                status: 'ACTIVE',
+                expiresAt: null, // Clear any expiry
+                pausedAt: null
+            }
+        });
+
+        successResponse(res, updated, `Extended by ${days} days. New billing date: ${newDate.toISOString().split('T')[0]}`);
+    } catch (error) {
+        next(error);
+    }
+});
+
+// PUT /api/admin/device-subscriptions/:id/status - Change subscription status
+router.put('/device-subscriptions/:id/status', async (req, res, next) => {
+    try {
+        const { status } = req.body;
+        const validStatuses = ['ACTIVE', 'PAUSED', 'CANCELLED', 'EXPIRED'];
+        if (!validStatuses.includes(status)) {
+            throw new AppError(`Invalid status. Valid: ${validStatuses.join(', ')}`, 400);
+        }
+
+        const updated = await prisma.monthlySubscription.update({
+            where: { id: req.params.id },
+            data: {
+                status,
+                pausedAt: status === 'PAUSED' ? new Date() : null
+            }
+        });
+
+        successResponse(res, updated, `Status changed to ${status}`);
+    } catch (error) {
+        next(error);
+    }
+});
+
 // ==================== COMPLAINT QUEUE (Section 16.1) ====================
 
 const complaintQueueService = require('../services/complaintQueueService');
