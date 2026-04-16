@@ -2544,6 +2544,65 @@ router.get('/affiliate/history', async (req, res, next) => {
     }
 });
 
+// ==================== COMPLAINT QUEUE (Section 16.1) ====================
+
+const complaintQueueService = require('../services/complaintQueueService');
+
+// GET /api/admin/complaint-queue/stats - Queue statistics
+router.get('/complaint-queue/stats', async (req, res, next) => {
+    try {
+        const stats = await complaintQueueService.getQueueStats();
+        successResponse(res, stats);
+    } catch (error) {
+        next(error);
+    }
+});
+
+// GET /api/admin/complaint-queue - List queue items
+router.get('/complaint-queue', async (req, res, next) => {
+    try {
+        const { status = 'QUEUED', limit = 50, page = 1 } = req.query;
+        const skip = (parseInt(page) - 1) * parseInt(limit);
+        const result = await complaintQueueService.getQueueItems(null, {
+            status,
+            limit: parseInt(limit),
+            skip
+        });
+        successResponse(res, result);
+    } catch (error) {
+        next(error);
+    }
+});
+
+// POST /api/admin/complaint-queue/:id/retry - Retry a queued item
+router.post('/complaint-queue/:id/retry', async (req, res, next) => {
+    try {
+        // Find the ticket to get its userId
+        const ticket = await prisma.ticket.findUnique({ where: { id: req.params.id } });
+        if (!ticket) {
+            throw new AppError('Queue item not found', 404);
+        }
+        const result = await complaintQueueService.retryItem(req.params.id, ticket.userId);
+        successResponse(res, result, result.message);
+    } catch (error) {
+        next(error);
+    }
+});
+
+// POST /api/admin/complaint-queue/:id/dismiss - Dismiss a queued item
+router.post('/complaint-queue/:id/dismiss', async (req, res, next) => {
+    try {
+        const ticket = await prisma.ticket.findUnique({ where: { id: req.params.id } });
+        if (!ticket) {
+            throw new AppError('Queue item not found', 404);
+        }
+        const result = await complaintQueueService.dismissItem(req.params.id, ticket.userId);
+        successResponse(res, result, result.message);
+    } catch (error) {
+        next(error);
+    }
+});
+
 // ==================== ANNOUNCEMENTS (Section 6.4) ====================
 
 const crypto = require('crypto');

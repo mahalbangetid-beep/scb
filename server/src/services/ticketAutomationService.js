@@ -95,11 +95,37 @@ class TicketAutomationService {
         }
 
         // Section 8.1: Auto-forward ticket to provider WA/Telegram group
+        // Section 16.1: If forward fails, queue for retry (zero-miss)
         setImmediate(async () => {
             try {
-                await this.forwardTicketToProvider(userId, ticket, data);
+                const result = await this.forwardTicketToProvider(userId, ticket, data);
+                if (result && !result.success) {
+                    // Forward was attempted but didn't send — queue it
+                    const complaintQueueService = require('./complaintQueueService');
+                    await complaintQueueService.addToQueue(userId, {
+                        orderId: ticket.orderExternalId,
+                        command: ticket.category || 'GENERAL',
+                        senderPhone: ticket.customerPhone,
+                        senderName: ticket.customerUsername,
+                        message: ticket.subject,
+                        reason: 'no_provider_config',
+                        panelId: data.panelId || ticket.panelId
+                    });
+                }
             } catch (fwdErr) {
-                console.warn('[TicketAutomation] Auto-forward failed:', fwdErr.message);
+                console.warn('[TicketAutomation] Auto-forward failed, queueing:', fwdErr.message);
+                try {
+                    const complaintQueueService = require('./complaintQueueService');
+                    await complaintQueueService.addToQueue(userId, {
+                        orderId: ticket.orderExternalId,
+                        command: ticket.category || 'GENERAL',
+                        senderPhone: ticket.customerPhone,
+                        senderName: ticket.customerUsername,
+                        message: ticket.subject,
+                        reason: 'api_error',
+                        panelId: data.panelId || ticket.panelId
+                    });
+                } catch (_) { /* non-critical */ }
             }
         });
 
