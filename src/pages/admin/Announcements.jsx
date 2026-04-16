@@ -102,14 +102,14 @@ export default function Announcements() {
 
     if (loading) {
         return (
-            <div className="flex items-center justify-center min-h-[400px]">
-                <Loader2 className="animate-spin primary" size={48} />
+            <div className="page-content" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '400px' }}>
+                <Loader2 size={48} className="animate-spin" style={{ color: 'var(--primary-500)' }} />
             </div>
         )
     }
 
     return (
-        <div className="animate-fade-in">
+        <div className="page-content">
             {/* Page Header */}
             <div className="page-header">
                 <div>
@@ -176,7 +176,7 @@ export default function Announcements() {
                         </button>
                     </div>
                 ) : (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-md)' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-md)', padding: 'var(--spacing-md)' }}>
                         {announcements.map(ann => (
                             <div key={ann.id} style={{
                                 padding: 'var(--spacing-md) var(--spacing-lg)',
@@ -254,7 +254,7 @@ export default function Announcements() {
             {/* Create/Edit Modal */}
             {showModal && (
                 <div className="modal-overlay" onClick={() => setShowModal(false)}>
-                    <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '520px' }}>
+                    <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '520px' }}>
                         <div className="modal-header">
                             <h3 className="modal-title">
                                 <Megaphone size={18} />
