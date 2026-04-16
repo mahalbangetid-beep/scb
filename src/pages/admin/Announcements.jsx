@@ -111,10 +111,10 @@ export default function Announcements() {
     return (
         <div className="page-content">
             {/* Page Header */}
-            <div className="page-header">
+            <div className="page-header" style={{ position: 'relative', zIndex: 2 }}>
                 <div>
                     <h1 className="page-title">Announcements</h1>
-                    <p className="page-subtitle">
+                    <p className="page-subtitle" style={{ marginBottom: 0 }}>
                         Create global notices displayed to all users on their dashboard
                     </p>
                 </div>
