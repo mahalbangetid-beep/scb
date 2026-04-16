@@ -201,6 +201,38 @@ router.get('/:id', async (req, res, next) => {
 router.post('/', async (req, res, next) => {
     try {
         const ticket = await ticketService.createFromMessage(req.effectiveUserId, req.body);
+
+        // Section 11.1: Send auto-reply acknowledgement to customer
+        if (ticket.customerPhone) {
+            setImmediate(async () => {
+                try {
+                    const responseTemplateService = require('../services/responseTemplateService');
+                    const autoReply = await responseTemplateService.getResponse(req.effectiveUserId, 'TICKET_AUTO_REPLY', {
+                        ticket_number: ticket.ticketNumber,
+                        subject: ticket.subject || 'Support Request',
+                        priority: ticket.priority || 'NORMAL',
+                        category: ticket.category || 'GENERAL'
+                    });
+                    const message = autoReply || ticketService.getCreationReply(ticket);
+
+                    await ticketService.sendUpdateNotification(ticket, message);
+                    console.log(`[Ticket] Auto-reply sent for #${ticket.ticketNumber}`);
+                } catch (autoReplyErr) {
+                    console.warn('[Ticket] Auto-reply failed:', autoReplyErr.message);
+                }
+            });
+        }
+
+        // Section 11.2d: Notify staff group about new ticket
+        setImmediate(async () => {
+            try {
+                const staffNotificationService = require('../services/staffNotificationService');
+                await staffNotificationService.notifyNewTicket(req.effectiveUserId, ticket);
+            } catch (notifyErr) {
+                console.warn('[Ticket] Staff notification failed:', notifyErr.message);
+            }
+        });
+
         createdResponse(res, ticketService.parseTicket(ticket), 'Ticket created');
     } catch (error) {
         next(error);

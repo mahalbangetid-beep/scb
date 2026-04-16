@@ -873,6 +873,16 @@ class CommandHandlerService {
             }
         }
 
+        // Section 11.2a: Notify staff group about error/failed orders
+        if (['ERROR', 'FAILED'].includes(order.status?.toUpperCase())) {
+            setImmediate(async () => {
+                try {
+                    const staffNotificationService = require('./staffNotificationService');
+                    await staffNotificationService.notifyErrorOrder(userId, order, `Order status: ${order.status}`);
+                } catch (e) { /* non-critical */ }
+            });
+        }
+
         return result;
     }
 
@@ -1302,6 +1312,14 @@ class CommandHandlerService {
                 });
                 if (tpl) message = tpl;
             } catch (e) { /* use fallback */ }
+
+            // Section 11.2b: Notify staff group about cancellation request
+            setImmediate(async () => {
+                try {
+                    const staffNotificationService = require('./staffNotificationService');
+                    await staffNotificationService.notifyCancelRequest(order.userId, order, senderNumber);
+                } catch (e) { /* non-critical */ }
+            });
 
             return {
                 success: true,

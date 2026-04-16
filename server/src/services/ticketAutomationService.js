@@ -314,11 +314,126 @@ class TicketAutomationService {
             return null;
         }
 
-        // This would call the panel's ticket API if supported
-        // Implementation depends on panel API structure
-        console.log(`[TicketAutomation] Would sync ticket #${ticket.ticketNumber} to panel ${panel.name}`);
+        try {
+            const adminApiService = require('./adminApiService');
 
-        return null;
+            // Build ticket data for panel API
+            const ticketData = {
+                subject: ticket.subject || `Support Request #${ticket.ticketNumber}`,
+                message: this._buildTicketMessage(ticket),
+                priority: this._mapPriority(ticket.priority),
+                orderId: ticket.orderExternalId || null
+            };
+
+            let result = null;
+
+            if (adminApiService.isRentalPanel(panel)) {
+                // Rental Panel: action=createTicket
+                result = await adminApiService.makeAdminRequest(panel, 'POST', '', {
+                    action: 'createTicket',
+                    subject: ticketData.subject,
+                    message: ticketData.message,
+                    priority: ticketData.priority,
+                    order_id: ticketData.orderId
+                });
+            } else {
+                // Perfect Panel: POST /tickets
+                result = await adminApiService.makeAdminRequest(panel, 'POST', '/tickets', {
+                    subject: ticketData.subject,
+                    message: ticketData.message,
+                    priority: ticketData.priority,
+                    order_id: ticketData.orderId
+                });
+            }
+
+            // Log the sync attempt
+            await this._logTicketSync(ticket, panel, result);
+
+            if (result?.success) {
+                const panelTicketId = result.data?.ticket_id || result.data?.id || result.data?.data?.id;
+                console.log(`[TicketAutomation] ✅ Ticket #${ticket.ticketNumber} synced to panel ${panel.name} (panel ticket: ${panelTicketId})`);
+
+                // Update ticket with panel reference
+                if (panelTicketId) {
+                    await prisma.ticket.update({
+                        where: { id: ticket.id },
+                        data: {
+                            panelTicketId: String(panelTicketId)
+                        }
+                    }).catch(() => { /* panelTicketId column may not exist yet */ });
+                }
+
+                return { success: true, panelTicketId };
+            } else {
+                console.log(`[TicketAutomation] Panel ticket sync failed for #${ticket.ticketNumber}: ${result?.error || 'Unknown error'}`);
+                return { success: false, error: result?.error };
+            }
+        } catch (err) {
+            console.log('[TicketAutomation] Panel sync failed:', err.message);
+            await this._logTicketSync(ticket, panel, { success: false, error: err.message });
+            return null;
+        }
+    }
+
+    /**
+     * Build message body for forwarding to panel
+     */
+    _buildTicketMessage(ticket) {
+        const parts = [];
+        if (ticket.category && ticket.category !== 'GENERAL') {
+            parts.push(`Category: ${ticket.category}`);
+        }
+        if (ticket.orderExternalId) {
+            parts.push(`Order ID: ${ticket.orderExternalId}`);
+        }
+        if (ticket.customerUsername) {
+            parts.push(`Customer: ${ticket.customerUsername}`);
+        }
+        if (ticket.customerPhone) {
+            parts.push(`Phone: ${ticket.customerPhone}`);
+        }
+
+        // Extract original customer message
+        const messages = this.safeJSONParse(ticket.messages, []);
+        const firstMsg = messages.find(m => m.type === 'CUSTOMER');
+        if (firstMsg) {
+            parts.push('');
+            parts.push(firstMsg.content);
+        }
+
+        return parts.join('\n') || ticket.subject;
+    }
+
+    /**
+     * Map internal priority to panel priority format
+     */
+    _mapPriority(priority) {
+        const map = { LOW: 1, NORMAL: 2, HIGH: 3, URGENT: 4 };
+        return map[priority] || 2;
+    }
+
+    /**
+     * Log ticket sync attempt for audit trail (Section 11.3)
+     */
+    async _logTicketSync(ticket, panel, result) {
+        try {
+            // Use a generic logging approach — store in ticket messages as SYSTEM entry
+            const messages = this.safeJSONParse(ticket.messages, []);
+            messages.push({
+                type: 'SYSTEM',
+                content: result?.success
+                    ? `✅ Ticket forwarded to panel "${panel.name}" (ID: ${result.data?.ticket_id || result.data?.id || 'N/A'})`
+                    : `❌ Failed to forward to panel "${panel.name}": ${result?.error || 'Unknown error'}`,
+                timestamp: new Date().toISOString()
+            });
+
+            await prisma.ticket.update({
+                where: { id: ticket.id },
+                data: { messages: JSON.stringify(messages) }
+            });
+        } catch (logErr) {
+            console.warn('[TicketAutomation] Failed to log sync:', logErr.message);
+        }
     }
 
     /**
