@@ -230,18 +230,24 @@ export default function TransactionLogs() {
                     <table className="tl-table">
                         <thead>
                             <tr>
-                                <th className="tl-th-sortable" onClick={() => toggleSort('createdAt')}>
-                                    <Calendar size={13} /> Date
-                                    {sortField === 'createdAt' && <ArrowUpDown size={12} />}
+                                <th onClick={() => toggleSort('createdAt')} style={{ cursor: 'pointer' }}>
+                                    <span className="tl-th-sortable">
+                                        <Calendar size={13} /> Date
+                                        {sortField === 'createdAt' && <ArrowUpDown size={12} />}
+                                    </span>
                                 </th>
-                                <th className="tl-th-sortable" onClick={() => toggleSort('user')}>
-                                    <User size={13} /> User
-                                    {sortField === 'user' && <ArrowUpDown size={12} />}
+                                <th onClick={() => toggleSort('user')} style={{ cursor: 'pointer' }}>
+                                    <span className="tl-th-sortable">
+                                        <User size={13} /> User
+                                        {sortField === 'user' && <ArrowUpDown size={12} />}
+                                    </span>
                                 </th>
                                 <th>Type</th>
-                                <th className="tl-th-sortable" onClick={() => toggleSort('amount')}>
-                                    <DollarSign size={13} /> Amount
-                                    {sortField === 'amount' && <ArrowUpDown size={12} />}
+                                <th onClick={() => toggleSort('amount')} style={{ cursor: 'pointer' }}>
+                                    <span className="tl-th-sortable">
+                                        <DollarSign size={13} /> Amount
+                                        {sortField === 'amount' && <ArrowUpDown size={12} />}
+                                    </span>
                                 </th>
                                 <th>Balance</th>
                                 <th>Description</th>
