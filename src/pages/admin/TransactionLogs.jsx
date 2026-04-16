@@ -374,7 +374,7 @@ const styles = `
     .tl-table { width: 100%; border-collapse: collapse; }
     .tl-table thead { background: var(--bg-tertiary); }
     .tl-table th { padding: 0.75rem 1rem; text-align: left; font-size: 0.75rem; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px; white-space: nowrap; border-bottom: 1px solid var(--border-color); }
-    .tl-th-sortable { cursor: pointer; display: flex; align-items: center; gap: 4px; }
+    .tl-th-sortable { cursor: pointer; display: inline-flex; align-items: center; gap: 4px; }
     .tl-th-sortable:hover { color: var(--primary-color); }
     .tl-table td { padding: 0.75rem 1rem; border-bottom: 1px solid var(--border-color); font-size: 0.875rem; color: var(--text-primary); }
     .tl-table tr:last-child td { border-bottom: none; }
