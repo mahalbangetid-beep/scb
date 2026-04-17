@@ -599,13 +599,16 @@ export default function Devices() {
                             background: 'var(--bg-secondary)',
                             borderRadius: 'var(--radius-lg)',
                             padding: 'var(--spacing-lg)',
-                            border: device.status === 'connected'
-                                ? device.isActive !== false
-                                    ? '1px solid rgba(37, 211, 102, 0.3)'
-                                    : '1px solid rgba(251, 191, 36, 0.3)'
-                                : '1px solid var(--border-color)',
-                            opacity: device.isActive === false ? 0.7 : 1,
-                            transition: 'all 0.2s ease'
+                            border: device.status === 'PAUSED'
+                                ? '1px solid rgba(239, 68, 68, 0.35)'
+                                : device.status === 'connected'
+                                    ? device.isActive !== false
+                                        ? '1px solid rgba(37, 211, 102, 0.3)'
+                                        : '1px solid rgba(251, 191, 36, 0.3)'
+                                    : '1px solid var(--border-color)',
+                            opacity: device.status === 'PAUSED' ? 0.55 : device.isActive === false ? 0.7 : 1,
+                            transition: 'all 0.2s ease',
+                            position: 'relative'
                         }}
                     >
                         {/* Header */}
@@ -768,26 +771,34 @@ export default function Devices() {
                                     borderRadius: '20px',
                                     fontSize: '0.75rem',
                                     fontWeight: 500,
-                                    background: device.status === 'connected'
-                                        ? device.isActive !== false
-                                            ? 'rgba(37, 211, 102, 0.15)'
-                                            : 'rgba(251, 191, 36, 0.15)'
-                                        : 'rgba(239, 68, 68, 0.1)',
-                                    color: device.status === 'connected'
-                                        ? device.isActive !== false ? '#25D366' : '#f59e0b'
-                                        : '#ef4444'
+                                    background: device.status === 'PAUSED'
+                                        ? 'rgba(239, 68, 68, 0.15)'
+                                        : device.status === 'connected'
+                                            ? device.isActive !== false
+                                                ? 'rgba(37, 211, 102, 0.15)'
+                                                : 'rgba(251, 191, 36, 0.15)'
+                                            : 'rgba(239, 68, 68, 0.1)',
+                                    color: device.status === 'PAUSED'
+                                        ? '#ef4444'
+                                        : device.status === 'connected'
+                                            ? device.isActive !== false ? '#25D366' : '#f59e0b'
+                                            : '#ef4444'
                                 }}>
                                     <span style={{
                                         width: '6px',
                                         height: '6px',
                                         borderRadius: '50%',
-                                        background: device.status === 'connected'
-                                            ? device.isActive !== false ? '#25D366' : '#f59e0b'
-                                            : '#ef4444'
+                                        background: device.status === 'PAUSED'
+                                            ? '#ef4444'
+                                            : device.status === 'connected'
+                                                ? device.isActive !== false ? '#25D366' : '#f59e0b'
+                                                : '#ef4444'
                                     }}></span>
-                                    {device.status === 'connected'
-                                        ? device.isActive !== false ? 'Online' : 'Bot OFF'
-                                        : 'Offline'}
+                                    {device.status === 'PAUSED'
+                                        ? 'Suspended'
+                                        : device.status === 'connected'
+                                            ? device.isActive !== false ? 'Online' : 'Bot OFF'
+                                            : 'Offline'}
                                 </div>
                             </div>
                         </div>
@@ -816,8 +827,8 @@ export default function Devices() {
                         </div>
 
                         {/* Actions */}
-                        {/* Subscription Expired Banner */}
-                        {device.subscription && device.subscription.status !== 'ACTIVE' && (
+                        {/* Subscription Expired / Device Paused Banner */}
+                        {(device.status === 'PAUSED' || (device.subscription && device.subscription.status !== 'ACTIVE')) && (
                             <div style={{
                                 display: 'flex',
                                 alignItems: 'center',
@@ -832,20 +843,23 @@ export default function Devices() {
                             }}>
                                 <AlertTriangle size={14} />
                                 <span style={{ flex: 1 }}>
-                                    Subscription {device.subscription.status === 'CANCELLED' ? 'cancelled' : 'paused'}. Renew to use this device.
+                                    {device.status === 'PAUSED'
+                                        ? 'Device suspended due to insufficient balance. Please renew to reactivate.'
+                                        : `Subscription ${device.subscription?.status === 'CANCELLED' ? 'cancelled' : 'paused'}. Renew to use this device.`
+                                    }
                                 </span>
                             </div>
                         )}
 
                         <div style={{ display: 'flex', gap: 'var(--spacing-sm)' }}>
-                            {/* If subscription is expired — show only Renew + Delete */}
-                            {device.subscription && device.subscription.status !== 'ACTIVE' ? (
+                            {/* If subscription expired or device paused — show only Renew + Delete */}
+                            {(device.status === 'PAUSED' || (device.subscription && device.subscription.status !== 'ACTIVE')) ? (
                                 <>
                                     <button
                                         className="btn btn-primary btn-sm"
                                         style={{ flex: 1 }}
-                                        onClick={() => handleRenewSubscription(device.subscription.id, device.id)}
-                                        disabled={renewingDevice === device.id}
+                                        onClick={() => device.subscription && handleRenewSubscription(device.subscription.id, device.id)}
+                                        disabled={renewingDevice === device.id || !device.subscription}
                                     >
                                         {renewingDevice === device.id
                                             ? <Loader2 className="animate-spin" size={14} />

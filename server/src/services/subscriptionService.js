@@ -626,8 +626,15 @@ class SubscriptionService {
             throw new Error('Subscription not found');
         }
 
+        // Allow renewal of ACTIVE subscriptions only if they are past due (enables "Pay Now")
         if (subscription.status === 'ACTIVE') {
-            throw new Error('Subscription is already active');
+            const now = new Date();
+            const billingDate = new Date(subscription.nextBillingDate);
+            if (billingDate > now) {
+                throw new Error('Subscription is already active and not yet due');
+            }
+            // Past due ACTIVE subscription — allow manual "Pay Now" processing
+            console.log(`[Subscription] Pay Now triggered for overdue ACTIVE subscription: ${subscriptionId}`);
         }
 
         // Check if the underlying resource still exists

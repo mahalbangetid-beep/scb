@@ -341,7 +341,13 @@ const Subscriptions = () => {
                                             {sub.status === 'ACTIVE' && sub.nextBilling && (
                                                 <div className={`billing-date ${isExpiringSoon ? 'warning' : ''}`}>
                                                     {isExpiringSoon && <AlertTriangle size={12} />}
-                                                    {daysUntil <= 0 ? 'Due today' : `${daysUntil} days left`}
+                                                    {daysUntil <= 0 ? '⚠️ Due today' : `${daysUntil} days left`}
+                                                </div>
+                                            )}
+                                            {/* Overdue warning with failed attempts */}
+                                            {sub.status === 'ACTIVE' && sub.failedAttempts > 0 && (
+                                                <div style={{ fontSize: '0.7rem', color: 'var(--danger-color)', display: 'flex', alignItems: 'center', gap: '0.2rem', justifyContent: 'flex-end', marginTop: '0.15rem' }}>
+                                                    <AlertTriangle size={10} /> Payment overdue
                                                 </div>
                                             )}
                                             {sub.status === 'ACTIVE' && (
@@ -361,9 +367,20 @@ const Subscriptions = () => {
                                                 <span className="sub-deleted-label">No actions available</span>
                                             ) : (
                                                 <>
-                                                    {/* ACTIVE: show auto-renew toggle + cancel */}
+                                                    {/* ACTIVE: show auto-renew toggle + cancel + Pay Now (if due) */}
                                                     {sub.status === 'ACTIVE' && (
                                                         <>
+                                                            {/* Pay Now button when subscription is due */}
+                                                            {daysUntil !== null && daysUntil <= 0 && (
+                                                                <button
+                                                                    className="btn btn-sm btn-primary sub-renew-btn"
+                                                                    onClick={() => handleRenew(sub.id)}
+                                                                    disabled={actionLoading === sub.id}
+                                                                    title="Process payment now instead of waiting for auto-renewal"
+                                                                >
+                                                                    <DollarSign size={14} /> Pay Now
+                                                                </button>
+                                                            )}
                                                             <button
                                                                 className="btn btn-sm btn-ghost"
                                                                 onClick={() => handleToggleAutoRenew(sub.id, sub.autoRenew)}
